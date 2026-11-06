@@ -91,6 +91,8 @@ List, flow, ratio, price-distance, and self-trade checks only report a reason. F
 
 A second set of calls stays on data the caller already holds. A wire template overwrites a few offsets, and a block length lets an older reader skip bytes it does not know. A sojourn check drops a queued item only after it stays late for a whole window. Sparse price chunks and cancel handles are fixed tables. A command snapshot can be rewound only while its revision is still current. A parent schedule returns the next child quantity and due time. Fill alignment, a due-time queue, bars, and corporate-action factors all take the caller's numbers and return a result. None of them opens a session, reads a feed, or chooses whether an order is sent.
 
+A third set stays on buffers and counters the caller already owns. A byte stream is cut into frames, and the checksum follows that counter. A sequence gate holds later numbers aside until a gap is filled in order. Token buckets and theoretical arrival times pace one key. Several checks can sign one order, and an opening quota returns quantity that was not used. Place and cancel acknowledgements age on separate clocks. The caller records latency samples, stores a half round-trip clock offset, and publishes a finished snapshot. A fixed bucket finds a key from a short signature, and a grace count says when every reader has moved on. None of these calls opens a socket or sends an order.
+
 ## Build and install
 
 CMake 3.16 or newer is required, together with a C++17 compiler. From the repository root:

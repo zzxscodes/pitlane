@@ -196,6 +196,28 @@ These calls do not attach to the desk. The caller keeps the storage, passes the 
 
 `act_mul` uses `jump_den / jump_num` as the price multiplier. A cash dividend changes that factor only when `income` is set, and only when the previous close is above the dividend. `mul_fold` multiplies actions whose `ymd` is at or before the as-of date. `scale_px` truncates toward zero. `traded_move` returns the price change after the raw jump is removed. A 1-into-2 split uses jump `1/2`. When the ex price is exactly half of the previous close, the traded move is 0.
 
+## Frames, pacing, and snapshots
+
+These calls do not open a socket and do not send an order. The caller keeps the bytes, the clock, and the decision.
+
+`digest_of` covers the bytes it is given. `Sum8` is the low 8 bits of the sum. `Crc16` is CRC-16/CCITT-FALSE. `Crc32` is the ISO-HDLC CRC-32. `digest_write` stores that value little-endian. `StreamAsm<Cap>` appends into its own buffer, with `Cap` from 16 to 65536. `FrameSpec` reads a little-endian body length at `len_off` inside a header of 4 to 32 bytes. `pull` waits until the header, body, and checksum are all present. A body longer than `max_body`, or a frame that cannot fit, returns `BadLen` and leaves the buffer unchanged. A bad checksum returns `BadDig`, drops that frame, and keeps the bytes after it. A good frame stays at the front until `commit`. `append` fails while a frame is still held.
+
+`SeqGate<Cap>` keeps 2 to 64 later sequence numbers. `start` sets the next expected number, and 0 is rejected. `live` releases a number only when it is exactly the next one. A hole records the missing range and parks the later number. A live number inside the open hole is ignored. `replay` accepts only the next missing number. When the hole is filled, consecutive parked numbers are released, and a later hole is opened if the side list still has one. A full side list or a short output buffer leaves the gate unchanged. The gate does not send a resend request.
+
+`token_open` fills a bucket to `burst`. `token_take` adds `rate` tokens for each `per` units of time, capped at the burst. Time that moves backward does not add tokens. A request above the burst fails. `gcra_open` stores an interval and a tolerance. `gcra_allow` passes when `now + tolerance` reaches the theoretical arrival time, then moves that time forward by one interval. `TokenBook` and `GcraBook` hold 1 to 64 keys. Key 0 is rejected. A new key is refused when every slot is still inside the idle time. An idle time of 0 never reuses a slot. A failed first take does not keep the new key.
+
+`sign_ready` is true when the reject count is 0 and the pass count has reached `need`. A later pass does not clear a reject. `sign_reset` clears both counts and leaves `need` as it is. `hold_reserve` on an opening order takes the quantity and one cancel credit. A closing order takes neither. `hold_cancel` applies to an opening hold and returns the unfilled quantity. The cancel credit is returned only when `rejected_here` is set. `hold_done` returns that credit when an opening order is fully filled and the fill is not marked outside. `hold_late` on an opening order returns the unfilled quantity and the credit. On a closing order it only clears the hold. `hold_cancel_late` returns the credit and leaves the hold open, so a later full fill does not return it again.
+
+`key_num` and `key_text` keep the interface name with the counter key. A numeric key and a text key are not the same. Text longer than 23 characters, or an interface name longer than 15, is rejected and the previous key is left unchanged. `AckBook<Cap>` holds 2 to 64 rows. `put` fails when the table is full or the key is already present. `link` moves a row from waiting for a place acknowledgement to linked. `arm_cancel` starts the cancel clock from the linked state. `sweep` lists due local ids and does not change the rows. A row is due when its age is greater than its own limit. A second sweep inside `gap` returns no rows. A short output buffer leaves the sweep clock unchanged.
+
+`lat_mark` stores a non-negative tick only when marking is enabled. `lat_span` fails while either node is unset. `skew_sample` stores half of the desk time minus the local time, with integer division toward zero. `skew_apply` adds that integer. `LatHist<Buckets>` uses 4 to 32 buckets. A value of 0 or 1 lands in bucket 0. Larger values use the highest power of two that is still inside the value, and the last bucket holds anything above it. `cum` adds the counts from bucket 0 through the given bucket.
+
+`SnapPub<T, Slots>` stores 2 or 3 inline slots. One writer calls `begin_write`, fills that slot, and `publish` makes it visible. `pin` holds the published slot for one reader. A second pin fails until `unpin`. With 2 slots, a write fails while the reader still holds one and the other is published. With 3 slots, the writer may replace a slot that was published and then passed over. The library does not start a thread.
+
+`SigBook<Buckets, Keys>` uses a power-of-two bucket count from 2 to 256, and 1 to 1024 keys. Each bucket has 8 slots. A signature of 0 means empty, and a computed 0 is stored as 1. The signature is written after the key index. `find` returns a 1-based index, or 0. `put` of a key that is already present returns true. When both buckets are full, an insert moves an older key toward its other bucket at most 8 times. If that fails, the previous keys remain. One writer inserts.
+
+`Grace<Readers>` tracks 1 to 64 readers. `online` records the current epoch. `offline` stores 0 and that reader no longer blocks. `quiesce` records the epoch after the caller has dropped shared pointers. `bump` advances the epoch and returns the new value. `elapsed` returns false while any online reader is still behind, and it does not wait. A caller who is also in the reader list must `quiesce` before `elapsed`, otherwise that caller is still behind. `RetireList<Cap>` holds 2 to 64 tokens in insertion order. `reap` releases a prefix of tokens that have elapsed and stops at the first one that has not. A short output buffer leaves the list unchanged. The list does not free the caller's memory.
+
 ## Where the calls live
 
 | Header | What it covers |
@@ -239,3 +261,12 @@ These calls do not attach to the desk. The caller keeps the storage, passes the 
 | `inbound.hpp` | Commands waiting for their due time |
 | `bar.hpp` | Bars from ticks the caller marks tradable |
 | `corp.hpp` | Corporate-action price factors |
+| `stream.hpp` | Frame checksums and byte-stream reassembly |
+| `seqgate.hpp` | Sequence gap recovery |
+| `pace.hpp` | Token buckets and theoretical arrival times |
+| `sign.hpp` | Check counts and opening quota |
+| `ack.hpp` | Place and cancel acknowledgement timers |
+| `trace.hpp` | Latency samples, clock offset, and buckets |
+| `snap.hpp` | Snapshot slots published as a whole |
+| `sig.hpp` | Signature buckets |
+| `grace.hpp` | Reader epochs and a retire list |
