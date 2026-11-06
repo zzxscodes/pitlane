@@ -218,6 +218,50 @@ These calls do not open a socket and do not send an order. The caller keeps the 
 
 `Grace<Readers>` tracks 1 to 64 readers. `online` records the current epoch. `offline` stores 0 and that reader no longer blocks. `quiesce` records the epoch after the caller has dropped shared pointers. `bump` advances the epoch and returns the new value. `elapsed` returns false while any online reader is still behind, and it does not wait. A caller who is also in the reader list must `quiesce` before `elapsed`, otherwise that caller is still behind. `RetireList<Cap>` holds 2 to 64 tokens in insertion order. `reap` releases a prefix of tokens that have elapsed and stops at the first one that has not. A short output buffer leaves the list unchanged. The list does not free the caller's memory.
 
+## Cycles and fixed low-latency tables
+
+These calls do not open a socket, do not send an order, and do not start a thread. The caller owns the storage and the thread that advances it.
+
+`cycles_read` reads the cycle counter. `cycles_ordered` reads it after earlier instructions have retired. `cycle_gap` fails when the end is earlier than the start. `load_fence`, `compiler_fence`, `cpu_relax`, and `keep` sit around a measurement. `CycleProbe::arm` names how many warmup samples to drop. `begin` fences and reads. `end` returns 1 when the sample should be kept, 0 during warmup, and -1 when the read fails or moves backward.
+
+`UsSlot` occupies one cache line. `us_store` publishes a microsecond count with release. `us_load` reads it with acquire. The caller writes the slot. A probe does not call a clock.
+
+`scale_set` stores a multiplier and a shift from a cycle count and a nanosecond count the caller measured. Both counts must be positive, and the cycle count must fit the wide division. `scale_ns` computes `(cycles * mult + half) >> shift`, rounding to the nearest nanosecond. `scale_span` converts a forward cycle gap and fails when the end is earlier.
+
+`DutyPace::open` stores a fast gap, a slower gap, and how many cycles make one millisecond. `step` returns skip, fast, slow, or timeout. It does not poll a descriptor. `deadline_at` adds an offset to an origin and fails on overflow. `before_deadline` is true while that deadline is still ahead.
+
+`lap_ns` subtracts two timestamps. A negative stamp is unset, and an end earlier than the start fails. `hop_ns` subtracts the trigger time from the time the record was written. `order_to_ack`, `tick_to_trade`, and `tick_to_cancel` use the same rule on the stamps the caller stored.
+
+`MagHist` keeps one count per magnitude bucket. Adding a value that falls outside the table fails and leaves the counts unchanged. Percentile 0 is the smallest sample. Percentile 100 is the largest. A rank in between is the lower edge of the bucket that crosses it, with the rank rounded up. `mag_report` fills the count, the minimum, the maximum, the median, the 99th, and the 999th. `note_paced` records a duration. When the duration covers more than one interval, it also records each remainder that is still at least one interval. It keeps at most 64 notes. A longer stall returns -1 after those 64. A note that returns false stops the series.
+
+`clock_publish` writes a cycle scale onto a page. The generation is stored odd, the fields are written, then the generation is stored even. Generation 0 means the page has never been published. A tick count of 0, or a tick count that does not fit the wide division, is rejected and the page is left unchanged. `ClockView::refresh` copies a stable even generation. It returns false when the page is unpublished, and after repeated reads that stay odd. `to_wall` converts a cycle stamp with an integer product and quotient, then folds nanoseconds into the second.
+
+`TickWheel<Cap>` holds 8 to 4096 timers. Tag 0 is rejected. `arm` inserts on the calling thread. `post` may run on another thread. The next `take` links those timers. A timer that is not strictly after the wheel's current tick is moved to the next tick. `take` advances to the given limit and writes due tags. A short buffer stops and leaves the remaining timers in place. `cancel` removes one already linked tag. `next_deadline` is the next occupied near bucket, or the next point where a farther bucket is brought in.
+
+`StageRing<T, Cap>` uses 4 to 1024 slots, a power of two. `acquire` fails when every slot is still owned. `finish` at stage 0 stores the body. `take` returns the next sequence of that stage. A later sequence that finishes first waits. Stage 1 publishes the freed count. Only stages 0 and 1 are accepted.
+
+`SeqWin<Cap>` uses a window of 8 to 1024, a power of two. Token 0 is rejected. `push` returns `In`, `Dup`, `Busy`, or `Far`. A duplicate keeps the first token. A sequence more than two windows ahead is `Far` and is not stored. `pull` copies a ready prefix and then the contiguous head, and stops at a hole. When the side queue cannot hold a slide, `push` returns `Busy` and does not store the new token.
+
+`ReadWin` tracks 8 readers. `open` rejects a window below 4. `limit` is the slowest joined position plus the window. A reader that is not sticky, and that stays behind by more than a quarter of the window for the whole hold, leaves the set. With nobody left, `limit` fails. The call does not write the caller's bytes.
+
+`core_slot` returns the address of one core inside a block the caller owns. The stride is at least 64 bytes and a multiple of 64. A core outside the count fails.
+
+`Urgent` holds one non-zero tag. `post` fails while a tag is still there. `take` returns the tag, or 0 when the slot is empty.
+
+`TraceGate::arm` stores a 16-bit event id and an on bit. `CoreTape<Cap>` writes only while the gate is on. The capacity is 16 to 4096 and a power of two. A full tape overwrites the oldest record. `at` fails for a record that has not been written or has already been overwritten. `SegTape<Seg, N>` uses 2 to 16 segments and 4 to 1024 records in each. A full segment is sealed when the next segment has been returned with `give`. Otherwise the writer restarts the current segment, increments the overrun count, and the push returns false. `SpikeRing<Cap>` records a gap strictly above the limit. A gap that is not above the limit returns false and does not count as a drop. A full ring increments the drop count and returns false.
+
+`FillRing<T, Cap>` has one producer and one consumer, with 2 to 1024 slots. `claim` returns the next slot, or null when a claim is already open or the ring is full. `publish` makes that slot visible. `cancel` drops the open claim and does not publish it. `take` copies the next published slot.
+
+`hex_encode` writes lowercase hex and a trailing NUL. The buffer must hold both. A short buffer returns -1 and leaves the previous text. `hex_decode` checks every digit before it writes. An odd length or a bad digit returns -1 and does not write. `bytes_diff` returns the first index that differs, -1 when the ranges match, and -2 when a pointer or a length is unusable.
+
+`Mix64` draws from the seed the caller stores. `below` consumes one draw. A limit of 1 or less returns 0. A larger limit returns a value strictly under it. `span` returns a value from the low bound through the high bound, and fails when the high bound is below the low bound. The mix is not a cryptographic generator.
+
+`TextBuf<Cap>` holds 8 to 4096 bytes, including the NUL. A failed `put`, `put_i64`, or `put_hex` leaves the previous text. `put_char` rejects a zero byte. `put_hex` takes a width from 1 to 16 and rejects a value that needs more digits.
+
+`SampleBox<Cap>` holds 2 to 256 samples. The mean divides toward zero. A percentile uses the nearest rank, rounded up. Percentile 0 is the lowest sample and percentile 100 is the highest. A full box, or a sum that would overflow, fails and does not store the new sample.
+
+`StepClock::step` moves forward and rejects a negative step or a step that would overflow. `jump` may move to any time. `FailBudget::arm` allows that many successes, then `allow` returns false. `StepList<Cap>` requires a non-zero tag and a time that is not earlier than the previous push. `take` copies a prefix of due tags. A short buffer leaves the rest. `ladder_check` accepts an empty ladder. A bid must be strictly descending. An ask must be strictly ascending. A non-positive price or quantity fails. `intent_make`, `report_make`, and `quote_make` zero the output when they reject it. A quote with a bid above the ask is rejected. A bid equal to the ask is kept.
+
 ## Where the calls live
 
 | Header | What it covers |
@@ -270,3 +314,20 @@ These calls do not open a socket and do not send an order. The caller keeps the 
 | `snap.hpp` | Snapshot slots published as a whole |
 | `sig.hpp` | Signature buckets |
 | `grace.hpp` | Reader epochs and a retire list |
+| `cycle.hpp` | Cycle reads, an integer scale, and a cached microsecond |
+| `lap.hpp` | Differences of timestamps the caller stored |
+| `mag.hpp` | Magnitude buckets and paced notes |
+| `clock.hpp` | A published cycle scale and wall time |
+| `wheel.hpp` | A tick wheel |
+| `stage.hpp` | A ring finished in claim order |
+| `seqwin.hpp` | A sequence window that stops at a hole |
+| `readwin.hpp` | The slowest reader plus a window |
+| `stride.hpp` | The address of one core's slot |
+| `urgent.hpp` | One tag that does not wait in a queue |
+| `tape.hpp` | A gate, a per-core tape, sealed segments, and spikes |
+| `fillring.hpp` | A slot filled in place |
+| `hex.hpp` | Hex and a byte compare |
+| `mix64.hpp` | A split mix |
+| `textbuf.hpp` | A fixed text buffer |
+| `sample.hpp` | A fixed list of samples |
+| `drill.hpp` | Clocks, budgets, ladders, and plain records for tests |

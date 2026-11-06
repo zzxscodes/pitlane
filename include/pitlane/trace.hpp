@@ -5,7 +5,7 @@
 namespace pitlane {
 
 // Fixed timestamps, a half round-trip offset, and log-sized buckets.
-// The caller supplies every tick. The library does not read a hardware counter.
+// The caller supplies every tick. Cycle-counter reads live in cycle.hpp.
 
 template <int N>
 struct LatTrace {

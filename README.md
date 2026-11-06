@@ -93,6 +93,8 @@ A second set of calls stays on data the caller already holds. A wire template ov
 
 A third set stays on buffers and counters the caller already owns. A byte stream is cut into frames, and the checksum follows that counter. A sequence gate holds later numbers aside until a gap is filled in order. Token buckets and theoretical arrival times pace one key. Several checks can sign one order, and an opening quota returns quantity that was not used. Place and cancel acknowledgements age on separate clocks. The caller records latency samples, stores a half round-trip clock offset, and publishes a finished snapshot. A fixed bucket finds a key from a short signature, and a grace count says when every reader has moved on. None of these calls opens a socket or sends an order.
 
+A fourth set measures cycles and keeps fixed tables the caller drives on its own thread. `cycles_read` and `cycles_ordered` read the processor cycle counter. The caller writes a one-line microsecond slot and supplies the integer scale that turns cycles into nanoseconds. A magnitude histogram reports the median and the tail. A tick wheel, a staged ring, a sequence window, a reader window, an in-place fill ring, and per-core trace tapes are fixed tables. The library does not start a thread, does not open a socket, and does not send an order.
+
 ## Build and install
 
 CMake 3.16 or newer is required, together with a C++17 compiler. From the repository root:
