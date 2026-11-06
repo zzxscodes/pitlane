@@ -1,6 +1,6 @@
 # pitlane
 
-The Chinese introduction is in `README_CN.md`. When the library changes, update both files together.
+The Chinese introduction is in `README_CN.md`. API usage is in `doc/API.md` and `doc/API_CN.md`. When the library changes, update each language pair together.
 
 pitlane is a C++17 library for trading processes on the same machine. It gives those processes one shared workspace, and on that workspace it handles orders, positions, trading days, and paper matching. Prices are integers. Times are microseconds.
 
