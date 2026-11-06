@@ -89,6 +89,8 @@ A bind table maps a local id to a counter id and holds a fill that arrives befor
 
 List, flow, ratio, price-distance, and self-trade checks only report a reason. Framing writes the length after the body is known. A sequence watch reports a gap, and a short hold releases messages in id order. A span mark stores timestamps beside a message.
 
+A second set of calls stays on data the caller already holds. A wire template overwrites a few offsets, and a block length lets an older reader skip bytes it does not know. A sojourn check drops a queued item only after it stays late for a whole window. Sparse price chunks and cancel handles are fixed tables. A command snapshot can be rewound only while its revision is still current. A parent schedule returns the next child quantity and due time. Fill alignment, a due-time queue, bars, and corporate-action factors all take the caller's numbers and return a result. None of them opens a session, reads a feed, or chooses whether an order is sent.
+
 ## Build and install
 
 CMake 3.16 or newer is required, together with a C++17 compiler. From the repository root:

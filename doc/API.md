@@ -174,6 +174,28 @@ Side 1 is the bid and side 2 is the ask. `Add` fails when that price already exi
 
 `ByteFrame::begin` reserves four bytes. `end` writes the payload length there and returns the total size, or -1. `frame_read` fails when the buffer is shorter than that length. `seq_feed` returns 0 for the next id, a positive gap when ids were skipped, and -1 for an old id. The first id starts the watch. `SeqHold::start` sets the next id that `take` will release. `offer` keeps an id only inside the next `Cap` ids. `SpanMark::mark` rejects a negative tick. `between` fails while either node is unset.
 
+## Caller-owned helpers
+
+These calls do not attach to the desk. The caller keeps the storage, passes the numbers, and decides what to do with the result.
+
+`IdSlip::issue` returns the next id. `undo` returns that id only while it is still the latest one and `keep` has not been called. `WireMold::seal` copies a prefix into the caller's buffer. `put_u64` and `put_i64` write little-endian bytes at an offset inside that prefix. `read_block` accepts a block at least `know` bytes long and rejects a shorter one. `block_end` steps past the declared block, including bytes this build does not read.
+
+`StayShed::drop` uses the caller's time unit. A stay below the target clears drop mode. The first stay at or above the target starts the window and is kept. After the window, a late item is dropped. A stay below the target leaves drop mode.
+
+`floor_chunk` moves a negative tick away from zero to the block start. `ChunkMap<Ticks,Blocks>` keeps quantity in blocks of `Ticks` prices, with at most `Blocks` blocks. `Ticks` is 8 to 256 and a multiple of 64. `Blocks` is 1 to 64. A quantity of 0 clears a tick. A new block is taken only for a positive quantity. A full directory fails and leaves the old quantities in place. `chain_link` appends a caller-owned node and returns a slot plus its reuse count. `chain_unlink` fails when the reuse count does not match. `chain_zero` leaves the node linked with quantity 0. `chain_take` reduces that quantity.
+
+`ticket_pull` and `ticket_amend` run only from `Working` or `Partial`. Each one stores the previous ticket and bumps the revision. `ticket_rewind` restores that snapshot only while the revision is still the one written by the command. `ticket_fill` also bumps the revision, so a fill blocks a pending rewind. A fill during `PullWait` stays in `PullWait`.
+
+`slice_open` divides a parent quantity by the number of intervals in the horizon, at most one million cuts. When one cut would be below the lot and the total still covers one lot, the plan becomes a single cut. The last cut receives the remainder. `slice_poll` waits until the due time. `slice_restore` returns an unfinished child to the pool. `slice_late` adds the fill, takes what it can from the pool, and returns how much was removed from children already scheduled. `basket_make` accepts `Create`, `Pause`, `Resume`, `Stop`, and `Update`. The kind is at most 15 characters. A byte count above `max_bytes` fails. The payload itself is not stored.
+
+`recon_fill` applies one venue fill id once. An unknown order is built from `size` and reported as an acknowledgement, then a fill. Quantity past the order increments `over` and is not added to `filled`. A repeated id emits `Dup` and does not change the order. `recon_cancel` marks a known, unfinished order cancelled.
+
+`FlightQueue<Cap>` holds 2 to 64 commands, ordered by due time. `push` fails when the queue is full, or when the tag or the instrument is 0. `take` removes only commands for that instrument whose due time has arrived.
+
+`BarFold` ignores a tick the caller marks as not tradable, a non-positive price, a negative quantity, or a negative timestamp. The bucket is the timestamp minus its remainder modulo the span. A later bucket closes the current bar. An older tick is rejected and the bar stays. Empty spans are not created. `seal` emits the bar that is still open.
+
+`act_mul` uses `jump_den / jump_num` as the price multiplier. A cash dividend changes that factor only when `income` is set, and only when the previous close is above the dividend. `mul_fold` multiplies actions whose `ymd` is at or before the as-of date. `scale_px` truncates toward zero. `traded_move` returns the price change after the raw jump is removed. A 1-into-2 split uses jump `1/2`. When the ex price is exactly half of the previous close, the traded move is 0.
+
 ## Where the calls live
 
 | Header | What it covers |
@@ -208,3 +230,12 @@ Side 1 is the bid and side 2 is the ask. `Add` fails when that price already exi
 | `frame.hpp` | Frames, sequence gaps, and reordering |
 | `span.hpp` | Timestamps beside a message |
 | `numeric.hpp` | Wide products used by the checks |
+| `mold.hpp` | Prepared frames, block length, and an id that can be returned |
+| `shed.hpp` | Sojourn drop |
+| `chunk.hpp` | Sparse price blocks and cancel handles |
+| `ticket.hpp` | Command snapshot and revision |
+| `parent.hpp` | Parent time slices and a basket header |
+| `recon.hpp` | Local and counter fill alignment |
+| `inbound.hpp` | Commands waiting for their due time |
+| `bar.hpp` | Bars from ticks the caller marks tradable |
+| `corp.hpp` | Corporate-action price factors |
