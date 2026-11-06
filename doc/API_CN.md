@@ -144,6 +144,36 @@ pitlane::VenueOut out = venue.admit(in, in.stamp_us, reps, 4);
 
 `session_date` 把一个时刻归到它所属的交易日。8 点到 18 点不回退。18 点之后，周一回退 3 天，其余日子回退 1 天。凌晨则周一回退 2 天，其余日子回退 1 天。然后再跳过周末和 `ClosedDays` 里的日期。
 
+## 辅助函数
+
+`QuoteFold::apply` 写入一批 `Add`、`Set` 和 `Del`。其中一条不合法时，原有档位保持不变。`copy` 先给出最优价。`PrintLog::push` 只记录逐笔，不接收行情簿。`DayRoll::on_msg` 更新当前分钟。时间戳往回走时返回 false。时间单位是微秒。早于一天的分钟会被丢掉。
+
+```cpp
+pitlane::QuoteFold<8> book;
+const pitlane::FoldEdit edits[] = {{pitlane::FoldOp::Add, 1, 10, 4}};
+book.apply(edits, 1);
+```
+
+方向 1 是买盘，方向 2 是卖盘。价格已经存在时，`Add` 失败。`Set` 的数量为 0 时删掉这一档。`Del` 一个不存在的价格仍然成功。
+
+`band_at_hold` 在价格正好等于下一档起点时留在较低的一档。`walk_up` 和 `walk_down` 从这一档开始走 tick。一步落到下一档起点之后，后面的 tick 用新档的步长。`clamp_px` 只在上限高于下限时夹价格。`span_index` 返回包含这一分钟的时段，没有则返回 -1。结束分钟不大于开始分钟的时段跨过午夜。`session_part` 对一个 `SessionRow` 返回开市、午休或休市。
+
+`life_next` 返回下一个 `Phase`。从当前阶段不能接受这个事件时，结果是 `Phase::None`。撤单等待期间的成交仍留在 `PullWait`。`Resume` 和 `ResumePartial` 把被拒绝的撤单退回已报或部分成交。
+
+`margin_need` 用乘数乘价格乘数量，再乘保证金分子，除以保证金分母。`charge_class` 对股票、债券、基金、科创板、指数和回购使用现货公式，其余品种使用费率公式。乘数和保证金比例由 `scale_of` 给出。
+
+`rest_room` 是一条腿还能挂出的数量。两腿一起打时结果是 0。`cut_hedge` 在一条腿被削减后，按差额削减另一条腿。`slice_weight` 把一半进位，新的一段不大于 0 时返回 false。`align_leg` 先除以行情系数，再按最小变动价位四舍五入，一半进位。`pair_qty_ok` 对 688 和 689 要求至少 180，对其他沪深代码要求至少 80。`chase_px` 买入向上走，卖出向下走。
+
+`IdBind::put` 写入一条待确认的对照。表已满或柜台键已经存在时失败。`confirm` 把它标成已关联。`erase` 留下空位，后面的 `put` 可以再用。本地号 0 会被拒绝。
+
+订单还处在未设置、已发送或已确认时，`bind_fill` 把数量和金额累加到提前到达的字段。`bind_status` 把这些字段抄进订单。已确认并且已经有成交时，状态变成部分成交。柜台剩余少于本地剩余时，`bind_final` 先留住全成或已撤。`bind_catchup` 在剩余为 0 时落地这个状态。撤单尚未回来，且新价格等于成交价时，`quote_repost` 返回 false。
+
+`lane_accepts` 读取 `LaneRule`。撤单要看 `pull`。新单要看价格类型和开平。`lane_can_amend` 读取 `amend`。`Cause` 从 10 起是字段检查，从 40 起是资金和持仓，从 70 起是风控，从 100 起是本进程以外。`cause_band` 返回这个分组。`cause_text` 是一个固定的短词。
+
+`list_cause` 查开仓名单或平仓名单。`FlowWindow::allow` 把这一次也算进去，总数仍低于 `limit` 才通过。时间窗和传入的时刻使用同一单位。样本笔数还低于 `min_n` 时，`count_ratio_ok` 直接通过，比例刚好等于上限也通过。`cash_ratio_ok` 在金额比例等于上限时不通过。`cancel_ok` 和 `reject_ok` 在比例相等时不通过。`fill_ok` 在等于下限时通过。`px_shift` 是相对最新价的有符号距离，再乘上 `den`。`deviation_cause` 用这段距离的绝对值。`wash_hit` 要求同一合约、相反方向，并且价格相遇或打穿。账户相同，或者组号不是 0 并且相同，都算命中。
+
+`ByteFrame::begin` 先留出四个字节。`end` 把正文长度写回去，并返回总长度。失败时返回 -1。缓冲区短于这个长度时，`frame_read` 失败。`seq_feed` 对下一个序号返回 0，跳过若干序号时返回正的缺口，旧序号返回 -1。第一个序号会启动这次监视。`SeqHold::start` 设定 `take` 下一步要放出的序号。`offer` 只保留接下来 `Cap` 个序号以内的消息。`SpanMark::mark` 拒绝负数时刻。任一节点还没有时刻时，`between` 失败。
+
 ## 调用所在的头文件
 
 | 头文件 | 内容 |
@@ -156,8 +186,8 @@ pitlane::VenueOut out = venue.admit(in, in.stamp_us, reps, 4);
 | `ids.hpp` | `IdMint` |
 | `codec.hpp` | 品种、开平和方向 |
 | `lots.hpp` | 把一笔数量拆成多张单 |
-| `plan.hpp` | 推向目标仓的下一张单 |
-| `ledger.hpp` | 冻结、成交回写、登录编号和在途槽 |
+| `plan.hpp` | 下一张单、可挂数量、切片和追价 |
+| `ledger.hpp` | 冻结、保证金、费用、成交回写、登录编号和在途槽 |
 | `venue.hpp` | `PaperVenue` |
 | `lags.hpp` | 时段时延和采样时延 |
 | `simclock.hpp` | `SimClock` |
@@ -169,3 +199,12 @@ pitlane::VenueOut out = venue.admit(in, in.stamp_us, reps, 4);
 | `feed.hpp` | 订阅掩码、价格缩放和原始行情 |
 | `cash.hpp` | 资金行和持仓行 |
 | `logline.hpp` | `Log` |
+| `quote.hpp` | 行情批次、逐笔记录和分钟滚动 |
+| `steps.hpp` | 价位档和价格移动 |
+| `life.hpp` | 委托状态迁移 |
+| `bind.hpp` | 柜台单号和乱序回报 |
+| `lane.hpp` | 通道规则和 `Cause` |
+| `judge.hpp` | 名单、流速、比例、偏离和自成交 |
+| `frame.hpp` | 组帧、序号缺口和重排 |
+| `span.hpp` | 留在消息旁边的时刻 |
+| `numeric.hpp` | 检查用的宽乘积 |

@@ -44,6 +44,30 @@ struct SessionRow {
 
 bool minute_tradable(const SessionRow& row, int minute) noexcept;
 
+// Index of the span that contains minute, or -1. An overnight span has end_min <= begin_min.
+inline int span_index(int minute, const Span* spans, int n) noexcept {
+    if (!spans || n <= 0) return -1;
+    for (int i = 0; i < n; ++i) {
+        const int b = spans[i].begin_min;
+        const int e = spans[i].end_min;
+        if (b == e) continue;
+        if (b < e) {
+            if (minute >= b && minute < e) return i;
+        } else if (minute >= b || minute < e) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+enum class SessionPart : uint8_t { Closed = 0, Open = 1, Lunch = 2 };
+
+inline SessionPart session_part(const SessionRow& row, int minute) noexcept {
+    if (row.lunch1 > row.lunch0 && minute >= row.lunch0 && minute < row.lunch1) return SessionPart::Lunch;
+    if (minute < row.open_min || minute >= row.close_min) return SessionPart::Closed;
+    return SessionPart::Open;
+}
+
 // Days to subtract from the calendar date so a night print lands on the session date.
 // Day session (08:00 through 18:00) returns 0.
 int night_back_days(int hhmmss, int weekday) noexcept;

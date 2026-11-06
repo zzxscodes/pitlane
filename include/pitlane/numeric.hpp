@@ -48,6 +48,66 @@ inline int64_t min_abs(int64_t a, int64_t b) noexcept {
     return aa <= bb ? a : b;
 }
 
+// Unsigned 64x64 product. Used so ratio checks do not overflow a signed 64-bit multiply.
+struct Wide {
+    uint64_t hi{0};
+    uint64_t lo{0};
+};
+
+inline Wide mul_wide(uint64_t a, uint64_t b) noexcept {
+    const uint64_t a0 = a & 0xffffffffull;
+    const uint64_t a1 = a >> 32;
+    const uint64_t b0 = b & 0xffffffffull;
+    const uint64_t b1 = b >> 32;
+    const uint64_t p0 = a0 * b0;
+    const uint64_t p1 = a0 * b1;
+    const uint64_t p2 = a1 * b0;
+    const uint64_t p3 = a1 * b1;
+    const uint64_t mid = (p0 >> 32) + (p1 & 0xffffffffull) + (p2 & 0xffffffffull);
+    Wide w;
+    w.lo = (p0 & 0xffffffffull) | (mid << 32);
+    w.hi = p3 + (p1 >> 32) + (p2 >> 32) + (mid >> 32);
+    return w;
+}
+
+inline int cmp_wide(Wide a, Wide b) noexcept {
+    if (a.hi != b.hi) return a.hi < b.hi ? -1 : 1;
+    if (a.lo != b.lo) return a.lo < b.lo ? -1 : 1;
+    return 0;
+}
+
+// Compare a*b ? c*d for non-negative values. Returns -1, 0, or 1.
+inline int cmp_prod(int64_t a, int64_t b, int64_t c, int64_t d) noexcept {
+    if (a < 0) a = 0;
+    if (b < 0) b = 0;
+    if (c < 0) c = 0;
+    if (d < 0) d = 0;
+    return cmp_wide(mul_wide(static_cast<uint64_t>(a), static_cast<uint64_t>(b)),
+                    mul_wide(static_cast<uint64_t>(c), static_cast<uint64_t>(d)));
+}
+
+// Quotient of a 128-bit value and a 64-bit divisor. Fails when the quotient does not fit in 64 bits.
+// den must be small enough that a remainder below den can be shifted by one bit.
+inline bool div_wide(Wide w, uint64_t den, uint64_t& q) noexcept {
+    if (den == 0 || den > (UINT64_MAX >> 1) || w.hi >= den) return false;
+    uint64_t rem = 0;
+    for (int i = 63; i >= 0; --i) {
+        rem = (rem << 1) | ((w.hi >> static_cast<unsigned>(i)) & 1ull);
+        if (rem >= den) rem -= den;
+    }
+    q = 0;
+    for (int i = 63; i >= 0; --i) {
+        const uint64_t bit = (w.lo >> static_cast<unsigned>(i)) & 1ull;
+        rem = (rem << 1) | bit;
+        q <<= 1;
+        if (rem >= den) {
+            rem -= den;
+            q |= 1ull;
+        }
+    }
+    return true;
+}
+
 inline char digit_char(int v) noexcept { return (v >= 0 && v <= 9) ? static_cast<char>('0' + v) : '?'; }
 
 inline int to_hex(int64_t v, char* out, int cap) noexcept {
