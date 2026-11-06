@@ -1,81 +1,83 @@
 # pitlane
 
-pitlane 是一个 C++17 静态库。它给同一台机器上的交易进程准备一块共享工作区，并在这块工作区上处理委托、持仓、交易日和纸面撮合。价格用整数，时间用微秒。
+The Chinese introduction is in `README_CN.md`. When the library changes, update both files together.
 
-名字来自赛车场的维修通道。委托和行情先进入这条通道，完成检查、排队和撮合，再交给外面的柜台或策略。库本身不连接交易所。
+pitlane is a C++17 library for trading processes on the same machine. It gives those processes one shared workspace, and on that workspace it handles orders, positions, trading days, and paper matching. Prices are integers. Times are microseconds.
 
-## 它做什么
+The name comes from the pit lane beside a racetrack. Orders and market data enter this lane, where they are checked, queued, and matched, and then handed to an outside counter or strategy. The library itself does not connect to an exchange.
 
-策略、行情和报单常常分属不同进程。pitlane 让这些进程通过同一个文件映射交换委托、回报、行情、信号和查询。消息长度固定，容量在编译时确定。一条环写满时，新的写入直接失败，不会扩容，也不会盖掉还没有被确认的消息。
+## What it does
 
-委托槽、账本行和未完成订单都放在固定数组里。资金和持仓在原位置修改，临界区很短。
+Strategy, market data, and order entry often run in different processes. pitlane lets them exchange orders, reports, quotes, signals, and queries through one file mapping. Message size is fixed, and capacity is fixed at compile time. When a ring is full, the next write fails. The library does not grow the ring, and it does not overwrite a message that has not been acknowledged.
 
-使用时包含 `include/pitlane/pitlane.hpp`，链接 `libpitlane.a`。类型和函数都在命名空间 `pitlane` 中。这套接口是单独设计的，不能用来替换已经在运行的其他交易库。
+Order slots, ledger rows, and live orders sit in fixed arrays. Cash and positions are updated in place, and the critical section is short.
 
-## 共享区
+Include `include/pitlane/pitlane.hpp` and link `libpitlane.a`. Types and functions live in the `pitlane` namespace. The interface is designed on its own and cannot replace another trading library that is already running.
 
-映射文件以魔数 `PITLANE1` 开头，当前版本号是 2。`desk_view` 只打开魔数和版本都相符的文件。文件仍是空白，并且调用时允许创建，才会初始化一次。版本不同的旧文件不会被当作当前布局使用。
+## Shared region
 
-一块共享区里有八条环。
+A mapping file starts with the magic `PITLANE1`. The current version is 2. `desk_view` opens a file only when both the magic and the version match. A blank file is initialized once, and only when the call allows creation. An older file with a different version is not treated as the current layout.
 
-| 内容 | 容量 |
+One shared region holds eight rings.
+
+| Contents | Capacity |
 | --- | ---: |
-| 委托 | 1024 |
-| 回报 | 1024 |
-| 行情 | 2048 |
-| 算法单 | 256 |
-| 控制 | 256 |
-| 信号 | 512 |
-| 逐笔 | 512 |
-| 查询 | 256 |
+| Orders | 1024 |
+| Reports | 1024 |
+| Quotes | 2048 |
+| Algo orders | 256 |
+| Control | 256 |
+| Signals | 512 |
+| Prints | 512 |
+| Queries | 256 |
 
-资金和持仓各有 256 行。
+Cash and positions each have 256 rows.
 
-每条环只有一个写入者。每个读者自己记住下一次要读的位置。发布时可以指定必须确认的读者。不指定时，第一个确认的读者取走这条消息。指定之后，这些读者都确认完，槽位才能再次使用。会话循环使用读者位 7。要让它看到的消息，发布时带上这一位，或者不指定读者。
+Each ring has one writer. Each reader remembers the next position it will read. A publish can name the readers that must acknowledge the message. With no readers named, the first reader to acknowledge takes the message. Once readers are named, the slot can be reused only after all of them have acknowledged it. The session loop uses reader bit 7. A message meant for that loop must set this bit, or it must name no reader.
 
-控制消息的种类为 1 时，会话循环停止。定时器的重复间隔为 0 时只触发一次。
+A control message of kind 1 stops the session loop. A timer with a repeat interval of 0 fires once.
 
-比这些槽位更大的数据包不放进共享区。调用方用自己的环发送，长度超出给定容量时发送失败。
+Packets larger than these slots stay out of the shared region. The caller sends them on its own ring. A send that exceeds the given capacity fails.
 
-## 委托、持仓和查询
+## Orders, positions, and queries
 
-订单号是一个 64 位整数，按位分成站点、种类、交易日个位、十秒时段和序号，不是把这几段数字直接拼在一起。种类由调用方定义。
+An order id is a 64-bit integer. The fields are site, kind, the last digit of the trading day, a ten-second slot, and a serial number. They are stored as bit fields, not concatenated as decimal text. The caller defines the kind.
 
-合约目录最多保存 256 个名字，编号从 1 开始。每个名字可以关联其他合约，也可以记下它的标的、衍生品和跟踪关系。夜盘允许开市时间晚于收市时间，表示这段时间跨过午夜。
+The instrument directory holds at most 256 names, numbered from 1. A name can point at related instruments, and it can record its underlying, its derivatives, and what it tracks. A night session may open later than it closes, which means the session crosses midnight.
 
-报单写入之前会整理开平和方向。股票、债券、基金、科创板、指数和回购都按开仓处理。上期所和能源中心把普通平仓改成平昨，其他期货交易所把平今和平昨收成普通平仓。买入、融资买入、买券还券和申购记为多头，卖出、融券卖出、卖券还款和赎回记为空头。限价单价格为 0 时拒绝。
+Before an order is stored, offset and direction are normalized. Stocks, bonds, funds, STAR Market names, indexes, and repos are treated as opens. On SHFE and INE, a plain close becomes a close of yesterday. On the other futures exchanges, close-today and close-yesterday become a plain close. Buy, margin buy, buy-to-cover, and creation are long. Sell, short sell, sell-to-repay, and redemption are short. A limit order with a price of 0 is rejected.
 
-期货的一笔手数可以拆成几张单，有三种方式：先平今，再平昨，剩下的开仓；只平仓，不开新仓；只平昨。其他方式返回失败。每一段不超过最大手数，小于最小手数的一段不发。
+One futures quantity can be split into several orders in three ways: close today, then close yesterday, then open the rest; close only; or close yesterday only. Any other way fails. Each slice stays within the maximum lot, and a slice smaller than the minimum lot is not sent.
 
-把持仓调向目标数量时，一次只给出一笔委托。今仓和昨仓分开记账时先平昨。商品期货还会检查这次开仓是否超过开仓上限。股指按净仓计算差额，并且只平昨仓。这里的昨仓等于持仓减去当日已经开出的数量。
+Moving a position toward a target sends one order at a time. Where today and yesterday are stored apart, yesterday is closed first. Commodity futures also check that the open does not pass the open limit. Equity-index futures use the net position, and they close yesterday only. Yesterday here is the position minus the quantity already opened today.
 
-平今、平昨和普通平仓冻结的是不同的持仓。股票卖出扣减可卖数量。成交回报再按当时的开平和方向，写回今仓、昨仓和总仓。
+Close-today, close-yesterday, and a plain close freeze different quantities. A stock sell reduces the quantity available to sell. A fill then writes today, yesterday, and the total back according to the offset and direction at the time of the order.
 
-报给柜台之前，可以限制单笔数量、名义金额和尚未结束的委托笔数。已经发出的委托按三条时限检查：长时间没有确认、存活时间已经到期、撤单请求等待过久。到期的委托从在途名单中去掉。
+Before an order goes to the counter, the library can limit the quantity, the notional, and the number of orders still working. Working orders are checked against three limits: no acknowledgement for too long, a lifetime that has expired, and a cancel that has waited too long. An expired order leaves the working list.
 
-持仓和资金查询按引擎分别排队，最多 4 个引擎、32 个账号。同一账号上的请求合成一次查询。队列满时，新的请求写入失败。下一页什么时候再查，由调用方决定。
+Position and cash queries are queued per engine, for at most 4 engines and 32 accounts. Requests for the same account become one query. A new request fails when the queue is full. The caller decides when to ask for the next page.
 
-## 行情和交易日
+## Market data and the trading day
 
-订阅默认接收全部合约，也可以改成只接收事先允许的合约。涨跌停缺少时，用调用方给出的备用价格补上。原始价格按给定的分母缩小。标记为 `S` 的记录表示会话切换，接收时丢掉。
+A subscription receives every instrument unless it is changed to receive only instruments allowed in advance. A missing limit-up or limit-down price is filled from the fallback price supplied by the caller. A raw price is divided by the given denominator. A record marked `S` is a session switch and is dropped.
 
-行情时间要归到它所属的交易日。8 点到 18 点不往前调。18 点之后，周一往前调 3 天，其余日子往前调 1 天。凌晨则周一往前调 2 天，其余日子往前调 1 天。调完以后再跳过周末和休市日。
+A market-data time is moved back onto the trading day it belongs to. From 08:00 through 18:00 it stays on the calendar day. After 18:00, Monday moves back 3 days and every other day moves back 1 day. In the early morning, Monday moves back 2 days and every other day moves back 1 day. Weekends and closed days are then skipped.
 
-模拟报单和撤单可以按一天里的时段使用不同时延。9 点 30 分之前时延为 0。之后以 10:00、10:30、11:00、11:30、13:30、14:00、14:30 和 15:00 为界，分成九段，15:00 以后使用最后一段。也可以改用一组采样点做插值。报单时延算出来是负数时，表示这张单没有进入盘口。
+Paper orders and cancels can use a different delay in each part of the day. Before 09:30 the delay is 0. After that, the day is split at 10:00, 10:30, 11:00, 11:30, 13:30, 14:00, 14:30, and 15:00, which makes nine bands. From 15:00 onward the last band is used. A set of samples can be used instead, and the delay is interpolated. A negative order delay means the order did not reach the book.
 
-## 纸面撮合
+## Paper matching
 
-纸面撮合同时处理 48 个合约，未完成委托最多 192 张。一张新单要等报单时延过去，才按当时的盘口决定成交、挂出或过期。撤单同样要等撤单时延过去。
+Paper matching handles 48 instruments at once, with at most 192 orders still working. A new order waits out its order delay, and only then does the book at that moment decide a fill, a rest, or an expiry. A cancel waits out its cancel delay in the same way.
 
-当日有效的单打到自己的限价时，剩余数量全部成交，可以多于该价格上看到的数量。只想被动排队的单，一旦会打到对手价就过期。要求立即成交的单只吃当时看得到的数量，剩余部分过期。要求一次全部成交的单，可见数量不够整张时整张过期。
+A day order that reaches its own limit fills the whole remainder, which may be larger than the quantity shown at that price. An order that only wants to rest expires as soon as it would trade through the opposite price. An immediate order takes only the quantity then visible, and the rest expires. An all-or-nothing order expires entirely when the visible quantity does not cover it.
 
-成交价用被动一方的价格。某个价格上的数量变成 0 时，这一档马上去掉。同一账户的买和卖互相打到时，这张单停止。集合竞价选择能够成交最多的价格。两个价格的成交量一样时，可以取较高的价格，也可以取更接近参考价的价格。
+The fill price is the passive price. A price level is removed as soon as its quantity reaches 0. If the buy and the sell belong to the same account and would trade with each other, the order stops. A call auction picks the price that matches the most quantity. When two prices match the same quantity, the higher price can be chosen, or the price closer to a reference.
 
-单子挂上以后，逐笔成交用来减少排在它前面的数量。主动方向和这张单相同的成交不拿来成交它。某个价格上的挂单量后来发生变化时，已经计入的成交不会再被减一次。
+After an order rests, prints reduce the quantity ahead of it. A print whose aggressive side is the same as the resting order does not fill it. When the displayed quantity at a price changes later, prints already counted are not subtracted again.
 
-## 构建和安装
+## Build and install
 
-需要 CMake 3.16 或更高版本，以及支持 C++17 的编译器。在仓库根目录执行：
+CMake 3.16 or newer is required, together with a C++17 compiler. From the repository root:
 
 ```bash
 cmake -S pitlane -B pitlane/build
@@ -83,7 +85,7 @@ cmake --build pitlane/build
 cd pitlane/build && ctest --output-on-failure
 ```
 
-测试要在构建目录里运行。打开地址错误和未定义行为检测时，另外构建一份：
+Run the tests from the build directory. To check for address errors and undefined behavior, build a second tree:
 
 ```bash
 cmake -S pitlane -B pitlane/build-san -DPITLANE_SANITIZE=ON
@@ -91,26 +93,26 @@ cmake --build pitlane/build-san
 cd pitlane/build-san && ctest --output-on-failure
 ```
 
-编译时打开常规警告，并把警告当作错误。安装到指定目录：
+The build enables the ordinary warnings and treats them as errors. Install into a chosen prefix:
 
 ```bash
 cmake --install pitlane/build --prefix /opt/pitlane
 ```
 
-同一次构建会得到静态库 `libpitlane.a` 和动态库 `libpitlane.so`。库内代码按位置无关的方式编译，因此静态库也可以再链接进别的动态库。只要静态库时，配置加上 `-DPITLANE_BUILD_SHARED=OFF`。
+One build produces the static library `libpitlane.a` and the shared library `libpitlane.so`. The code is built position-independent, so the static library can also be linked into another shared library. To build the static library only, configure with `-DPITLANE_BUILD_SHARED=OFF`.
 
-其他程序继续包含同一套头文件。链接动态库时使用 `-lpitlane`，运行时要能找到安装目录里的 `libpitlane.so`。安装结果还包括 `include/pitlane` 下的头文件。
+Other programs include the same headers. Link the shared library with `-lpitlane`, and make sure `libpitlane.so` can be found in the install directory at run time. The install also places the headers under `include/pitlane`.
 
-`examples/demo.cpp` 会建立一块临时映射，写入一张买单，并在纸面撮合里成交。构建完成后可以运行：
+`examples/demo.cpp` creates a temporary mapping, writes one buy order, and fills it in the paper matcher. After the build:
 
 ```bash
 ./pitlane/build/pitlane_demo
 ```
 
-## 使用时的限制
+## Limits
 
-每个环只能有一个写入进程。读者各自保存自己的读取位置。
+Each ring may have only one writing process. Each reader keeps its own read position.
 
-已经写好魔数的映射不要再次初始化。
+Do not initialize a mapping again after its magic has been written.
 
-纸面撮合使用的合约编号必须小于 48。信号最多 128 路订阅，队列最多 256 条，写满以后新的信号会被拒绝。
+Instrument numbers used by paper matching must be less than 48. Signals allow 128 subscriptions and a queue of 256. A new signal is rejected once that queue is full.
