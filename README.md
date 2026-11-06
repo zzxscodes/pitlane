@@ -113,6 +113,8 @@ cmake --build pitlane/build-san
 cd pitlane/build-san && ctest --output-on-failure
 ```
 
+`ctest` also runs `perf` and `perf_shared`. Each one drops a warmup, then records the minimum, the median, the 99th, and the 999th cycle count. A run passes when those ranks stay in order, a longer pause has a higher median, and that median stays under a wide ceiling. The test does not fail a machine for its absolute nanosecond number.
+
 The build enables the ordinary warnings and treats them as errors. Install into a chosen prefix:
 
 ```bash

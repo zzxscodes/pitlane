@@ -113,6 +113,8 @@ cmake --build pitlane/build-san
 cd pitlane/build-san && ctest --output-on-failure
 ```
 
+`ctest` 里还有 `perf` 和 `perf_shared`。它们先丢掉一段预热，再记下最小、中位数、99 分位和 999 分位的周期数。名次保持顺序、更长的空转有更高的中位数、并且中位数落在一条很宽的上限以内，这一次才算通过。测试不会因为某台机器的绝对纳秒数判失败。
+
 编译时打开常规警告，并把警告当作错误。安装到指定目录：
 
 ```bash

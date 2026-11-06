@@ -1,7 +1,6 @@
 #pragma once
 
 #include "pitlane/cycle.hpp"
-#include "pitlane/numeric.hpp"
 
 #include <atomic>
 #include <cstdint>
@@ -30,6 +29,7 @@ struct ClockView {
     uint64_t cached_stamp{0};
     int64_t cached_sec{0};
     int64_t cached_nsec{0};
+    CycleScale scale{};
     uint8_t has_cache{0};
 
     bool refresh(const ClockPage& page) noexcept {
@@ -44,18 +44,21 @@ struct ClockView {
                 continue;
             }
             const uint64_t ticks = page.sum_ticks;
-            const uint64_t ns = page.sum_ns;
+            const uint64_t ns = page.sum_ns == 0 ? 1 : page.sum_ns;
             const uint64_t base = page.base_tsc;
             const int64_t sec = page.base_sec;
             const int64_t nsec = page.base_nsec;
             std::atomic_thread_fence(std::memory_order_acquire);
             if (page.gen.load(std::memory_order_relaxed) != g) continue;
+            CycleScale next;
+            if (!scale_set(next, ticks, ns)) return false;
             gen = g;
             sum_ticks = ticks;
-            sum_ns = ns == 0 ? 1 : ns;
+            sum_ns = ns;
             base_tsc = base;
             base_sec = sec;
             base_nsec = nsec;
+            scale = next;
             has_cache = 0;
             return true;
         }
@@ -63,7 +66,7 @@ struct ClockView {
     }
 
     bool to_wall(uint64_t stamp, int64_t& sec, int64_t& nsec) noexcept {
-        if (sum_ticks == 0) return false;
+        if (!scale.on) return false;
         if (has_cache && cached_stamp == stamp) {
             sec = cached_sec;
             nsec = cached_nsec;
@@ -71,10 +74,8 @@ struct ClockView {
         }
         const bool back = stamp < base_tsc;
         const uint64_t delta = back ? base_tsc - stamp : stamp - base_tsc;
-        if (delta > static_cast<uint64_t>(INT64_MAX)) return false;
-        const Wide prod = mul_wide(delta, sum_ns);
         uint64_t quot = 0;
-        if (!div_wide(prod, sum_ticks, quot)) return false;
+        if (!scale_ns(scale, delta, quot)) return false;
         if (quot > static_cast<uint64_t>(INT64_MAX)) return false;
         const int64_t dns = back ? -static_cast<int64_t>(quot) : static_cast<int64_t>(quot);
         if ((dns > 0 && base_nsec > INT64_MAX - dns) || (dns < 0 && base_nsec < INT64_MIN - dns)) return false;
