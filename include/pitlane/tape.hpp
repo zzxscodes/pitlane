@@ -9,8 +9,9 @@ namespace pitlane {
 // A disabled gate does not write. A full high-rate tape overwrites the oldest record.
 // A spike that does not fit increments a drop count and does not block the caller.
 
-struct TraceGate {
+struct alignas(64) TraceGate {
     std::atomic<uint64_t> word{0};
+    unsigned char pad_[64 - sizeof(std::atomic<uint64_t>)]{};
 
     void arm(uint16_t event, bool on) noexcept {
         uint64_t w = on ? 1ull : 0ull;
@@ -24,6 +25,8 @@ struct TraceGate {
         return static_cast<uint16_t>(word.load(std::memory_order_acquire) >> 48);
     }
 };
+
+static_assert(sizeof(TraceGate) == 64, "trace gate occupies one line");
 
 template <uint32_t Cap>
 class CoreTape {
@@ -65,7 +68,7 @@ public:
 
 private:
     Rec rec_[Cap]{};
-    std::atomic<uint32_t> head_{0};
+    alignas(64) std::atomic<uint32_t> head_{0};
 };
 
 template <uint32_t Seg, uint32_t N>
@@ -161,8 +164,8 @@ public:
 private:
     Note slot_[Cap]{};
     std::atomic<uint32_t> w_{0};
-    alignas(64) std::atomic<uint32_t> r_{0};
     uint32_t dropped_{0};
+    alignas(64) std::atomic<uint32_t> r_{0};
 };
 
 }  // namespace pitlane

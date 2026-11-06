@@ -247,8 +247,8 @@ private:
     int32_t later_{-1};
     uint64_t busy_{0};
     uint32_t now_{0};
-    std::atomic<uint64_t> free_{0};
-    std::atomic<uint64_t> pending_{0};
+    alignas(64) std::atomic<uint64_t> free_{0};
+    alignas(64) std::atomic<uint64_t> pending_{0};
 };
 
 }  // namespace pitlane
