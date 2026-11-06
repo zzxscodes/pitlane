@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(pitlane VERSION 1.1.0 LANGUAGES CXX)
+project(pitlane VERSION 1.2.0 LANGUAGES CXX)
 
 set(PITLANE_SOURCES
     src/region.cpp
@@ -61,6 +61,10 @@ add_executable(pitlane_assist tests/assist.cpp)
 target_link_libraries(pitlane_assist PRIVATE pitlane)
 target_compile_options(pitlane_assist PRIVATE -Wall -Wextra -Wpedantic -Werror -O2)
 
+add_executable(pitlane_next tests/next.cpp)
+target_link_libraries(pitlane_next PRIVATE pitlane)
+target_compile_options(pitlane_next PRIVATE -Wall -Wextra -Wpedantic -Werror -O2)
+
 if(PITLANE_BUILD_SHARED)
     add_executable(pitlane_check_shared tests/check.cpp)
     target_link_libraries(pitlane_check_shared PRIVATE pitlane_shared)
@@ -69,13 +73,17 @@ if(PITLANE_BUILD_SHARED)
     add_executable(pitlane_assist_shared tests/assist.cpp)
     target_link_libraries(pitlane_assist_shared PRIVATE pitlane_shared)
     target_compile_options(pitlane_assist_shared PRIVATE -Wall -Wextra -Wpedantic -Werror -O2)
+
+    add_executable(pitlane_next_shared tests/next.cpp)
+    target_link_libraries(pitlane_next_shared PRIVATE pitlane_shared)
+    target_compile_options(pitlane_next_shared PRIVATE -Wall -Wextra -Wpedantic -Werror -O2)
 endif()
 
 option(PITLANE_SANITIZE "Build with address and undefined-behavior sanitizers" OFF)
 if(PITLANE_SANITIZE)
-    set(PITLANE_SAN_TARGETS pitlane pitlane_check pitlane_suite pitlane_demo pitlane_assist)
+    set(PITLANE_SAN_TARGETS pitlane pitlane_check pitlane_suite pitlane_demo pitlane_assist pitlane_next)
     if(PITLANE_BUILD_SHARED)
-        list(APPEND PITLANE_SAN_TARGETS pitlane_shared pitlane_check_shared pitlane_assist_shared)
+        list(APPEND PITLANE_SAN_TARGETS pitlane_shared pitlane_check_shared pitlane_assist_shared pitlane_next_shared)
     endif()
     foreach(tgt ${PITLANE_SAN_TARGETS})
         target_compile_options(${tgt} PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer -O1)
@@ -87,9 +95,11 @@ enable_testing()
 add_test(NAME check COMMAND pitlane_check)
 add_test(NAME suite COMMAND pitlane_suite)
 add_test(NAME assist COMMAND pitlane_assist)
+add_test(NAME next COMMAND pitlane_next)
 if(PITLANE_BUILD_SHARED)
     add_test(NAME check_shared COMMAND pitlane_check_shared)
     add_test(NAME assist_shared COMMAND pitlane_assist_shared)
+    add_test(NAME next_shared COMMAND pitlane_next_shared)
 endif()
 
 install(TARGETS ${PITLANE_INSTALL_TARGETS}
