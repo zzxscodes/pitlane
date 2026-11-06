@@ -35,4 +35,53 @@ inline int64_t step_ceil(const PxBand* bands, int n, int64_t px) noexcept {
     return down + b->step;
 }
 
+// Lookup that keeps a price sitting exactly on the next band's start in the lower band.
+inline int band_at_hold(const PxBand* bands, int n, int64_t px) noexcept {
+    if (!bands || n <= 0) return -1;
+    int i = 0;
+    while (i + 1 < n && px > bands[i + 1].lo) ++i;
+    return i;
+}
+
+// Clamp only when up is strictly above down. Otherwise the price is unchanged.
+inline int64_t clamp_px(int64_t px, int64_t down, int64_t up) noexcept {
+    if (up <= down) return px;
+    if (px < down) return down;
+    if (px > up) return up;
+    return px;
+}
+
+// Walk `steps` ticks. A price that lands on the next band's start uses the new step afterwards.
+// A downward walk that starts exactly on a band start takes the first tick from the lower band.
+inline int64_t walk_up(const PxBand* bands, int n, int64_t px, int steps, int64_t down, int64_t up) noexcept {
+    if (steps <= 0 || !bands || n <= 0) return clamp_px(px, down, up);
+    int i = band_at_hold(bands, n, px);
+    if (i < 0) return clamp_px(px, down, up);
+    for (int k = 0; k < steps; ++k) {
+        if (bands[i].step <= 0) break;
+        if (px > INT64_MAX - bands[i].step) {
+            px = INT64_MAX;
+            break;
+        }
+        px += bands[i].step;
+        if (i + 1 < n && px >= bands[i + 1].lo) ++i;
+    }
+    return clamp_px(px, down, up);
+}
+
+inline int64_t walk_down(const PxBand* bands, int n, int64_t px, int steps, int64_t down, int64_t up) noexcept {
+    if (steps <= 0 || !bands || n <= 0) return clamp_px(px, down, up);
+    int i = band_at_hold(bands, n, px);
+    if (i < 0) return clamp_px(px, down, up);
+    if (i > 0 && px == bands[i].lo) --i;
+    for (int k = 0; k < steps; ++k) {
+        if (bands[i].step <= 0) break;
+        if (px < bands[i].step) px = 0;
+        else px -= bands[i].step;
+        if (px < 0) px = 0;
+        if (i > 0 && px <= bands[i].lo) --i;
+    }
+    return clamp_px(px, down, up);
+}
+
 }  // namespace pitlane

@@ -144,6 +144,36 @@ Before 09:30 the delay tables are zero. After that, `session_band` splits the da
 
 `session_date` moves a clock reading onto its trading day. From 08:00 through 18:00 the shift is 0. After 18:00, Monday shifts back 3 days and other days shift back 1. In the early morning, Monday shifts back 2 days and other days shift back 1. Weekends and days in `ClosedDays` are then skipped.
 
+## Helpers
+
+`QuoteFold::apply` writes a batch of `Add`, `Set`, and `Del` edits. One invalid edit leaves the previous levels in place. `copy` returns the best price first. `PrintLog::push` stores a print and does not take a book. `DayRoll::on_msg` updates the current minute and returns false when the timestamp moves backward. Time is microseconds. A minute older than one day is dropped.
+
+```cpp
+pitlane::QuoteFold<8> book;
+const pitlane::FoldEdit edits[] = {{pitlane::FoldOp::Add, 1, 10, 4}};
+book.apply(edits, 1);
+```
+
+Side 1 is the bid and side 2 is the ask. `Add` fails when that price already exists. `Set` with quantity 0 removes a level. `Del` of a missing price succeeds.
+
+`band_at_hold` keeps a price that sits exactly on the next band's start in the lower band. `walk_up` and `walk_down` then take ticks from that band. After a step lands on the next start, later steps use the new band. `clamp_px` applies only when the upper limit is above the lower limit. `span_index` returns the span that contains a minute, or -1. An overnight span has an end at or before its begin. `session_part` returns open, lunch, or closed for a `SessionRow`.
+
+`life_next` returns the next `Phase`. `Phase::None` means the event is not allowed from that phase. A fill while a cancel is waiting stays in `PullWait`. `Resume` and `ResumePartial` move a rejected cancel back to working or partial.
+
+`margin_need` is multiplier times price times quantity times the margin numerator, divided by the margin denominator. `charge_class` uses the cash formula for stock, bond, fund, tech, index, and repo, and the rate formula for the other products. `scale_of` supplies the multiplier and the margin fraction.
+
+`rest_room` is the quantity still allowed to rest on one leg. When both legs are sent together the result is 0. `cut_hedge` reduces the other leg after one leg is cut. `slice_weight` rounds half up and returns false when the new slice is not positive. `align_leg` divides by the feed coefficient and rounds to the tick, half up. `pair_qty_ok` requires 180 on a 688 or 689 code and 80 on other Shanghai or Shenzhen codes. `chase_px` walks the price up for a buy and down for a sell.
+
+`IdBind::put` stores a pending link and fails when the table is full or the counter key already exists. `confirm` marks it linked. `erase` leaves a tomb so a later put can reuse the slot. A local id of 0 is rejected.
+
+`bind_fill` accumulates quantity and amount on the early fields while the order is still unset, sent, or acknowledged. `bind_status` copies those fields into the order and turns an acknowledgement with a fill into a partial. `bind_final` holds a filled or cancelled status while the local remainder is still above the counter remainder. `bind_catchup` applies that status once the remainder is 0. `quote_repost` is false while a cancel is out and the new price equals the fill price.
+
+`lane_accepts` reads a `LaneRule`. A pull needs `pull`. An enter needs the price type and the offset bit. `lane_can_amend` reads `amend`. `Cause` values from 10 are field checks, from 40 are cash and position, from 70 are risk, and from 100 are outside this process. `cause_band` returns that group. `cause_text` is a short fixed word.
+
+`list_cause` checks the open list or the close list. `FlowWindow::allow` counts the new event and allows it only while the count is still below `limit`. The span is in the same unit as the timestamps. `count_ratio_ok` passes when the sample is still below `min_n`, and a ratio equal to the cap also passes. `cash_ratio_ok` fails when the cash ratio is equal to the cap. `cancel_ok` and `reject_ok` fail on an equal ratio. `fill_ok` passes on an equal floor. `px_shift` is the signed distance from the last price, scaled by `den`. `deviation_cause` uses the absolute distance. `wash_hit` matches the same instrument and the opposite side when the account matches, or when the group is not 0 and matches. The prices must meet or cross.
+
+`ByteFrame::begin` reserves four bytes. `end` writes the payload length there and returns the total size, or -1. `frame_read` fails when the buffer is shorter than that length. `seq_feed` returns 0 for the next id, a positive gap when ids were skipped, and -1 for an old id. The first id starts the watch. `SeqHold::start` sets the next id that `take` will release. `offer` keeps an id only inside the next `Cap` ids. `SpanMark::mark` rejects a negative tick. `between` fails while either node is unset.
+
 ## Where the calls live
 
 | Header | What it covers |
@@ -156,8 +186,8 @@ Before 09:30 the delay tables are zero. After that, `session_band` splits the da
 | `ids.hpp` | `IdMint` |
 | `codec.hpp` | Symbol class, offset, and direction |
 | `lots.hpp` | Splitting one quantity into orders |
-| `plan.hpp` | The single next order toward a target |
-| `ledger.hpp` | Freezes, fills, login ids, and the working slot |
+| `plan.hpp` | The next order, resting room, slices, and chase prices |
+| `ledger.hpp` | Freezes, margin, fees, fills, login ids, and the working slot |
 | `venue.hpp` | `PaperVenue` |
 | `lags.hpp` | Session bands and sampled delay |
 | `simclock.hpp` | `SimClock` |
@@ -169,3 +199,12 @@ Before 09:30 the delay tables are zero. After that, `session_band` splits the da
 | `feed.hpp` | Subscription mask, price scale, and raw ticks |
 | `cash.hpp` | Cash and position rows |
 | `logline.hpp` | `Log` |
+| `quote.hpp` | Quote batches, the print log, and minute rolls |
+| `steps.hpp` | Tick bands and price walks |
+| `life.hpp` | Order transitions |
+| `bind.hpp` | Counter ids and out-of-order reports |
+| `lane.hpp` | Channel rules and `Cause` |
+| `judge.hpp` | List, flow, ratio, deviation, and self-trade checks |
+| `frame.hpp` | Frames, sequence gaps, and reordering |
+| `span.hpp` | Timestamps beside a message |
+| `numeric.hpp` | Wide products used by the checks |

@@ -75,6 +75,20 @@ The fill price is the passive price. A price level is removed as soon as its qua
 
 After an order rests, prints reduce the quantity ahead of it. A print whose aggressive side is the same as the resting order does not fill it. When the displayed quantity at a price changes later, prints already counted are not subtracted again.
 
+## Helpers for market data, orders, and counters
+
+These calls sit beside the shared desk. A market-data process, an order process, and a counter adapter can use them. The library still does not connect to an exchange.
+
+A quote book takes a batch of level changes and keeps the previous book when any edit in the batch is invalid. Prints are stored on their own log, so a print does not change quote levels. A minute roll keeps high, low, and volume, and it ignores a clock that moves backward.
+
+Price walks move an integer price across tick bands. Session calls say which span a minute belongs to, including a session that crosses midnight.
+
+An order moves only through the transitions the life table allows. Margin and fees follow the product class. Slice, hedge, board-lot, and chase calls prepare the next child order. The caller still decides whether to send it.
+
+A bind table maps a local id to a counter id and holds a fill that arrives before its status. A channel rule lists the price types and offsets that channel accepts. Reject codes for local checks and for the counter share one numbering.
+
+List, flow, ratio, price-distance, and self-trade checks only report a reason. Framing writes the length after the body is known. A sequence watch reports a gap, and a short hold releases messages in id order. A span mark stores timestamps beside a message.
+
 ## Build and install
 
 CMake 3.16 or newer is required, together with a C++17 compiler. From the repository root:

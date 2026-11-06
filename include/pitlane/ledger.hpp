@@ -1,6 +1,7 @@
 #pragma once
 
 #include "pitlane/codec.hpp"
+#include "pitlane/numeric.hpp"
 #include "pitlane/plan.hpp"
 
 #include <atomic>
@@ -165,6 +166,26 @@ inline bool fill_lock(int64_t& lock_px, int64_t& lock_qty, int64_t qty, int64_t 
     lock_px = px;
     std::atomic_thread_fence(std::memory_order_seq_cst);
     return true;
+}
+
+inline int64_t margin_need(const ClassScale& scale, int64_t px, int64_t qty) noexcept {
+    if (px <= 0 || qty <= 0 || scale.mult <= 0 || scale.margin_num < 0 || scale.margin_den <= 0) return 0;
+    if (cmp_prod(scale.mult, px, INT64_MAX, 1) > 0) return INT64_MAX;
+    const int64_t step = scale.mult * px;
+    if (cmp_prod(step, qty, INT64_MAX, 1) > 0) return INT64_MAX;
+    const int64_t notion = step * qty;
+    if (scale.margin_num == 0) return 0;
+    Wide w = mul_wide(static_cast<uint64_t>(notion), static_cast<uint64_t>(scale.margin_num));
+    uint64_t q = 0;
+    if (!div_wide(w, static_cast<uint64_t>(scale.margin_den), q)) return INT64_MAX;
+    if (q > static_cast<uint64_t>(INT64_MAX)) return INT64_MAX;
+    return static_cast<int64_t>(q);
+}
+
+inline int64_t charge_class(Product product, int64_t notional, int64_t commission, bool sell, int64_t stamp_num,
+                            int64_t xfer_num, int64_t rate_num, int64_t den) noexcept {
+    if (cash_product(product)) return cash_charge(notional, commission, sell, stamp_num, xfer_num, den);
+    return deriv_charge(notional, rate_num, den);
 }
 
 struct LegLots {
