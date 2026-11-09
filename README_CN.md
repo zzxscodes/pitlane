@@ -14,13 +14,13 @@ pitlane 是一个 C++17 静态库。它给同一台机器上的交易进程准�
 
 使用时包含 `include/pitlane/pitlane.hpp`，链接 `libpitlane.a`。类型和函数都在命名空间 `pitlane` 中。这套接口是单独设计的，不能用来替换已经在运行的其他交易库。
 
-库的发行版本是 2.2.2。`version.hpp` 里的 `pitlane::kVersion` 是同一串文字。动态库文件名带这个版本，soname 保持 `libpitlane.so.1`。工作区布局版本是 `kDeskVersion`，当前是 2。
+库的发行版本是 2.3.0。`version.hpp` 里的 `pitlane::kVersion` 是同一串文字。动态库文件名带这个版本，soname 保持 `libpitlane.so.1`。工作区布局版本是 `kDeskVersion`，当前是 2。
 
 头文件和源文件按区域再分一层目录。`desk` 放共享区和上面的记录。`book` 放行情、交易日和纸面撮合。`order` 放委托生命周期、检查和持仓。`time` 放时钟和延迟记录。`study` 放特征、事后偏移和调用方的决定。`util` 放数值、文本、组帧和定长缓冲。某个区域的源文件在 `src` 下的同名目录里。某个区域的测试在 `tests` 下的同名目录里。延迟程序是 `tests/time/perf.cpp`。单独包含某个头文件时写上区域，例如 `pitlane/order/sheet.hpp`。`version.hpp` 和 `pitlane.hpp` 放在同一层。
 
 `PriceWindow` 在固定的价格步长上存放数量。最优价沿着占用位往前找，空档按字跳过。`publish_batch` 一次写入多条环槽，尾指针只推进一次。其中一条还忙着，整批都不写入。`SlotPool` 用固定槽保存调用方的记录，并按编号查找。`margin_both` 取按金额和按手数两笔保证金里较大的一笔。`right_value` 给出认购或认沽处于实值的幅度。这些调用都不发单。
 
-`FillRing` 在本端留着对方序号的副本，只有这份副本显示环已满或已空时，才去读共享序号。`TimeLine` 按到达顺序保存同一个价格上的编号。`cover_qty` 把满足限价的可见数量加起来，加到所要的数量就停。`touch_lines` 读调用方已经拿着的缓冲区里的每一条缓存行。这些调用都不撮合成交。
+`FillRing` 在本端留着对方序号的副本，只有这份副本显示环已满或已空时，才去读共享序号。每个槽独占一条缓存行。`take_span` 一次抄出多条已发布的槽，读取序号只存一次。`ack_span` 连续确认一段环位置，遇到这个读者确认不了的位置就停。`shown_before` 把价格窗里严格优于某个价格的数量加起来。`ExtremeWindow` 保留调用方最近推入的若干价格里的最高价和最低价。`TimeLine` 按到达顺序保存同一个价格上的编号。`cover_qty` 把满足限价的可见数量加起来，加到所要的数量就停。`touch_lines` 读调用方已经拿着的缓冲区里的每一条缓存行。这些调用都不撮合成交。
 
 ## 共享区
 

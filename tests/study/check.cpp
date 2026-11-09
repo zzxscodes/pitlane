@@ -123,6 +123,21 @@ static void check_corp() {
     expect(pitlane::act_mul(income, step) && step.num == 10 && step.den == 9, "income dividend");
 }
 
+static void check_extreme() {
+    pitlane::ExtremeWindow<4> trail;
+    int64_t hi = 0;
+    int64_t lo = 0;
+    expect(!trail.high(hi) && !trail.low(lo), "empty trail");
+    expect(trail.push(10) && trail.push(1) && trail.push(2) && trail.push(3), "fill trail");
+    expect(trail.high(hi) && hi == 10 && trail.low(lo) && lo == 1 && trail.size() == 4, "first window");
+    expect(!trail.push(0) && trail.high(hi) && hi == 10, "non-positive stays out");
+    expect(trail.push(4) && trail.high(hi) && hi == 4 && trail.low(lo) && lo == 1, "oldest high leaves");
+    expect(trail.push(9) && trail.high(hi) && hi == 9 && trail.low(lo) && lo == 2, "oldest low leaves");
+    expect(trail.push(5) && trail.push(5) && trail.high(hi) && hi == 9 && trail.low(lo) && lo == 4, "equal prices");
+    trail.clear();
+    expect(trail.size() == 0 && !trail.high(hi), "cleared");
+}
+
 static void check_right() {
     expect(pitlane::right_value(1, 110, 100) == 10 && pitlane::right_value(2, 110, 100) == 0, "call");
     expect(pitlane::right_value(2, 90, 100) == 10 && pitlane::right_value(3, 90, 100) == -1, "put");
@@ -133,6 +148,7 @@ int main() {
     check_tables();
     check_step();
     check_corp();
+    check_extreme();
     check_right();
     if (g_fails) {
         std::fprintf(stderr, "%d study check(s) failed\n", g_fails);

@@ -402,6 +402,21 @@ static void check_touch() {
     expect(ring.publish() && ring.claim() == nullptr, "full");
     int got = 0;
     expect(ring.take(got) && got == 7 && ring.take(got) && got == 8 && !ring.take(got), "order");
+
+    pitlane::FillRing<int, 4> span;
+    int* a = span.claim();
+    *a = 1;
+    expect(span.publish(), "span one");
+    int* b = span.claim();
+    *b = 2;
+    expect(span.publish(), "span two");
+    int* c = span.claim();
+    *c = 3;
+    expect(span.publish(), "span three");
+    int out[4]{};
+    expect(span.take_span(out, 1) == 1 && out[0] == 1, "one of the span");
+    expect(span.take_span(out, 4) == 2 && out[0] == 2 && out[1] == 3, "rest of the span");
+    expect(span.take_span(out, 4) == 0 && span.take_span(nullptr, 1) == 0, "span empty");
 }
 
 static void check_chunk() {

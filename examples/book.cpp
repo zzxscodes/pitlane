@@ -26,6 +26,9 @@ int main() {
     int64_t px = 0;
     int64_t qty = 0;
     if (!window.best(1, px, qty) || px != 100 || !window.best(2, px, qty) || px != 101) return fail("best");
+    if (!window.set(1, 102, 6)) return fail("higher");
+    int64_t before = 0;
+    if (!window.shown_before(1, 100, before) || before != 6) return fail("before");
 
     const int64_t prices[] = {100, 101};
     const int64_t sizes[] = {4, 3};

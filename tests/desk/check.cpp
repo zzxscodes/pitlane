@@ -55,6 +55,15 @@ void check_batch() {
     expect(ring.at(0, 0, out, &fresh) && out.tag == 1 && ring.at(2, 0, out, &fresh) && out.tag == 3, "read batch");
     expect(ring.publish_batch(items, 2, 0x1) == 0 && ring.tail() == 3, "blocked batch");
     expect(ring.ack(0, 0) && ring.ack(1, 0) && ring.publish_batch(items, 2, 0x1) == 2, "after ack");
+
+    pitlane::FanRing<pitlane::Intent, 4> span;
+    expect(span.ack_span(0, 0, 0) == 0, "empty span");
+    expect(span.publish(items[0], 0x1) && span.publish(items[1], 0x1) && span.publish(items[2], 0x1), "three");
+    expect(span.ack_span(0, 3, 0) == 3, "ack span");
+    expect(span.publish_batch(items, 3, 0x1) == 3, "after the span");
+    pitlane::FanRing<pitlane::Intent, 4> once;
+    expect(once.publish(items[0], 0) && once.ack_span(0, 1, 2) == 1, "first claim span");
+    expect(once.ack_span(0, 1, 3) == 0, "second claim span");
 }
 
 static void check_ids() {
@@ -358,8 +367,8 @@ static void check_session() {
 }
 
 int main() {
-    expect(pitlane::kVersionMajor == 2 && pitlane::kVersionMinor == 2 && pitlane::kVersionPatch == 2, "release");
-    expect(std::strcmp(pitlane::kVersion, "2.2.2") == 0, "release text");
+    expect(pitlane::kVersionMajor == 2 && pitlane::kVersionMinor == 3 && pitlane::kVersionPatch == 0, "release");
+    expect(std::strcmp(pitlane::kVersion, "2.3.0") == 0, "release text");
     check_ring();
     check_batch();
     check_ids();
