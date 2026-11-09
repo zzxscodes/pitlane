@@ -1,4 +1,5 @@
 #include "pitlane/pitlane.hpp"
+#include "t2t_plan.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -11,9 +12,11 @@
 
 // Latency samples after a discarded warmup. The pass checks are the rank order,
 // a longer pause having a higher median, and the median staying under a wide ceiling.
-// Tick to trade. One process publishes a quote on the shared desk.
-// The other reads it, checks it, stages a sheet, and publishes the order.
-// The sample is the cycle gap from the quote stamp to the stamp taken just after that publish.
+// Tick to trade across three processes on one shared desk.
+// The market-data process publishes a quote. The engine updates the book, a feature,
+// and the test strategy, then the risk check and the order sheet, and publishes the order.
+// The gateway stamps the cycle counter as soon as that order is visible.
+// The sample is the gap between those two stamps. The report that carries the second stamp is not part of it.
 // An ordinary build keeps the 99th and the 999th at or under 2 microseconds.
 // A sample several times above the body of the distribution is counted separately.
 
@@ -75,9 +78,10 @@ int read_cpu_file(const char* pattern, int cpu) noexcept {
     return value;
 }
 
-void pick_pair(int& left, int& right) noexcept {
-    left = 0;
-    right = 2;
+void pick_cores(int& first, int& second, int& third) noexcept {
+    first = 0;
+    second = 2;
+    third = 4;
     int cpus[64];
     int cores[64];
     int n = 0;
@@ -94,9 +98,10 @@ void pick_pair(int& left, int& right) noexcept {
         cores[n] = core;
         ++n;
     }
-    if (n >= 2) {
-        left = cpus[0];
-        right = cpus[1];
+    if (n >= 3) {
+        first = cpus[0];
+        second = cpus[1];
+        third = cpus[2];
     }
 }
 
@@ -132,7 +137,7 @@ bool prepare_gate(pitlane::NameList& names, pitlane::WashRow* wash, pitlane::Gat
     return true;
 }
 
-int serve(const char* path, int cpu) noexcept {
+int engine(const char* path, int cpu) noexcept {
     if (!pin_cpu(cpu)) return 7;
     pitlane::MapInfo map{};
     if (pitlane::map_attach(path, pitlane::desk_bytes(), &map) != 0) return 2;
@@ -151,6 +156,12 @@ int serve(const char* path, int cpu) noexcept {
         return 4;
     }
     ask.lane = &rule;
+    pitlane::QuoteFold<8> book;
+    T2TPlan plan;
+    plan.buy_px = 101;
+    plan.qty = 1;
+    plan.pos_limit = 1000000;
+    plan.max_spread = 1;
     pitlane::Pulse ready{};
     ready.name = 1;
     ready.value = 1;
@@ -167,17 +178,31 @@ int serve(const char* path, int cpu) noexcept {
             continue;
         }
         if (tick.name == 0) {
+            pitlane::Intent stop{};
+            desk->intents.publish(stop, 0);
             desk->quotes.ack(pos, 0);
             pitlane::map_release(&map);
             return 0;
         }
+        T2TFeature feature;
+        if (!t2t_feature(tick.bid_px, tick.ask_px, tick.bid_qty, tick.ask_qty, feature)) return 5;
+        const pitlane::FoldEdit edits[2] = {
+            {pitlane::FoldOp::Set, 1, tick.bid_px, tick.bid_qty},
+            {pitlane::FoldOp::Set, 2, tick.ask_px, tick.ask_qty},
+        };
+        if (!book.apply(edits, 2)) return 5;
+        pitlane::FoldLevel bid{};
+        pitlane::FoldLevel offer{};
+        if (book.copy(1, &bid, 1) != 1 || book.copy(2, &offer, 1) != 1) return 5;
+        T2TOrder order;
+        if (!t2t_plan_on_book(plan, feature, bid.px, offer.px, order)) return 5;
         ask.now = tick.name;
-        ask.px = tick.bid_px;
-        ask.qty = tick.bid_qty;
-        ask.side = 1;
+        ask.px = order.px;
+        ask.qty = order.qty;
+        ask.side = order.side;
         if (pitlane::gate_ask(ask) != pitlane::Cause::Ok) return 5;
         pitlane::Sheet sheet;
-        if (!pitlane::sheet_open(sheet, tick.name, 1, tick.bid_px, tick.bid_qty)) return 5;
+        if (!pitlane::sheet_open(sheet, tick.name, order.side, order.px, order.qty)) return 5;
         if (!pitlane::sheet_apply(sheet, pitlane::SheetOp::Stage, 0, tick.exch_us, pitlane::Cause::Ok)) return 5;
         pitlane::Intent wire{};
         wire.tag = sheet.local;
@@ -190,32 +215,73 @@ int serve(const char* path, int cpu) noexcept {
         wire.act = 1;
         wire.style = 1;
         wire.lot = 1;
-        if (!desk->intents.publish(wire, 0)) return 6;
+        if (!desk->intents.publish(wire, 0) || !desk->quotes.ack(pos, 0)) return 6;
+        ++pos;
+    }
+}
+
+int gateway(const char* path, int cpu) noexcept {
+    if (!pin_cpu(cpu)) return 7;
+    pitlane::MapInfo map{};
+    if (pitlane::map_attach(path, pitlane::desk_bytes(), &map) != 0) return 2;
+    pitlane::Desk* desk = pitlane::desk_view(&map, 0);
+    if (!desk) {
+        pitlane::map_release(&map);
+        return 3;
+    }
+    pitlane::Pulse ready{};
+    ready.name = 2;
+    ready.value = 2;
+    if (!desk->pulses.publish(ready, 0)) {
+        pitlane::map_release(&map);
+        return 4;
+    }
+    uint64_t pos = 0;
+    for (;;) {
+        pitlane::Intent wire{};
+        bool fresh = false;
+        if (!desk->intents.at(pos, 2, wire, &fresh)) {
+            pitlane::cpu_relax();
+            continue;
+        }
+        if (wire.tag == 0) {
+            desk->intents.ack(pos, 2);
+            pitlane::map_release(&map);
+            return 0;
+        }
         uint64_t t1 = 0;
         if (!pitlane::cycles_ordered(t1)) return 6;
         pitlane::Report rep{};
-        rep.tag = sheet.local;
-        rep.contra = sheet.local;
-        rep.px = sheet.px;
-        rep.qty = sheet.qty;
-        rep.left = sheet.left;
+        rep.tag = wire.tag;
+        rep.contra = wire.tag;
+        rep.px = wire.px;
+        rep.qty = wire.qty;
+        rep.left = wire.qty;
         rep.stamp_us = static_cast<int64_t>(t1);
-        rep.phase = static_cast<uint8_t>(sheet.phase);
-        rep.side = sheet.side;
-        rep.name = 9;
-        if (!desk->reports.publish(rep, 0) || !desk->quotes.ack(pos, 0)) return 6;
+        rep.phase = static_cast<uint8_t>(pitlane::Phase::Staged);
+        rep.side = wire.side;
+        rep.name = wire.name;
+        if (!desk->reports.publish(rep, 0) || !desk->intents.ack(pos, 2)) return 6;
         ++pos;
     }
 }
 
 bool wait_ready(pitlane::Desk* desk) noexcept {
-    for (int i = 0; i < 100000000; ++i) {
+    bool engine_up = false;
+    bool gateway_up = false;
+    uint64_t pos = 0;
+    for (int i = 0; i < 100000000 && !(engine_up && gateway_up); ++i) {
         pitlane::Pulse pulse{};
         bool fresh = false;
-        if (desk->pulses.at(0, 1, pulse, &fresh) && pulse.value == 1) return true;
-        pitlane::cpu_relax();
+        if (!desk->pulses.at(pos, 1, pulse, &fresh)) {
+            pitlane::cpu_relax();
+            continue;
+        }
+        if (pulse.value == 1) engine_up = true;
+        if (pulse.value == 2) gateway_up = true;
+        ++pos;
     }
-    return false;
+    return engine_up && gateway_up;
 }
 
 bool tick_to_trade(pitlane::Desk* desk, uint64_t seq, uint64_t report_pos, uint64_t& cycles) noexcept {
@@ -296,8 +362,8 @@ struct PassReport {
     int stalls{0};
 };
 
-bool pass_once(pitlane::Desk* desk, uint64_t& seq, uint64_t& report_pos, uint64_t& intent_pos, const pitlane::CycleScale& scale,
-               int warmup, int keep, PassReport& out) noexcept {
+bool pass_once(pitlane::Desk* desk, uint64_t& seq, uint64_t& report_pos, const pitlane::CycleScale& scale, int warmup,
+               int keep, PassReport& out) noexcept {
     constexpr int kKeep = 2000;
     if (!desk || keep != kKeep) return false;
     uint64_t ns_samples[kKeep];
@@ -307,9 +373,8 @@ bool pass_once(pitlane::Desk* desk, uint64_t& seq, uint64_t& report_pos, uint64_
     while (kept < keep && seen < limit) {
         uint64_t cycles = 0;
         if (!tick_to_trade(desk, seq, report_pos, cycles)) return false;
-        if (!desk->reports.ack(report_pos, 1) || !desk->intents.ack(intent_pos, 1)) return false;
+        if (!desk->reports.ack(report_pos, 1)) return false;
         ++report_pos;
-        ++intent_pos;
         ++seq;
         ++seen;
         if (seen <= warmup) continue;
@@ -490,9 +555,10 @@ int main() {
     }
     expect(dropped == 4, "warmup dropped");
 
-    int cpu_a = 0;
-    int cpu_b = 2;
-    pick_pair(cpu_a, cpu_b);
+    int cpu_md = 0;
+    int cpu_engine = 2;
+    int cpu_gateway = 4;
+    pick_cores(cpu_md, cpu_engine, cpu_gateway);
     char path[64];
     std::snprintf(path, sizeof(path), "/tmp/pitlane-e2e-%d.bin", static_cast<int>(::getpid()));
     ::unlink(path);
@@ -500,27 +566,31 @@ int main() {
     expect(pitlane::map_create(path, pitlane::desk_bytes(), &map) == 0, "map");
     pitlane::Desk* desk = pitlane::desk_view(&map, 1);
     expect(desk != nullptr, "desk");
-    const pid_t child = desk ? ::fork() : -1;
-    if (child == 0) {
-        const int code = serve(path, cpu_b);
+    const pid_t engine_pid = desk ? ::fork() : -1;
+    if (engine_pid == 0) {
+        const int code = engine(path, cpu_engine);
         _exit(code);
     }
-    expect(child > 0, "fork");
+    const pid_t gateway_pid = engine_pid > 0 ? ::fork() : -1;
+    if (gateway_pid == 0) {
+        const int code = gateway(path, cpu_gateway);
+        _exit(code);
+    }
+    expect(engine_pid > 0 && gateway_pid > 0, "fork");
     uint64_t p99s[5] = {};
     uint64_t p999s[5] = {};
     bool measured = false;
-    if (child > 0) {
-        const bool ready = pin_cpu(cpu_a) && wait_ready(desk);
+    if (engine_pid > 0 && gateway_pid > 0) {
+        const bool ready = pin_cpu(cpu_md) && wait_ready(desk);
         expect(ready, "ready");
         if (ready) {
             pitlane::CycleScale wall;
             expect(calibrate(wall), "calibrate");
             uint64_t seq = 1;
             uint64_t report_pos = 0;
-            uint64_t intent_pos = 0;
             for (int i = 0; i < 5; ++i) {
                 PassReport pass;
-                const bool ok = pass_once(desk, seq, report_pos, intent_pos, wall, i == 0 ? 1024 : 64, 2000, pass);
+                const bool ok = pass_once(desk, seq, report_pos, wall, i == 0 ? 1024 : 64, 2000, pass);
                 expect(ok, "pass path");
                 std::printf("t2t_ns run=%d p50=%llu p99=%llu p999=%llu raw_p999=%llu max=%llu stalls=%d\n", i,
                             static_cast<unsigned long long>(pass.p50), static_cast<unsigned long long>(pass.p99),
@@ -533,17 +603,26 @@ int main() {
             }
         }
         pitlane::Quote stop{};
-        if (!desk->quotes.publish(stop, 0)) ::kill(child, SIGKILL);
-        int status = 0;
-        ::waitpid(child, &status, 0);
-        expect(WIFEXITED(status) && WEXITSTATUS(status) == 0, "child exit");
+        if (!desk->quotes.publish(stop, 0)) {
+            ::kill(engine_pid, SIGKILL);
+            ::kill(gateway_pid, SIGKILL);
+        }
+        int engine_status = 0;
+        int gateway_status = 0;
+        ::waitpid(engine_pid, &engine_status, 0);
+        ::waitpid(gateway_pid, &gateway_status, 0);
+        expect(WIFEXITED(engine_status) && WEXITSTATUS(engine_status) == 0, "engine exit");
+        expect(WIFEXITED(gateway_status) && WEXITSTATUS(gateway_status) == 0, "gateway exit");
+    } else if (engine_pid > 0) {
+        ::kill(engine_pid, SIGKILL);
+        ::waitpid(engine_pid, nullptr, 0);
     }
     pitlane::map_release(&map);
     ::unlink(path);
     if (measured) {
         const uint64_t p99_med = median_of(p99s, 5);
         const uint64_t p999_med = median_of(p999s, 5);
-        std::printf("t2t_cpus %d %d\n", cpu_a, cpu_b);
+        std::printf("t2t_cpus %d %d %d\n", cpu_md, cpu_engine, cpu_gateway);
         std::printf("t2t_ns median p99=%llu p999=%llu\n", static_cast<unsigned long long>(p99_med),
                     static_cast<unsigned long long>(p999_med));
 #if defined(PITLANE_RELAX_LATENCY)

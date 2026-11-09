@@ -117,25 +117,25 @@ cd pitlane/build-san && ctest --output-on-failure
 
 `ctest` also runs `perf` and `perf_shared`. Each one drops a warmup, then records the minimum, the median, the 99th, and the 999th cycle count. A run passes when those ranks stay in order, a longer pause has a higher median, and that median stays under a wide ceiling.
 
-The same run measures tick to trade on one shared desk. One process publishes a quote. The other reads that quote from the mapping, applies the list, the channel rule, the price distance, the self-trade rows, the flow window, and the order sheet, then publishes the order. The sample starts at the cycle stamp taken as the quote is published and stops at the stamp taken just after the order is published. A later report carries that second stamp back and is not part of the sample. Cycles are converted with a scale taken outside the measured section. In an ordinary optimized build, the median of repeated runs keeps the 99th and the 999th at or under 2 microseconds. A sample several times above the body of the distribution is counted separately, and only a small number of those samples is allowed. The sanitizer build checks the same path with a wide ceiling.
+The same run measures tick to trade across three processes on one shared desk. The market-data process publishes a quote. The engine reads it, writes the bid and ask into a book, computes the spread, and asks the test strategy whether to buy. On a yes, the risk check and the order sheet run, and the order is published for the gateway. The gateway takes a cycle stamp as soon as that order is visible. The sample is the gap between the quote stamp and that gateway stamp. The report that carries the gateway stamp back is not part of the sample. Cycles are converted with a scale taken outside the measured section. In an ordinary optimized build, the median of repeated runs keeps the 99th and the 999th at or under 2 microseconds. A sample several times above the body of the distribution is counted separately, and only a small number of those samples is allowed. The sanitizer build checks the same path with a wide ceiling.
 
-On an Intel Xeon E5-2667 v2 at 3.30 GHz, with the two processes pinned to cores 0 and 2 of the same socket, one optimized run looked like this. Each batch keeps 2000 samples. The 99th and the 999th below are the path after the few samples that sat several times above the body were set aside. The raw 999th still shows those samples. The pass line uses the median of the five batches, and that median stays under 2 microseconds.
+On an Intel Xeon E5-2667 v2 at 3.30 GHz, with the three processes pinned to cores 0, 2, and 4 of the same socket, one optimized run looked like this. Each batch keeps 2000 samples. The 99th and the 999th below are the path after the few samples that sat several times above the body were set aside. The raw 999th still shows those samples. The pass line uses the median of the five batches, and that median stays under 2 microseconds.
 
 | Batch | p50 ns | p99 ns | p999 ns | raw p999 ns | Samples set aside |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| 1 | 405 | 1164 | 1342 | 13248 | 11 |
-| 2 | 397 | 533 | 702 | 12955 | 7 |
-| 3 | 399 | 508 | 635 | 12788 | 4 |
-| 4 | 410 | 545 | 649 | 12314 | 6 |
-| 5 | 399 | 553 | 667 | 12793 | 5 |
-| Median | 399 | 545 | 667 | 12793 |  |
+| 1 | 578 | 1168 | 1287 | 12514 | 6 |
+| 2 | 589 | 814 | 936 | 12654 | 6 |
+| 3 | 577 | 708 | 896 | 13341 | 7 |
+| 4 | 591 | 677 | 865 | 13164 | 5 |
+| 5 | 585 | 741 | 921 | 13285 | 5 |
+| Median | 585 | 741 | 921 | 13164 |  |
 
 ```mermaid
 xychart-beta
     title "Tick to trade, nanoseconds"
     x-axis [p50, p99, p999]
     y-axis "nanoseconds" 0 --> 2000
-    bar [399, 545, 667]
+    bar [585, 741, 921]
     line [2000, 2000, 2000]
 ```
 
