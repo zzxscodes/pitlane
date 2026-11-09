@@ -10,7 +10,7 @@
 
 所有名字都在命名空间 `pitlane` 里。链接 `libpitlane.a`，或者用 `-lpitlane` 链接动态库。动态库的 soname 是 `libpitlane.so.1`。两种链接方式使用同一套头文件。
 
-发行版本是 `kVersion`，当前是 2.0.0，并拆成 `kVersionMajor`、`kVersionMinor` 和 `kVersionPatch`。`kDeskVersion` 是映射文件的布局版本，当前是 2。库的一次新发行可以保持布局版本不动。
+发行版本是 `kVersion`，当前是 2.1.0，并拆成 `kVersionMajor`、`kVersionMinor` 和 `kVersionPatch`。`kDeskVersion` 是映射文件的布局版本，当前是 2。库的一次新发行可以保持布局版本不动。
 
 头文件分在 `pitlane/desk/`、`pitlane/book/`、`pitlane/order/`、`pitlane/time/`、`pitlane/study/` 和 `pitlane/util/` 下面。`version.hpp` 与 `pitlane.hpp` 同一层。下面的表在路径里写了区域。
 
@@ -284,6 +284,16 @@ book.apply(edits, 1);
 
 `study_step` 先应用一批行情，再按新的盘口顶部填写特征。盘口先更新，然后才判断特征。选择函数是空，或者选择函数返回假，委托单保持原样。选择函数返回一笔委托时，如果给了检查就先走 `gate_ask`，如果给了委托单再把它记成已暂存。被拒绝的委托不改委托单。给了委托单而本地编号是 0 时拒绝。这次调用不发单。调用方传入的函数，就是写策略的地方。库不决定方向，也不决定价格。
 
+## 价格窗口、槽池和两笔费用
+
+`PriceWindow<Cap>` 从下限价格起覆盖 `Cap` 个跳。`Cap` 是 64 到 4096 之间、64 的倍数。`reset` 写下限和步长，并清空窗口。`set` 写一侧的数量。数量 0 清掉这一跳。价格不落在步长上，或者落在窗口外，就拒绝，原有数量留下。`best` 给出最高的有量买价和最低的有量卖价。空档按一个机器字跳过。
+
+`publish_batch` 写入 1 到 `Cap` 条共用同一个读者掩码的槽，然后只存一次尾指针。有一条槽还忙着，调用返回 0。环里已经有的槽保持原样。
+
+`SlotPool<T, Cap>` 保存可平凡复制的记录。`Cap` 是 2 到 1024 之间的 2 的幂。`take` 拒绝编号 0、重复编号和已满的池。`drop` 把槽还给空闲栈。`find` 返回池内的指针。这个指针在该编号被丢掉之前有效。
+
+`margin_both` 返回 `价格 * 数量 * 乘数 * 金额分子 / 金额分母` 和 `每手 * 数量` 里较大的一笔。参数不合法时返回 0。溢出时返回有符号最大值。`right_value` 里方向 1 是认购，2 是认沽。方向不认识，或者价格为负，返回 -1。
+
 ## 调用所在的头文件
 
 | 头文件 | 内容 |
@@ -293,6 +303,7 @@ book.apply(edits, 1);
 | `book/calendar.hpp` | 交易日和交易时段 |
 | `book/cross.hpp` | 限价簿和集合竞价 |
 | `book/lags.hpp` | 时段时延和采样时延 |
+| `book/ladder.hpp` | 固定价格窗口和有量的最优价 |
 | `book/quote.hpp` | 行情批次、逐笔记录和分钟滚动 |
 | `book/steps.hpp` | 价位档和价格移动 |
 | `book/venue.hpp` | `PaperVenue` |
@@ -319,6 +330,7 @@ book.apply(edits, 1);
 | `order/lots.hpp` | 把一笔数量拆成多张单 |
 | `order/parent.hpp` | 母单时间切片和篮子头 |
 | `order/plan.hpp` | 下一张单、可挂数量、切片和追价 |
+| `order/pool.hpp` | 按编号查找的固定槽 |
 | `order/recon.hpp` | 本地成交和柜台成交对齐 |
 | `order/shed.hpp` | 按停留时长丢弃 |
 | `order/sheet.hpp` | 一张委托单，以及一次把检查跑完 |
