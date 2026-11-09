@@ -27,6 +27,14 @@ struct Feat {
     int64_t imbalance{0};
 };
 
+// right 1 is a call, right 2 is a put. The result is the amount the price is in the money.
+// A negative price or an unknown right returns -1.
+inline int64_t right_value(uint8_t right, int64_t spot, int64_t strike) noexcept {
+    if ((right != 1 && right != 2) || spot < 0 || strike < 0) return -1;
+    if (right == 1) return spot > strike ? spot - strike : 0;
+    return strike > spot ? strike - spot : 0;
+}
+
 inline bool feat_of(const BookTop& top, Feat& out) noexcept {
     if (top.bid_px <= 0 || top.ask_px < top.bid_px || top.bid_qty < 0 || top.ask_qty < 0) return false;
     out.spread = top.ask_px - top.bid_px;

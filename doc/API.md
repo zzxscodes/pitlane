@@ -10,7 +10,7 @@ Include one header:
 
 Everything is in the namespace `pitlane`. Link `libpitlane.a`, or link the shared library with `-lpitlane`. The shared library's soname is `libpitlane.so.1`. The headers are the same for both.
 
-The release is `kVersion`, currently 2.0.0, also split into `kVersionMajor`, `kVersionMinor`, and `kVersionPatch`. `kDeskVersion` is the mapping-file layout and is currently 2. A new library release can leave the layout number where it is.
+The release is `kVersion`, currently 2.1.0, also split into `kVersionMajor`, `kVersionMinor`, and `kVersionPatch`. `kDeskVersion` is the mapping-file layout and is currently 2. A new library release can leave the layout number where it is.
 
 Headers live under `pitlane/desk/`, `pitlane/book/`, `pitlane/order/`, `pitlane/time/`, `pitlane/study/`, and `pitlane/util/`. `version.hpp` stays beside `pitlane.hpp`. The table below names the area in the path.
 
@@ -284,6 +284,16 @@ These calls do not open a socket, do not send an order, and do not start a threa
 
 `study_step` applies one quote batch, then fills the feature from the new top. The book is updated before the feature is judged. A null choice, or a choice that returns false, leaves the sheet unchanged. A choice that returns an order is checked with `gate_ask` when a gate is present, and then staged on the sheet when a sheet is present. A refused order leaves the sheet unchanged. A local id of zero is refused when a sheet is present. The call does not send the order. The function the caller passes is the place a strategy is written. The library does not choose the side or the price.
 
+## A price window, a slot pool, and two charges
+
+`PriceWindow<Cap>` covers `Cap` ticks from a lower price, `Cap` a multiple of 64 from 64 to 4096. `reset` sets the lower price and the step, and clears the window. `set` writes one side's quantity. Quantity 0 clears that tick. A price that is not on the step, or that falls outside the window, is refused and the previous quantities stay. `best` reports the highest occupied bid and the lowest occupied ask. Empty ticks are skipped a machine word at a time.
+
+`publish_batch` writes from 1 to `Cap` slots that share one reader mask, then stores the tail once. A busy slot makes the call return 0. Slots already in the ring stay as they were.
+
+`SlotPool<T, Cap>` stores trivially copyable records. `Cap` is a power of two from 2 to 1024. `take` refuses id 0, a duplicate id, and a full pool. `drop` returns the slot to the free stack. `find` returns a pointer into the pool. That pointer is valid until the id is dropped.
+
+`margin_both` returns the larger of `price * quantity * multiplier * money_num / money_den` and `per_lot * quantity`. A bad argument returns 0. Overflow returns the maximum signed value. `right_value` uses right 1 for a call and right 2 for a put. An unknown right or a negative price returns -1.
+
 ## Where the calls live
 
 | Header | What it covers |
@@ -293,6 +303,7 @@ These calls do not open a socket, do not send an order, and do not start a threa
 | `book/calendar.hpp` | Trading days and session times |
 | `book/cross.hpp` | The limit book and the call auction |
 | `book/lags.hpp` | Session bands and sampled delay |
+| `book/ladder.hpp` | A fixed price window and the best occupied tick |
 | `book/quote.hpp` | Quote batches, the print log, and minute rolls |
 | `book/steps.hpp` | Tick bands and price walks |
 | `book/venue.hpp` | `PaperVenue` |
@@ -319,6 +330,7 @@ These calls do not open a socket, do not send an order, and do not start a threa
 | `order/lots.hpp` | Splitting one quantity into orders |
 | `order/parent.hpp` | Parent time slices and a basket header |
 | `order/plan.hpp` | The next order, resting room, slices, and chase prices |
+| `order/pool.hpp` | Fixed slots found by id |
 | `order/recon.hpp` | Local and counter fill alignment |
 | `order/shed.hpp` | Sojourn drop |
 | `order/sheet.hpp` | One order sheet and one pass over the checks |

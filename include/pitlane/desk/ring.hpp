@@ -22,23 +22,23 @@ public:
 
     bool publish(const T& item, uint64_t need) noexcept {
         const uint64_t pos = tail_.load(std::memory_order_relaxed);
-        Slot& s = slots_[pos & (Cap - 1u)];
-        if (pos >= Cap) {
-            const uint64_t st = s.state.load(std::memory_order_acquire);
-            if (st == 1u) {
-                const uint64_t ack = s.ack.load(std::memory_order_acquire);
-                const bool done = s.need == 0 ? ack != 0 : (ack & s.need) == s.need;
-                if (!done) return false;
-            }
-        }
-        s.state.store(0, std::memory_order_relaxed);
-        s.ack.store(0, std::memory_order_relaxed);
-        s.need = need;
-        s.body = item;
-        s.seq = pos + 1u;
-        s.state.store(1, std::memory_order_release);
+        if (blocked(pos)) return false;
+        write_at(pos, item, need);
         tail_.store(pos + 1u, std::memory_order_release);
         return true;
+    }
+
+    // Writes n slots, then advances the tail once. Returns 0 when any slot is still busy,
+    // and leaves the ring unchanged. n must be from 1 through Cap.
+    int publish_batch(const T* items, int n, uint64_t need) noexcept {
+        if (!items || n <= 0 || static_cast<uint32_t>(n) > Cap) return 0;
+        const uint64_t pos = tail_.load(std::memory_order_relaxed);
+        for (int i = 0; i < n; ++i) {
+            if (blocked(pos + static_cast<uint64_t>(i))) return 0;
+        }
+        for (int i = 0; i < n; ++i) write_at(pos + static_cast<uint64_t>(i), items[i], need);
+        tail_.store(pos + static_cast<uint64_t>(n), std::memory_order_release);
+        return n;
     }
 
     uint64_t tail() const noexcept { return tail_.load(std::memory_order_acquire); }
@@ -84,6 +84,26 @@ public:
     }
 
 private:
+    bool blocked(uint64_t pos) const noexcept {
+        if (pos < Cap) return false;
+        const Slot& s = slots_[pos & (Cap - 1u)];
+        const uint64_t st = s.state.load(std::memory_order_acquire);
+        if (st != 1u) return false;
+        const uint64_t ack = s.ack.load(std::memory_order_acquire);
+        const bool done = s.need == 0 ? ack != 0 : (ack & s.need) == s.need;
+        return !done;
+    }
+
+    void write_at(uint64_t pos, const T& item, uint64_t need) noexcept {
+        Slot& s = slots_[pos & (Cap - 1u)];
+        s.state.store(0, std::memory_order_relaxed);
+        s.ack.store(0, std::memory_order_relaxed);
+        s.need = need;
+        s.body = item;
+        s.seq = pos + 1u;
+        s.state.store(1, std::memory_order_release);
+    }
+
     struct alignas(64) Slot {
         std::atomic<uint64_t> state{0};
         std::atomic<uint64_t> ack{0};

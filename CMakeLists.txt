@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(pitlane VERSION 2.0.0 LANGUAGES CXX)
+project(pitlane VERSION 2.1.0 LANGUAGES CXX)
 
 set(PITLANE_SOURCES
     src/desk/broker.cpp
@@ -89,6 +89,10 @@ add_executable(pitlane_study tests/study.cpp)
 target_link_libraries(pitlane_study PRIVATE pitlane)
 target_compile_options(pitlane_study PRIVATE -Wall -Wextra -Wpedantic -Werror -O2)
 
+add_executable(pitlane_extend tests/extend.cpp)
+target_link_libraries(pitlane_extend PRIVATE pitlane)
+target_compile_options(pitlane_extend PRIVATE -Wall -Wextra -Wpedantic -Werror -O2)
+
 if(PITLANE_BUILD_SHARED)
     add_executable(pitlane_check_shared tests/check.cpp)
     target_link_libraries(pitlane_check_shared PRIVATE pitlane_shared)
@@ -125,13 +129,17 @@ if(PITLANE_BUILD_SHARED)
     add_executable(pitlane_study_shared tests/study.cpp)
     target_link_libraries(pitlane_study_shared PRIVATE pitlane_shared)
     target_compile_options(pitlane_study_shared PRIVATE -Wall -Wextra -Wpedantic -Werror -O2)
+
+    add_executable(pitlane_extend_shared tests/extend.cpp)
+    target_link_libraries(pitlane_extend_shared PRIVATE pitlane_shared)
+    target_compile_options(pitlane_extend_shared PRIVATE -Wall -Wextra -Wpedantic -Werror -O2)
 endif()
 
 option(PITLANE_SANITIZE "Build with address and undefined-behavior sanitizers" OFF)
 if(PITLANE_SANITIZE)
-    set(PITLANE_SAN_TARGETS pitlane pitlane_check pitlane_suite pitlane_demo pitlane_assist pitlane_next pitlane_infra pitlane_drill pitlane_lat pitlane_perf pitlane_sheet pitlane_study)
+    set(PITLANE_SAN_TARGETS pitlane pitlane_check pitlane_suite pitlane_demo pitlane_assist pitlane_next pitlane_infra pitlane_drill pitlane_lat pitlane_perf pitlane_sheet pitlane_study pitlane_extend)
     if(PITLANE_BUILD_SHARED)
-        list(APPEND PITLANE_SAN_TARGETS pitlane_shared pitlane_check_shared pitlane_assist_shared pitlane_next_shared pitlane_infra_shared pitlane_drill_shared pitlane_lat_shared pitlane_perf_shared pitlane_sheet_shared pitlane_study_shared)
+        list(APPEND PITLANE_SAN_TARGETS pitlane_shared pitlane_check_shared pitlane_assist_shared pitlane_next_shared pitlane_infra_shared pitlane_drill_shared pitlane_lat_shared pitlane_perf_shared pitlane_sheet_shared pitlane_study_shared pitlane_extend_shared)
     endif()
     foreach(tgt ${PITLANE_SAN_TARGETS})
         target_compile_options(${tgt} PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer -O1)
@@ -155,6 +163,7 @@ add_test(NAME perf COMMAND pitlane_perf)
 set_tests_properties(perf PROPERTIES RUN_SERIAL TRUE)
 add_test(NAME sheet COMMAND pitlane_sheet)
 add_test(NAME study COMMAND pitlane_study)
+add_test(NAME extend COMMAND pitlane_extend)
 if(PITLANE_BUILD_SHARED)
     add_test(NAME check_shared COMMAND pitlane_check_shared)
     add_test(NAME assist_shared COMMAND pitlane_assist_shared)
@@ -166,6 +175,7 @@ if(PITLANE_BUILD_SHARED)
     set_tests_properties(perf_shared PROPERTIES RUN_SERIAL TRUE)
     add_test(NAME sheet_shared COMMAND pitlane_sheet_shared)
     add_test(NAME study_shared COMMAND pitlane_study_shared)
+    add_test(NAME extend_shared COMMAND pitlane_extend_shared)
 endif()
 
 install(TARGETS ${PITLANE_INSTALL_TARGETS}

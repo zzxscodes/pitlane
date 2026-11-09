@@ -168,6 +168,30 @@ inline bool fill_lock(int64_t& lock_px, int64_t& lock_qty, int64_t qty, int64_t 
     return true;
 }
 
+// The larger of a money rate and a per-lot charge. A bad argument returns 0.
+// Overflow returns the maximum signed value. The call does not reserve cash.
+inline int64_t margin_both(int64_t px, int64_t qty, int64_t mult, int64_t money_num, int64_t money_den,
+                           int64_t per_lot) noexcept {
+    if (px <= 0 || qty <= 0 || mult <= 0 || money_den <= 0 || money_num < 0 || per_lot < 0) return 0;
+    int64_t by_money = 0;
+    if (money_num > 0) {
+        if (cmp_prod(mult, px, INT64_MAX, 1) > 0) return INT64_MAX;
+        const int64_t step = mult * px;
+        if (cmp_prod(step, qty, INT64_MAX, 1) > 0) return INT64_MAX;
+        const int64_t notion = step * qty;
+        Wide w = mul_wide(static_cast<uint64_t>(notion), static_cast<uint64_t>(money_num));
+        uint64_t q = 0;
+        if (!div_wide(w, static_cast<uint64_t>(money_den), q) || q > static_cast<uint64_t>(INT64_MAX)) return INT64_MAX;
+        by_money = static_cast<int64_t>(q);
+    }
+    int64_t by_lot = 0;
+    if (per_lot > 0) {
+        if (cmp_prod(per_lot, qty, INT64_MAX, 1) > 0) return INT64_MAX;
+        by_lot = per_lot * qty;
+    }
+    return by_money > by_lot ? by_money : by_lot;
+}
+
 inline int64_t margin_need(const ClassScale& scale, int64_t px, int64_t qty) noexcept {
     if (px <= 0 || qty <= 0 || scale.mult <= 0 || scale.margin_num < 0 || scale.margin_den <= 0) return 0;
     if (cmp_prod(scale.mult, px, INT64_MAX, 1) > 0) return INT64_MAX;
