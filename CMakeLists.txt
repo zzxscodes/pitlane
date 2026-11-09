@@ -1,23 +1,23 @@
 cmake_minimum_required(VERSION 3.16)
-project(pitlane VERSION 1.7.0 LANGUAGES CXX)
+project(pitlane VERSION 2.0.0 LANGUAGES CXX)
 
 set(PITLANE_SOURCES
-    src/region.cpp
-    src/cash.cpp
-    src/cross.cpp
-    src/venue.cpp
-    src/codec.cpp
-    src/calendar.cpp
-    src/lots.cpp
-    src/feed.cpp
-    src/textutil.cpp
-    src/simclock.cpp
-    src/store.cpp
-    src/names.cpp
-    src/signal.cpp
-    src/runtime.cpp
-    src/broker.cpp
-    src/logline.cpp)
+    src/desk/broker.cpp
+    src/desk/cash.cpp
+    src/desk/codec.cpp
+    src/desk/feed.cpp
+    src/desk/logline.cpp
+    src/desk/names.cpp
+    src/desk/region.cpp
+    src/desk/runtime.cpp
+    src/desk/signal.cpp
+    src/desk/store.cpp
+    src/book/calendar.cpp
+    src/book/cross.cpp
+    src/book/venue.cpp
+    src/order/lots.cpp
+    src/time/simclock.cpp
+    src/util/textutil.cpp)
 
 # Objects are position-independent, so libpitlane.a can also be linked into another shared library.
 option(PITLANE_BUILD_SHARED "Build libpitlane.so in addition to the static library" ON)
