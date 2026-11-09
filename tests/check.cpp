@@ -313,6 +313,8 @@ static void check_venue_and_region() {
 }
 
 int main() {
+    expect(pitlane::kVersionMajor == 2 && pitlane::kVersionMinor == 0 && pitlane::kVersionPatch == 0, "release");
+    expect(std::strcmp(pitlane::kVersion, "2.0.0") == 0, "release text");
     check_ring();
     check_ids_steps_cash();
     check_books();

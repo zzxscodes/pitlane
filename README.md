@@ -14,9 +14,13 @@ Order slots, ledger rows, and live orders sit in fixed arrays. Cash and position
 
 Include `include/pitlane/pitlane.hpp` and link `libpitlane.a`. Types and functions live in the `pitlane` namespace. The interface is designed on its own and cannot replace another trading library that is already running.
 
+The library release is 2.0.0. `pitlane::kVersion` in `version.hpp` holds the same text. The shared library file carries this number, and its soname stays `libpitlane.so.1`. The desk layout version stays `kDeskVersion`, currently 2.
+
+Headers and sources sit one directory deeper, by area. `desk` holds the shared region and the records on it. `book` holds quotes, the trading day, and paper matching. `order` holds order life, checks, and positions. `time` holds clocks and latency tapes. `study` holds features, markouts, and the caller decision. `util` holds numbers, text, frames, and fixed buffers. Sources for an area live under the same name in `src`. A direct include names the area, as in `pitlane/order/sheet.hpp`. `version.hpp` stays next to `pitlane.hpp`.
+
 ## Shared region
 
-A mapping file starts with the magic `PITLANE1`. The current version is 2. `desk_view` opens a file only when both the magic and the version match. A blank file is initialized once, and only when the call allows creation. An older file with a different version is not treated as the current layout.
+A mapping file starts with the magic `PITLANE1`. The desk layout version is 2, stored as `kDeskVersion`. `desk_view` opens a file only when both the magic and this layout version match. A blank file is initialized once, and only when the call allows creation. An older file with a different version is not treated as the current layout.
 
 One shared region holds eight rings.
 

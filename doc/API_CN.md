@@ -10,6 +10,10 @@
 
 所有名字都在命名空间 `pitlane` 里。链接 `libpitlane.a`，或者用 `-lpitlane` 链接动态库。动态库的 soname 是 `libpitlane.so.1`。两种链接方式使用同一套头文件。
 
+发行版本是 `kVersion`，当前是 2.0.0，并拆成 `kVersionMajor`、`kVersionMinor` 和 `kVersionPatch`。`kDeskVersion` 是映射文件的布局版本，当前是 2。库的一次新发行可以保持布局版本不动。
+
+头文件分在 `pitlane/desk/`、`pitlane/book/`、`pitlane/order/`、`pitlane/time/`、`pitlane/study/` 和 `pitlane/util/` 下面。`version.hpp` 与 `pitlane.hpp` 同一层。下面的表在路径里写了区域。
+
 价格和数量是整数。时间是微秒。方向 1 是买入，2 是卖出。普通拒绝通过 `false`、负数，或不是 `Why::None` 的 `Why` 表示。这些情况不抛异常。环或队列写满时，这次写入失败，已有内容保持不变。
 
 ## 打开共享区
@@ -23,7 +27,7 @@ pitlane::Desk* desk = pitlane::desk_view(&map, 1);
 if (!desk) return 1;
 ```
 
-`map_create` 创建或扩展文件，不会清掉已经存在的映射。只有魔数是 `PITLANE1` 且版本是 `kDeskVersion` 时，`desk_view` 才返回工作区。当前版本是 2。第二个参数非 0 时，才会初始化一份仍然空白的文件。魔数不对的文件保持原样，调用返回空指针。魔数写上以后不要再次初始化。
+`map_create` 创建或扩展文件，不会清掉已经存在的映射。只有魔数是 `PITLANE1` 且布局版本是 `kDeskVersion` 时，`desk_view` 才返回工作区。当前布局版本是 2。第二个参数非 0 时，才会初始化一份仍然空白的文件。魔数不对的文件保持原样，调用返回空指针。魔数写上以后不要再次初始化。
 
 其他进程用 `map_attach` 挂上，再把 0 传给 `desk_view`。`map_release` 解除映射并关闭文件。每条环只有一个写入者。读者不要共用一个读取位置。
 
@@ -63,7 +67,7 @@ if (desk->intents.at(0, pitlane::kLoopReader, got, &fresh) && fresh) {
 }
 ```
 
-`Intent`、`Report` 和 `Quote` 在 `types.hpp`。其余槽类型 `AlgoJob`、`ControlNote`、`Pulse`、`TapePrint` 和 `QueryNote` 在 `wire.hpp`。比这些槽更大的数据，由调用方放在自己的环上，类型是 `Parcel<Bytes>`。长度大于 `Bytes` 时，`publish_parcel` 失败。
+`Intent`、`Report` 和 `Quote` 在 `desk/types.hpp`。其余槽类型 `AlgoJob`、`ControlNote`、`Pulse`、`TapePrint` 和 `QueryNote` 在 `desk/wire.hpp`。比这些槽更大的数据，由调用方放在自己的环上，类型是 `Parcel<Bytes>`。长度大于 `Bytes` 时，`publish_parcel` 失败。
 
 ## 跑会话循环
 
@@ -284,70 +288,71 @@ book.apply(edits, 1);
 
 | 头文件 | 内容 |
 | --- | --- |
-| `region.hpp` | 工作区、文件映射和环的容量 |
-| `ring.hpp` | `FanRing` |
-| `types.hpp` | `Intent`、`Report`、`Quote`，以及方向、方式、阶段和 `Why` |
-| `wire.hpp` | 算法单、控制、信号、逐笔、查询和包裹槽 |
-| `runtime.hpp` | `DeskLoop` |
-| `ids.hpp` | `IdMint` |
-| `codec.hpp` | 品种、开平和方向 |
-| `lots.hpp` | 把一笔数量拆成多张单 |
-| `plan.hpp` | 下一张单、可挂数量、切片和追价 |
-| `ledger.hpp` | 冻结、保证金、费用、成交回写、登录编号和在途槽 |
-| `venue.hpp` | `PaperVenue` |
-| `lags.hpp` | 时段时延和采样时延 |
-| `simclock.hpp` | `SimClock` |
-| `cross.hpp` | 限价簿和集合竞价 |
-| `names.hpp` | `NameBook` |
-| `signal.hpp` | `PulseBoard` |
-| `broker.hpp` | `BrokerWatch` 和 `QueryFold` |
-| `calendar.hpp` | 交易日和交易时段 |
-| `feed.hpp` | 订阅掩码、价格缩放和原始行情 |
-| `cash.hpp` | 资金行和持仓行 |
-| `logline.hpp` | `Log` |
-| `quote.hpp` | 行情批次、逐笔记录和分钟滚动 |
-| `steps.hpp` | 价位档和价格移动 |
-| `life.hpp` | 委托状态迁移和状态名字 |
-| `sheet.hpp` | 一张委托单，以及一次把检查跑完 |
-| `study.hpp` | 盘口特征、事后偏移、关联、因子、回放，以及一次研究步骤 |
-| `bind.hpp` | 柜台单号和乱序回报 |
-| `lane.hpp` | 通道规则和 `Cause` |
-| `judge.hpp` | 名单、流速、比例、偏离和自成交 |
-| `frame.hpp` | 组帧、序号缺口和重排 |
-| `span.hpp` | 留在消息旁边的时刻 |
-| `numeric.hpp` | 检查用的宽乘积 |
-| `mold.hpp` | 预备报文、块长度和可以退回的编号 |
-| `shed.hpp` | 按停留时长丢弃 |
-| `chunk.hpp` | 稀疏价位块和撤单句柄 |
-| `ticket.hpp` | 命令快照和版本 |
-| `parent.hpp` | 母单时间切片和篮子头 |
-| `recon.hpp` | 本地成交和柜台成交对齐 |
-| `inbound.hpp` | 等到到期时刻再放出的命令 |
-| `bar.hpp` | 由调用方标成可交易的 tick 生成的 K 线 |
-| `corp.hpp` | 公司行为的价格因子 |
-| `stream.hpp` | 帧校验和字节流重组 |
-| `seqgate.hpp` | 序号缺口恢复 |
-| `pace.hpp` | 令牌桶和理论到达时间 |
-| `sign.hpp` | 检查计数和开仓额度 |
-| `ack.hpp` | 下单确认和撤单确认计时 |
-| `trace.hpp` | 耗时样本、时钟差和分桶 |
-| `snap.hpp` | 整份发布的快照槽 |
-| `sig.hpp` | 签名桶 |
-| `grace.hpp` | 读者代和回收列表 |
-| `cycle.hpp` | 周期读取、整数比例和缓存的微秒 |
-| `lap.hpp` | 调用方已经记下的时刻之差 |
-| `mag.hpp` | 按数量级分桶和按间隔补记 |
-| `clock.hpp` | 发布出去的周期比例和墙钟 |
-| `wheel.hpp` | 时间轮 |
-| `stage.hpp` | 按占槽顺序完成的环 |
-| `seqwin.hpp` | 遇到空洞就停下的序号窗口 |
-| `readwin.hpp` | 最慢读者再加上一段窗口 |
-| `stride.hpp` | 某一个核那一槽的地址 |
-| `urgent.hpp` | 不进队列的一个标签 |
-| `tape.hpp` | 开关、每核轨迹、封存的段和超阈值通知 |
-| `fillring.hpp` | 就地填入的槽 |
-| `hex.hpp` | 十六进制和逐字节比较 |
-| `mix64.hpp` | 分裂混合 |
-| `textbuf.hpp` | 定长文本 |
-| `sample.hpp` | 定长样本 |
-| `drill.hpp` | 测试用的时钟、预算、档位和普通记录 |
+| `version.hpp` | 库的发行版本 `kVersion` |
+| `book/bar.hpp` | 由调用方标成可交易的 tick 生成的 K 线 |
+| `book/calendar.hpp` | 交易日和交易时段 |
+| `book/cross.hpp` | 限价簿和集合竞价 |
+| `book/lags.hpp` | 时段时延和采样时延 |
+| `book/quote.hpp` | 行情批次、逐笔记录和分钟滚动 |
+| `book/steps.hpp` | 价位档和价格移动 |
+| `book/venue.hpp` | `PaperVenue` |
+| `desk/broker.hpp` | `BrokerWatch` 和 `QueryFold` |
+| `desk/cash.hpp` | 资金行和持仓行 |
+| `desk/codec.hpp` | 品种、开平和方向 |
+| `desk/feed.hpp` | 订阅掩码、价格缩放和原始行情 |
+| `desk/ids.hpp` | `IdMint` |
+| `desk/logline.hpp` | `Log` |
+| `desk/names.hpp` | `NameBook` |
+| `desk/region.hpp` | 工作区、文件映射和环的容量 |
+| `desk/ring.hpp` | `FanRing` |
+| `desk/runtime.hpp` | `DeskLoop` |
+| `desk/signal.hpp` | `PulseBoard` |
+| `desk/types.hpp` | `Intent`、`Report`、`Quote`，以及方向、方式、阶段和 `Why` |
+| `desk/wire.hpp` | 算法单、控制、信号、逐笔、查询和包裹槽 |
+| `order/ack.hpp` | 下单确认和撤单确认计时 |
+| `order/bind.hpp` | 柜台单号和乱序回报 |
+| `order/inbound.hpp` | 等到到期时刻再放出的命令 |
+| `order/judge.hpp` | 名单、流速、比例、偏离和自成交 |
+| `order/lane.hpp` | 通道规则和 `Cause` |
+| `order/ledger.hpp` | 冻结、保证金、费用、成交回写、登录编号和在途槽 |
+| `order/life.hpp` | 委托状态迁移和状态名字 |
+| `order/lots.hpp` | 把一笔数量拆成多张单 |
+| `order/parent.hpp` | 母单时间切片和篮子头 |
+| `order/plan.hpp` | 下一张单、可挂数量、切片和追价 |
+| `order/recon.hpp` | 本地成交和柜台成交对齐 |
+| `order/shed.hpp` | 按停留时长丢弃 |
+| `order/sheet.hpp` | 一张委托单，以及一次把检查跑完 |
+| `order/sign.hpp` | 检查计数和开仓额度 |
+| `order/ticket.hpp` | 命令快照和版本 |
+| `study/corp.hpp` | 公司行为的价格因子 |
+| `study/study.hpp` | 盘口特征、事后偏移、关联、因子、回放，以及一次研究步骤 |
+| `time/clock.hpp` | 发布出去的周期比例和墙钟 |
+| `time/cycle.hpp` | 周期读取、整数比例和缓存的微秒 |
+| `time/lap.hpp` | 调用方已经记下的时刻之差 |
+| `time/mag.hpp` | 按数量级分桶和按间隔补记 |
+| `time/sample.hpp` | 定长样本 |
+| `time/simclock.hpp` | `SimClock` |
+| `time/span.hpp` | 留在消息旁边的时刻 |
+| `time/tape.hpp` | 开关、每核轨迹、封存的段和超阈值通知 |
+| `time/trace.hpp` | 耗时样本、时钟差和分桶 |
+| `time/urgent.hpp` | 不进队列的一个标签 |
+| `time/wheel.hpp` | 时间轮 |
+| `util/chunk.hpp` | 稀疏价位块和撤单句柄 |
+| `util/drill.hpp` | 测试用的时钟、预算、档位和普通记录 |
+| `util/fillring.hpp` | 就地填入的槽 |
+| `util/frame.hpp` | 组帧、序号缺口和重排 |
+| `util/grace.hpp` | 读者代和回收列表 |
+| `util/hex.hpp` | 十六进制和逐字节比较 |
+| `util/mix64.hpp` | 分裂混合 |
+| `util/mold.hpp` | 预备报文、块长度和可以退回的编号 |
+| `util/numeric.hpp` | 检查用的宽乘积 |
+| `util/pace.hpp` | 令牌桶和理论到达时间 |
+| `util/readwin.hpp` | 最慢读者再加上一段窗口 |
+| `util/seqgate.hpp` | 序号缺口恢复 |
+| `util/seqwin.hpp` | 遇到空洞就停下的序号窗口 |
+| `util/sig.hpp` | 签名桶 |
+| `util/snap.hpp` | 整份发布的快照槽 |
+| `util/stage.hpp` | 按占槽顺序完成的环 |
+| `util/stream.hpp` | 帧校验和字节流重组 |
+| `util/stride.hpp` | 某一个核那一槽的地址 |
+| `util/textbuf.hpp` | 定长文本 |

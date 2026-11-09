@@ -10,6 +10,10 @@ Include one header:
 
 Everything is in the namespace `pitlane`. Link `libpitlane.a`, or link the shared library with `-lpitlane`. The shared library's soname is `libpitlane.so.1`. The headers are the same for both.
 
+The release is `kVersion`, currently 2.0.0, also split into `kVersionMajor`, `kVersionMinor`, and `kVersionPatch`. `kDeskVersion` is the mapping-file layout and is currently 2. A new library release can leave the layout number where it is.
+
+Headers live under `pitlane/desk/`, `pitlane/book/`, `pitlane/order/`, `pitlane/time/`, `pitlane/study/`, and `pitlane/util/`. `version.hpp` stays beside `pitlane.hpp`. The table below names the area in the path.
+
 Prices and quantities are integers. Timestamps are microseconds. A side value of 1 buys and 2 sells. Most calls report failure by a `false`, a negative count, or a `Why` other than `Why::None`. They do not throw for ordinary rejects. A full ring or a full queue fails the write and leaves the previous contents in place.
 
 ## Open a shared desk
@@ -23,7 +27,7 @@ pitlane::Desk* desk = pitlane::desk_view(&map, 1);
 if (!desk) return 1;
 ```
 
-`map_create` creates or extends the file and does not wipe an existing mapping. `desk_view` returns the desk only when the magic is `PITLANE1` and the version is `kDeskVersion`, which is 2. The second argument formats a still-blank file when it is non-zero. A file with the wrong magic is left untouched and the call returns null. After the magic is written, do not format the mapping again.
+`map_create` creates or extends the file and does not wipe an existing mapping. `desk_view` returns the desk only when the magic is `PITLANE1` and the layout version is `kDeskVersion`, which is 2. The second argument formats a still-blank file when it is non-zero. A file with the wrong magic is left untouched and the call returns null. After the magic is written, do not format the mapping again.
 
 Another process attaches with `map_attach` and passes 0 to `desk_view`. `map_release` unmaps and closes the file. Each ring has one writer. Readers do not share a cursor.
 
@@ -63,7 +67,7 @@ if (desk->intents.at(0, pitlane::kLoopReader, got, &fresh) && fresh) {
 }
 ```
 
-`Intent`, `Report`, and `Quote` are defined in `types.hpp`. The other slot types, `AlgoJob`, `ControlNote`, `Pulse`, `TapePrint`, and `QueryNote`, are defined in `wire.hpp`. A payload larger than those slots uses `Parcel<Bytes>` on a ring the caller owns. `publish_parcel` fails when the length is greater than `Bytes`.
+`Intent`, `Report`, and `Quote` are defined in `desk/types.hpp`. The other slot types, `AlgoJob`, `ControlNote`, `Pulse`, `TapePrint`, and `QueryNote`, are defined in `desk/wire.hpp`. A payload larger than those slots uses `Parcel<Bytes>` on a ring the caller owns. `publish_parcel` fails when the length is greater than `Bytes`.
 
 ## Run the session loop
 
@@ -284,70 +288,71 @@ These calls do not open a socket, do not send an order, and do not start a threa
 
 | Header | What it covers |
 | --- | --- |
-| `region.hpp` | The desk, the mapping, and the ring capacities |
-| `ring.hpp` | `FanRing` |
-| `types.hpp` | `Intent`, `Report`, `Quote`, sides, styles, phases, and `Why` |
-| `wire.hpp` | Algo, control, pulse, print, query, and parcel slots |
-| `runtime.hpp` | `DeskLoop` |
-| `ids.hpp` | `IdMint` |
-| `codec.hpp` | Symbol class, offset, and direction |
-| `lots.hpp` | Splitting one quantity into orders |
-| `plan.hpp` | The next order, resting room, slices, and chase prices |
-| `ledger.hpp` | Freezes, margin, fees, fills, login ids, and the working slot |
-| `venue.hpp` | `PaperVenue` |
-| `lags.hpp` | Session bands and sampled delay |
-| `simclock.hpp` | `SimClock` |
-| `cross.hpp` | The limit book and the call auction |
-| `names.hpp` | `NameBook` |
-| `signal.hpp` | `PulseBoard` |
-| `broker.hpp` | `BrokerWatch` and `QueryFold` |
-| `calendar.hpp` | Trading days and session times |
-| `feed.hpp` | Subscription mask, price scale, and raw ticks |
-| `cash.hpp` | Cash and position rows |
-| `logline.hpp` | `Log` |
-| `quote.hpp` | Quote batches, the print log, and minute rolls |
-| `steps.hpp` | Tick bands and price walks |
-| `life.hpp` | Order transitions and phase names |
-| `sheet.hpp` | One order sheet and one pass over the checks |
-| `study.hpp` | Book features, markouts, relations, factors, replay, and one research step |
-| `bind.hpp` | Counter ids and out-of-order reports |
-| `lane.hpp` | Channel rules and `Cause` |
-| `judge.hpp` | List, flow, ratio, deviation, and self-trade checks |
-| `frame.hpp` | Frames, sequence gaps, and reordering |
-| `span.hpp` | Timestamps beside a message |
-| `numeric.hpp` | Wide products used by the checks |
-| `mold.hpp` | Prepared frames, block length, and an id that can be returned |
-| `shed.hpp` | Sojourn drop |
-| `chunk.hpp` | Sparse price blocks and cancel handles |
-| `ticket.hpp` | Command snapshot and revision |
-| `parent.hpp` | Parent time slices and a basket header |
-| `recon.hpp` | Local and counter fill alignment |
-| `inbound.hpp` | Commands waiting for their due time |
-| `bar.hpp` | Bars from ticks the caller marks tradable |
-| `corp.hpp` | Corporate-action price factors |
-| `stream.hpp` | Frame checksums and byte-stream reassembly |
-| `seqgate.hpp` | Sequence gap recovery |
-| `pace.hpp` | Token buckets and theoretical arrival times |
-| `sign.hpp` | Check counts and opening quota |
-| `ack.hpp` | Place and cancel acknowledgement timers |
-| `trace.hpp` | Latency samples, clock offset, and buckets |
-| `snap.hpp` | Snapshot slots published as a whole |
-| `sig.hpp` | Signature buckets |
-| `grace.hpp` | Reader epochs and a retire list |
-| `cycle.hpp` | Cycle reads, an integer scale, and a cached microsecond |
-| `lap.hpp` | Differences of timestamps the caller stored |
-| `mag.hpp` | Magnitude buckets and paced notes |
-| `clock.hpp` | A published cycle scale and wall time |
-| `wheel.hpp` | A tick wheel |
-| `stage.hpp` | A ring finished in claim order |
-| `seqwin.hpp` | A sequence window that stops at a hole |
-| `readwin.hpp` | The slowest reader plus a window |
-| `stride.hpp` | The address of one core's slot |
-| `urgent.hpp` | One tag that does not wait in a queue |
-| `tape.hpp` | A gate, a per-core tape, sealed segments, and spikes |
-| `fillring.hpp` | A slot filled in place |
-| `hex.hpp` | Hex and a byte compare |
-| `mix64.hpp` | A split mix |
-| `textbuf.hpp` | A fixed text buffer |
-| `sample.hpp` | A fixed list of samples |
-| `drill.hpp` | Clocks, budgets, ladders, and plain records for tests |
+| `version.hpp` | The library release `kVersion` |
+| `book/bar.hpp` | Bars from ticks the caller marks tradable |
+| `book/calendar.hpp` | Trading days and session times |
+| `book/cross.hpp` | The limit book and the call auction |
+| `book/lags.hpp` | Session bands and sampled delay |
+| `book/quote.hpp` | Quote batches, the print log, and minute rolls |
+| `book/steps.hpp` | Tick bands and price walks |
+| `book/venue.hpp` | `PaperVenue` |
+| `desk/broker.hpp` | `BrokerWatch` and `QueryFold` |
+| `desk/cash.hpp` | Cash and position rows |
+| `desk/codec.hpp` | Symbol class, offset, and direction |
+| `desk/feed.hpp` | Subscription mask, price scale, and raw ticks |
+| `desk/ids.hpp` | `IdMint` |
+| `desk/logline.hpp` | `Log` |
+| `desk/names.hpp` | `NameBook` |
+| `desk/region.hpp` | The desk, the mapping, and the ring capacities |
+| `desk/ring.hpp` | `FanRing` |
+| `desk/runtime.hpp` | `DeskLoop` |
+| `desk/signal.hpp` | `PulseBoard` |
+| `desk/types.hpp` | `Intent`, `Report`, `Quote`, sides, styles, phases, and `Why` |
+| `desk/wire.hpp` | Algo, control, pulse, print, query, and parcel slots |
+| `order/ack.hpp` | Place and cancel acknowledgement timers |
+| `order/bind.hpp` | Counter ids and out-of-order reports |
+| `order/inbound.hpp` | Commands waiting for their due time |
+| `order/judge.hpp` | List, flow, ratio, deviation, and self-trade checks |
+| `order/lane.hpp` | Channel rules and `Cause` |
+| `order/ledger.hpp` | Freezes, margin, fees, fills, login ids, and the working slot |
+| `order/life.hpp` | Order transitions and phase names |
+| `order/lots.hpp` | Splitting one quantity into orders |
+| `order/parent.hpp` | Parent time slices and a basket header |
+| `order/plan.hpp` | The next order, resting room, slices, and chase prices |
+| `order/recon.hpp` | Local and counter fill alignment |
+| `order/shed.hpp` | Sojourn drop |
+| `order/sheet.hpp` | One order sheet and one pass over the checks |
+| `order/sign.hpp` | Check counts and opening quota |
+| `order/ticket.hpp` | Command snapshot and revision |
+| `study/corp.hpp` | Corporate-action price factors |
+| `study/study.hpp` | Book features, markouts, relations, factors, replay, and one research step |
+| `time/clock.hpp` | A published cycle scale and wall time |
+| `time/cycle.hpp` | Cycle reads, an integer scale, and a cached microsecond |
+| `time/lap.hpp` | Differences of timestamps the caller stored |
+| `time/mag.hpp` | Magnitude buckets and paced notes |
+| `time/sample.hpp` | A fixed list of samples |
+| `time/simclock.hpp` | `SimClock` |
+| `time/span.hpp` | Timestamps beside a message |
+| `time/tape.hpp` | A gate, a per-core tape, sealed segments, and spikes |
+| `time/trace.hpp` | Latency samples, clock offset, and buckets |
+| `time/urgent.hpp` | One tag that does not wait in a queue |
+| `time/wheel.hpp` | A tick wheel |
+| `util/chunk.hpp` | Sparse price blocks and cancel handles |
+| `util/drill.hpp` | Clocks, budgets, ladders, and plain records for tests |
+| `util/fillring.hpp` | A slot filled in place |
+| `util/frame.hpp` | Frames, sequence gaps, and reordering |
+| `util/grace.hpp` | Reader epochs and a retire list |
+| `util/hex.hpp` | Hex and a byte compare |
+| `util/mix64.hpp` | A split mix |
+| `util/mold.hpp` | Prepared frames, block length, and an id that can be returned |
+| `util/numeric.hpp` | Wide products used by the checks |
+| `util/pace.hpp` | Token buckets and theoretical arrival times |
+| `util/readwin.hpp` | The slowest reader plus a window |
+| `util/seqgate.hpp` | Sequence gap recovery |
+| `util/seqwin.hpp` | A sequence window that stops at a hole |
+| `util/sig.hpp` | Signature buckets |
+| `util/snap.hpp` | Snapshot slots published as a whole |
+| `util/stage.hpp` | A ring finished in claim order |
+| `util/stream.hpp` | Frame checksums and byte-stream reassembly |
+| `util/stride.hpp` | The address of one core's slot |
+| `util/textbuf.hpp` | A fixed text buffer |
