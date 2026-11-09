@@ -14,11 +14,13 @@ Order slots, ledger rows, and live orders sit in fixed arrays. Cash and position
 
 Include `include/pitlane/pitlane.hpp` and link `libpitlane.a`. Types and functions live in the `pitlane` namespace. The interface is designed on its own and cannot replace another trading library that is already running.
 
-The library release is 2.1.0. `pitlane::kVersion` in `version.hpp` holds the same text. The shared library file carries this number, and its soname stays `libpitlane.so.1`. The desk layout version stays `kDeskVersion`, currently 2.
+The library release is 2.2.0. `pitlane::kVersion` in `version.hpp` holds the same text. The shared library file carries this number, and its soname stays `libpitlane.so.1`. The desk layout version stays `kDeskVersion`, currently 2.
 
 Headers and sources sit one directory deeper, by area. `desk` holds the shared region and the records on it. `book` holds quotes, the trading day, and paper matching. `order` holds order life, checks, and positions. `time` holds clocks and latency tapes. `study` holds features, markouts, and the caller decision. `util` holds numbers, text, frames, and fixed buffers. Sources for an area live under the same name in `src`. A direct include names the area, as in `pitlane/order/sheet.hpp`. `version.hpp` stays next to `pitlane.hpp`.
 
 `PriceWindow` stores quantity on a fixed price step. The best price walks occupied bits and skips empty ticks. `publish_batch` writes several ring slots and advances the tail once. If one slot is still busy, the whole batch stays out. `SlotPool` keeps caller records in fixed slots and finds them by id. `margin_both` returns the larger of a money margin and a per-lot margin. `right_value` returns how far a call or a put is in the money. None of these calls sends an order.
+
+`FillRing` keeps a local copy of the other side's index and reads the shared index only when that copy says the ring is full or empty. `TimeLine` keeps ids at one price in arrival order. `cover_qty` sums the visible quantity that meets a limit, and stops at the quantity asked for. `touch_lines` reads each cache line of a buffer the caller already owns. None of these calls matches a trade.
 
 ## Shared region
 
