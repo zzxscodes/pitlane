@@ -2,12 +2,12 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
+#include <unistd.h>
 
-namespace {
+static int g_fails = 0;
 
-int g_fails = 0;
-
-void expect(bool cond, const char* what) {
+static void expect(bool cond, const char* what) {
     if (cond) return;
     std::fprintf(stderr, "fail: %s\n", what);
     ++g_fails;
@@ -104,11 +104,40 @@ void check_step() {
     expect(blocked == pitlane::Cause::Blocked && fresh.local == 0, "blocked");
 }
 
-}  // namespace
+static void check_corp() {
+    const pitlane::CorpAct acts[] = {
+        {20240102, 1, 2, 100, 0, 0},
+        {20240103, 1, 1, 100, 10, 0},
+    };
+    pitlane::PxMul factor{};
+    int64_t px = 0;
+    expect(pitlane::mul_fold(acts, 2, 20240101, factor) && pitlane::scale_px(50, factor, px) && px == 50, "before the split");
+    expect(pitlane::mul_fold(acts, 2, 20240102, factor) && pitlane::scale_px(50, factor, px) && px == 100, "after the split");
+    expect(pitlane::mul_fold(acts, 2, 20240103, factor) && pitlane::scale_px(50, factor, px) && px == 100, "price-only dividend");
+    int64_t num = 0;
+    int64_t den = 1;
+    expect(pitlane::traded_move(100, 50, 1, 2, num, den) && num == 0, "the split itself is not a traded move");
+    expect(pitlane::traded_move(100, 60, 1, 2, num, den) && num == 1 && den == 5, "traded move after the jump");
+    pitlane::CorpAct income{20240103, 1, 1, 100, 10, 1};
+    pitlane::PxMul step{};
+    expect(pitlane::act_mul(income, step) && step.num == 10 && step.den == 9, "income dividend");
+}
+
+static void check_right() {
+    expect(pitlane::right_value(1, 110, 100) == 10 && pitlane::right_value(2, 110, 100) == 0, "call");
+    expect(pitlane::right_value(2, 90, 100) == 10 && pitlane::right_value(3, 90, 100) == -1, "put");
+}
 
 int main() {
     check_feat_and_mark();
     check_tables();
     check_step();
-    return g_fails == 0 ? 0 : 1;
+    check_corp();
+    check_right();
+    if (g_fails) {
+        std::fprintf(stderr, "%d study check(s) failed\n", g_fails);
+        return 1;
+    }
+    std::printf("ok\n");
+    return 0;
 }

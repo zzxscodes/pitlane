@@ -81,7 +81,7 @@ public:
         if (!out || due > cap) return -1;
         for (int i = 0; i < due; ++i) out[i] = item_[i].user;
         const int rest = n_ - due;
-        for (int i = 0; i < rest; ++i) item_[i] = item_[due + i];
+        for (int i = 0; i < rest && due + i < Cap; ++i) item_[i] = item_[due + i];
         n_ = rest;
         return due;
     }
