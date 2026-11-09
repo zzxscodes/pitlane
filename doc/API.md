@@ -10,7 +10,7 @@ Include one header:
 
 Everything is in the namespace `pitlane`. Link `libpitlane.a`, or link the shared library with `-lpitlane`. The shared library's soname is `libpitlane.so.1`. The headers are the same for both.
 
-The release is `kVersion`, currently 2.2.2, also split into `kVersionMajor`, `kVersionMinor`, and `kVersionPatch`. `kDeskVersion` is the mapping-file layout and is currently 2. A new library release can leave the layout number where it is.
+The release is `kVersion`, currently 2.3.0, also split into `kVersionMajor`, `kVersionMinor`, and `kVersionPatch`. `kDeskVersion` is the mapping-file layout and is currently 2. A new library release can leave the layout number where it is.
 
 Headers live under `pitlane/desk/`, `pitlane/book/`, `pitlane/order/`, `pitlane/time/`, `pitlane/study/`, and `pitlane/util/`. `version.hpp` stays beside `pitlane.hpp`. The table below names the area in the path.
 
@@ -254,7 +254,7 @@ These calls do not open a socket, do not send an order, and do not start a threa
 
 `TraceGate` occupies one cache line. `arm` stores a 16-bit event id and an on bit. `CoreTape<Cap>` writes only while the gate is on. The record index sits on its own line. The capacity is 16 to 4096 and a power of two. A full tape overwrites the oldest record. `at` fails for a record that has not been written or has already been overwritten. `SegTape<Seg, N>` uses 2 to 16 segments and 4 to 1024 records in each. A full segment is sealed when the next segment has been returned with `give`. Otherwise the writer restarts the current segment, increments the overrun count, and the push returns false. `SpikeRing<Cap>` records a gap strictly above the limit. A gap that is not above the limit returns false and does not count as a drop. A full ring increments the drop count, which sits with the writer, and returns false. The reader index sits on its own line.
 
-`FillRing<T, Cap>` has one producer and one consumer, with 2 to 1024 slots. `claim` returns the next slot, or null when a claim is already open or the ring is full. `publish` makes that slot visible. `cancel` drops the open claim and does not publish it. `take` copies the next published slot.
+`FillRing<T, Cap>` has one producer and one consumer, with 2 to 1024 slots. `claim` returns the next slot, or null when a claim is already open or the ring is full. `publish` makes that slot visible. `cancel` drops the open claim and does not publish it. `take` copies the next published slot. `take_span` copies several and advances the consumer once. Each slot occupies its own cache line.
 
 `hex_encode` writes lowercase hex and a trailing NUL. The buffer must hold both. A short buffer returns -1 and leaves the previous text. `hex_decode` checks every digit before it writes. An odd length or a bad digit returns -1 and does not write. `bytes_diff` returns the first index that differs, -1 when the ranges match, and -2 when a pointer or a length is unusable.
 
@@ -286,15 +286,17 @@ These calls do not open a socket, do not send an order, and do not start a threa
 
 ## A price window, a slot pool, and two charges
 
-`PriceWindow<Cap>` covers `Cap` ticks from a lower price, `Cap` a multiple of 64 from 64 to 4096. `reset` sets the lower price and the step, and clears the window. `set` writes one side's quantity. Quantity 0 clears that tick. A price that is not on the step, or that falls outside the window, is refused and the previous quantities stay. `best` reports the highest occupied bid and the lowest occupied ask. Empty ticks are skipped a machine word at a time.
+`PriceWindow<Cap>` covers `Cap` ticks from a lower price, `Cap` a multiple of 64 from 64 to 4096. `reset` sets the lower price and the step, and clears the window. `set` writes one side's quantity. Quantity 0 clears that tick. A price that is not on the step, or that falls outside the window, is refused and the previous quantities stay. `best` reports the highest occupied bid and the lowest occupied ask. Empty ticks are skipped a machine word at a time. `shown_before` sums quantity strictly better than a price: higher bids, or lower asks. The quantity at that price is left out. A sum that would overflow leaves the output unchanged and returns false.
 
-`publish_batch` writes from 1 to `Cap` slots that share one reader mask, then stores the tail once. A busy slot makes the call return 0. Slots already in the ring stay as they were.
+`publish_batch` writes from 1 to `Cap` slots that share one reader mask, then stores the tail once. A busy slot makes the call return 0. Slots already in the ring stay as they were. `ack_span` acks consecutive positions for one reader and stops at the first position that reader cannot ack. Positions already acked stay acked.
 
 `SlotPool<T, Cap>` stores trivially copyable records. `Cap` is a power of two from 2 to 1024. `take` refuses id 0, a duplicate id, and a full pool. `drop` returns the slot to the free stack. `find` returns a pointer into the pool. That pointer is valid until the id is dropped.
 
 `margin_both` returns the larger of `price * quantity * multiplier * money_num / money_den` and `per_lot * quantity`. A bad argument returns 0. Overflow returns the maximum signed value. `right_value` uses right 1 for a call and right 2 for a put. An unknown right or a negative price returns -1.
 
-`FillRing` is one producer and one consumer. `claim` returns a slot to fill in place. `publish` makes that slot visible. `cancel` drops a claim that was not published. `take` copies the oldest published slot. The producer remembers the consumer index it last observed, and the consumer remembers the published index. A shared index is read again only when the local copy says the ring is full or empty. A full ring or a second claim fails, and nothing is overwritten.
+`FillRing` is one producer and one consumer. `claim` returns a slot to fill in place. `publish` makes that slot visible. `cancel` drops a claim that was not published. `take` copies the oldest published slot. `take_span` copies up to a caller-chosen count and stores the consumer index once. Each slot occupies its own cache line. The producer remembers the consumer index it last observed, and the consumer remembers the published index. A shared index is read again only when the local copy says the ring is full or empty. A full ring or a second claim fails, and nothing is overwritten.
+
+`ExtremeWindow<Cap>` keeps the high and the low among the last `Cap` positive prices, `Cap` a power of two from 4 to 256. A non-positive price is refused and the window stays. `clear` drops every price. The window does not choose a trade.
 
 `TimeLine<Cap>` stores ids at one price, oldest at the front. `Cap` is a power of two from 4 to 256. `push` refuses id 0, a duplicate, and a full line. `pop` removes the front. `erase` removes one id and keeps the order of the rest. A refused call leaves the line unchanged.
 
@@ -347,6 +349,7 @@ These calls do not open a socket, do not send an order, and do not start a threa
 | `order/sign.hpp` | Check counts and opening quota |
 | `order/ticket.hpp` | Command snapshot and revision |
 | `study/corp.hpp` | Corporate-action price factors |
+| `study/extreme.hpp` | High and low over the last fixed run of prices |
 | `study/study.hpp` | Book features, markouts, relations, factors, replay, and one research step |
 | `time/clock.hpp` | A published cycle scale and wall time |
 | `time/cycle.hpp` | Cycle reads, an integer scale, and a cached microsecond |

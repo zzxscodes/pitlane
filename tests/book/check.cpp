@@ -326,6 +326,18 @@ void check_window() {
     expect(book.best(2, px, qty) && px == 108 && qty == 2, "best ask");
     expect(!book.set(1, 101, 1) && book.best(1, px, qty) && px == 100, "off step");
     expect(!book.set(1, 100 + 2 * 128, 1), "outside");
+    int64_t before = -1;
+    expect(book.shown_before(1, 100, before) && before == 0, "nothing above the bid");
+    expect(book.set(1, 104, 1) && book.shown_before(1, 100, before) && before == 1, "one better bid");
+    expect(book.shown_before(2, 110, before) && before == 2, "size under the ask");
+    expect(book.shown_before(2, 108, before) && before == 0, "ask is the best");
+    expect(!book.shown_before(1, 101, before) && before == 0, "off step keeps the previous sum");
+
+    pitlane::PriceWindow<64> wide;
+    expect(wide.reset(100, 1), "wide reset");
+    const int64_t half = INT64_MAX / 2 + 1;
+    expect(wide.set(1, 101, half) && wide.set(1, 102, half), "two large bids");
+    expect(!wide.shown_before(1, 100, before), "sum overflow");
 }
 
 static void check_cover() {

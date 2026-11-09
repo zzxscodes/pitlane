@@ -50,6 +50,16 @@ int main() {
     if (!ring.publish()) return fail("publish");
     int got = 0;
     if (!ring.take(got) || got != 5) return fail("take");
+    int* again = ring.claim();
+    if (!again) return fail("claim again");
+    *again = 6;
+    if (!ring.publish()) return fail("publish again");
+    again = ring.claim();
+    if (!again) return fail("claim last");
+    *again = 7;
+    if (!ring.publish()) return fail("publish last");
+    int batch[2]{};
+    if (ring.take_span(batch, 2) != 2 || batch[0] != 6 || batch[1] != 7) return fail("span");
 
     uint8_t storage[16]{};
     pitlane::ByteFrame frame;

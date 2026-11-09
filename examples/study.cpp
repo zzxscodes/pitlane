@@ -38,6 +38,11 @@ int main() {
     int64_t ticks[4]{};
     if (!pitlane::horizon_ticks(horizon, 1, ticks) || ticks[0] != 4) return fail("mark");
     if (pitlane::right_value(1, 105, 100) != 5) return fail("right");
+    pitlane::ExtremeWindow<4> trail;
+    int64_t hi = 0;
+    int64_t lo = 0;
+    if (!trail.push(100) || !trail.push(104) || !trail.push(101)) return fail("trail");
+    if (!trail.high(hi) || hi != 104 || !trail.low(lo) || lo != 100) return fail("range");
 
     pitlane::RelBook rel;
     if (!rel.bind(2, 1) || rel.underlying(2) != 1) return fail("rel");

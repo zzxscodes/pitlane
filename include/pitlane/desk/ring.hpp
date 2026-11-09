@@ -83,6 +83,19 @@ public:
         return true;
     }
 
+    // Acks n positions from pos upward. Stops at the first position this reader cannot ack.
+    // Positions already acked stay acked. n below 1 acks nothing.
+    int ack_span(uint64_t pos, int n, unsigned reader) noexcept {
+        if (n <= 0 || reader >= 64u) return 0;
+        int done = 0;
+        for (int i = 0; i < n; ++i) {
+            if (pos > UINT64_MAX - static_cast<uint64_t>(i)) break;
+            if (!ack(pos + static_cast<uint64_t>(i), reader)) break;
+            ++done;
+        }
+        return done;
+    }
+
 private:
     bool blocked(uint64_t pos) const noexcept {
         if (pos < Cap) return false;

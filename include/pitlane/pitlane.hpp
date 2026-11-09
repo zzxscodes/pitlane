@@ -63,6 +63,7 @@
 #include "pitlane/time/wheel.hpp"
 
 #include "pitlane/study/corp.hpp"
+#include "pitlane/study/extreme.hpp"
 #include "pitlane/study/study.hpp"
 
 #include "pitlane/util/chunk.hpp"

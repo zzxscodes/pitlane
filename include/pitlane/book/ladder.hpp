@@ -61,6 +61,20 @@ public:
         return read(1, w * 64 + b, px, qty);
     }
 
+    // Quantity sitting strictly inside the window and strictly better than px.
+    // A bid counts higher prices. An ask counts lower prices. The quantity at px stays out.
+    // Overflow leaves out unchanged and returns false.
+    bool shown_before(uint8_t side, int64_t px, int64_t& out) const noexcept {
+        int at = 0;
+        const int s = side_index(side, px, at);
+        if (s < 0) return false;
+        int64_t sum = 0;
+        const bool ok = s == 0 ? add_range(0, at + 1, Cap, sum) : add_range(1, 0, at, sum);
+        if (!ok) return false;
+        out = sum;
+        return true;
+    }
+
 private:
     static constexpr int kWords = Cap / 64;
 
@@ -77,6 +91,26 @@ private:
     bool read(int s, int at, int64_t& px, int64_t& qty) const noexcept {
         px = lo_ + static_cast<int64_t>(at) * step_;
         qty = qty_[s][at];
+        return true;
+    }
+
+    bool add_range(int s, int begin, int end, int64_t& sum) const noexcept {
+        if (begin >= end) return true;
+        const int w_last = (end - 1) >> 6;
+        for (int w = begin >> 6; w <= w_last; ++w) {
+            uint64_t word = bit_[s][w];
+            const int bit0 = w == (begin >> 6) ? (begin & 63) : 0;
+            if (bit0 > 0) word &= ~((1ull << bit0) - 1);
+            const int bit1 = w == w_last ? ((end - 1) & 63) : 63;
+            if (bit1 < 63) word &= (1ull << (bit1 + 1)) - 1;
+            while (word != 0) {
+                const int b = __builtin_ctzll(word);
+                const int64_t q = qty_[s][w * 64 + b];
+                if (q > INT64_MAX - sum) return false;
+                sum += q;
+                word &= word - 1;
+            }
+        }
         return true;
     }
 
