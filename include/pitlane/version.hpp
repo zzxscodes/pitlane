@@ -7,7 +7,7 @@ namespace pitlane {
 
 inline constexpr int kVersionMajor = 2;
 inline constexpr int kVersionMinor = 2;
-inline constexpr int kVersionPatch = 0;
-inline constexpr char kVersion[] = "2.2.0";
+inline constexpr int kVersionPatch = 1;
+inline constexpr char kVersion[] = "2.2.1";
 
 }  // namespace pitlane

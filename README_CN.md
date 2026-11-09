@@ -14,7 +14,7 @@ pitlane 是一个 C++17 静态库。它给同一台机器上的交易进程准�
 
 使用时包含 `include/pitlane/pitlane.hpp`，链接 `libpitlane.a`。类型和函数都在命名空间 `pitlane` 中。这套接口是单独设计的，不能用来替换已经在运行的其他交易库。
 
-库的发行版本是 2.2.0。`version.hpp` 里的 `pitlane::kVersion` 是同一串文字。动态库文件名带这个版本，soname 保持 `libpitlane.so.1`。工作区布局版本是 `kDeskVersion`，当前是 2。
+库的发行版本是 2.2.1。`version.hpp` 里的 `pitlane::kVersion` 是同一串文字。动态库文件名带这个版本，soname 保持 `libpitlane.so.1`。工作区布局版本是 `kDeskVersion`，当前是 2。
 
 头文件和源文件按区域再分一层目录。`desk` 放共享区和上面的记录。`book` 放行情、交易日和纸面撮合。`order` 放委托生命周期、检查和持仓。`time` 放时钟和延迟记录。`study` 放特征、事后偏移和调用方的决定。`util` 放数值、文本、组帧和定长缓冲。某个区域的源文件在 `src` 下的同名目录里。单独包含某个头文件时写上区域，例如 `pitlane/order/sheet.hpp`。`version.hpp` 和 `pitlane.hpp` 放在同一层。
 
@@ -161,10 +161,18 @@ cmake --install pitlane/build --prefix /opt/pitlane
 
 其他程序继续包含同一套头文件。链接动态库时使用 `-lpitlane`，运行时要能找到安装目录里的 `libpitlane.so`。安装结果还包括 `include/pitlane` 下的头文件。
 
-`examples/demo.cpp` 会建立一块临时映射，写入一张买单，并在纸面撮合里成交。构建完成后可以运行：
+`examples/` 里是链接本库、并自己检查结果的小程序。`demo` 往临时映射写入一张买单，并在纸面撮合里成交。`desk` 走名称、资金、环的批量写入和一次会话节拍。`book` 走行情、价格窗、交易日和限价簿。`order` 走检查、订单表和手数拆分。`study` 走特征和调用方给出的决定。`time` 走周期换算、时钟页和成交环。`lane` 走柜台检查、迟到的成交和通道。`own` 走调用方自己保存的编号、切片和一笔柜台成交。`pace` 走组帧、快照和固定表。构建完成后可以运行：
 
 ```bash
 ./pitlane/build/pitlane_demo
+./pitlane/build/pitlane_desk
+./pitlane/build/pitlane_book
+./pitlane/build/pitlane_order
+./pitlane/build/pitlane_ex_study
+./pitlane/build/pitlane_time
+./pitlane/build/pitlane_lane
+./pitlane/build/pitlane_own
+./pitlane/build/pitlane_pace
 ```
 
 ## 使用时的限制

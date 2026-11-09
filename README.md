@@ -14,7 +14,7 @@ Order slots, ledger rows, and live orders sit in fixed arrays. Cash and position
 
 Include `include/pitlane/pitlane.hpp` and link `libpitlane.a`. Types and functions live in the `pitlane` namespace. The interface is designed on its own and cannot replace another trading library that is already running.
 
-The library release is 2.2.0. `pitlane::kVersion` in `version.hpp` holds the same text. The shared library file carries this number, and its soname stays `libpitlane.so.1`. The desk layout version stays `kDeskVersion`, currently 2.
+The library release is 2.2.1. `pitlane::kVersion` in `version.hpp` holds the same text. The shared library file carries this number, and its soname stays `libpitlane.so.1`. The desk layout version stays `kDeskVersion`, currently 2.
 
 Headers and sources sit one directory deeper, by area. `desk` holds the shared region and the records on it. `book` holds quotes, the trading day, and paper matching. `order` holds order life, checks, and positions. `time` holds clocks and latency tapes. `study` holds features, markouts, and the caller decision. `util` holds numbers, text, frames, and fixed buffers. Sources for an area live under the same name in `src`. A direct include names the area, as in `pitlane/order/sheet.hpp`. `version.hpp` stays next to `pitlane.hpp`.
 
@@ -161,10 +161,18 @@ One build produces the static library `libpitlane.a` and the shared library `lib
 
 Other programs include the same headers. Link the shared library with `-lpitlane`, and make sure `libpitlane.so` can be found in the install directory at run time. The install also places the headers under `include/pitlane`.
 
-`examples/demo.cpp` creates a temporary mapping, writes one buy order, and fills it in the paper matcher. After the build:
+`examples/` holds small programs that link the library and check their own result. `demo` writes one buy into a temporary mapping and fills it in the paper matcher. `desk` walks names, cash, a ring batch, and one session beat. `book` walks the quote, the price window, the calendar, and the limit book. `order` walks the gate, the sheet, and the lot split. `study` walks features and a caller-supplied decision. `time` walks the cycle scale, the clock page, and the fill ring. `lane` walks the counter check, a late fill, and the channel. `own` walks caller-owned ids, slices, and a venue fill. `pace` walks framing, a snapshot, and the fixed tables. After the build:
 
 ```bash
 ./pitlane/build/pitlane_demo
+./pitlane/build/pitlane_desk
+./pitlane/build/pitlane_book
+./pitlane/build/pitlane_order
+./pitlane/build/pitlane_ex_study
+./pitlane/build/pitlane_time
+./pitlane/build/pitlane_lane
+./pitlane/build/pitlane_own
+./pitlane/build/pitlane_pace
 ```
 
 ## Limits
