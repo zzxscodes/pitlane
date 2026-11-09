@@ -262,6 +262,14 @@ These calls do not open a socket, do not send an order, and do not start a threa
 
 `StepClock::step` moves forward and rejects a negative step or a step that would overflow. `jump` may move to any time. `FailBudget::arm` allows that many successes, then `allow` returns false. `StepList<Cap>` requires a non-zero tag and a time that is not earlier than the previous push. `take` copies a prefix of due tags. A short buffer leaves the rest. `ladder_check` accepts an empty ladder. A bid must be strictly descending. An ask must be strictly ascending. A non-positive price or quantity fails. `intent_make`, `report_make`, and `quote_make` zero the output when they reject it. A quote with a bid above the ask is rejected. A bid equal to the ask is kept.
 
+## One order sheet
+
+`phase_text` names a phase. `sheet_open` stores a local id, a side, a price, and a quantity on a sheet the caller owns. A zero id, an unknown side, or a non-positive price or quantity is refused, and the previous sheet stays. `sheet_bind` stores a counter id once. A second, different id is refused.
+
+`sheet_apply` moves the sheet through the life table. An event the table refuses leaves every field unchanged. A fill larger than the quantity still open is refused the same way. A fill that takes the whole remainder lands on partial, with nothing left. Finish is a separate event. Reject stores the cause the caller passes. The first non-negative stamp is kept for send, accept, and the finishing events. A negative stamp does not write. `sheet_ack_ns` and `sheet_done_ns` subtract those stamps. `sheet_line` replaces a text buffer with one line of id, side, phase, cause, quantity, filled, and left. A local id that does not fit a signed 64-bit value is refused, and the previous line stays.
+
+`gate_ask` runs the checks for one enter or one pull and returns the first cause. A null list, rule, wash table, or flow window is skipped. An enter with a limit price requires a positive price and quantity. A symbol on the list is blocked. A channel that refuses a pull returns the pull-cap cause. A channel that refuses the price mode returns the price cause. Any other channel refusal is blocked. Deviation runs for a limit enter when the cap is zero or positive. Wash runs for an enter when the table is present. The flow window is updated only after those checks pass. A window that is already at the limit returns the order-flow cause, or the pull-flow cause for a pull, and is left unchanged. The call does not send the order.
+
 ## Where the calls live
 
 | Header | What it covers |
@@ -289,7 +297,8 @@ These calls do not open a socket, do not send an order, and do not start a threa
 | `logline.hpp` | `Log` |
 | `quote.hpp` | Quote batches, the print log, and minute rolls |
 | `steps.hpp` | Tick bands and price walks |
-| `life.hpp` | Order transitions |
+| `life.hpp` | Order transitions and phase names |
+| `sheet.hpp` | One order sheet and one pass over the checks |
 | `bind.hpp` | Counter ids and out-of-order reports |
 | `lane.hpp` | Channel rules and `Cause` |
 | `judge.hpp` | List, flow, ratio, deviation, and self-trade checks |
