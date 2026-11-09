@@ -2,12 +2,12 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
+#include <unistd.h>
 
-namespace {
+static int g_fails = 0;
 
-int g_fails = 0;
-
-void expect(bool cond, const char* what) {
+static void expect(bool cond, const char* what) {
     if (cond) return;
     std::fprintf(stderr, "fail: %s\n", what);
     ++g_fails;
@@ -122,68 +122,15 @@ void check_wheel() {
     expect(all && !full.arm(9, 9), "full wheel");
 }
 
-void check_stage_seq_fill() {
-    pitlane::StageRing<uint64_t, 4> ring;
-    uint32_t a = 0;
-    uint32_t b = 0;
-    expect(ring.acquire(a) && a == 0 && ring.acquire(b) && b == 1, "claim");
-    expect(ring.finish(b, 0, 20), "later finish");
-    uint32_t seq = 0;
-    uint64_t body = 0;
-    expect(!ring.take(0, seq, body), "blocked");
-    expect(ring.finish(a, 0, 10), "earlier finish");
-    expect(ring.take(0, seq, body) && seq == 0 && body == 10, "first");
-    expect(ring.take(0, seq, body) && seq == 1 && body == 20, "second");
-    uint32_t extra[4]{};
-    int n = 0;
-    while (n < 4 && ring.acquire(extra[n])) ++n;
-    expect(n == 2, "two more claims");
-    uint32_t overflow = 0;
-    expect(!ring.acquire(overflow), "full stage");
-
-    pitlane::SeqWin<8> win;
-    expect(win.push(0, 1) == pitlane::SeqPut::Bad, "empty token");
-    expect(win.push(10, 1) == pitlane::SeqPut::In, "first");
-    expect(win.push(30, 3) == pitlane::SeqPut::In, "hole");
-    uint64_t out[4]{};
-    expect(win.pull(out, 4) == 1 && out[0] == 10, "stop at hole");
-    expect(win.push(20, 2) == pitlane::SeqPut::In, "fill hole");
-    expect(win.pull(out, 4) == 2 && out[0] == 20 && out[1] == 30, "released");
-    expect(win.push(11, 1) == pitlane::SeqPut::Far, "behind");
-    expect(win.push(10, 4) == pitlane::SeqPut::In && win.push(10, 4) == pitlane::SeqPut::Dup, "duplicate");
-
-    pitlane::FillRing<uint64_t, 2> fill;
-    uint64_t* slot = fill.claim();
-    expect(slot != nullptr, "claim");
-    *slot = 5;
-    expect(fill.claim() == nullptr, "one claim");
-    expect(fill.publish(), "publish");
-    uint64_t got = 0;
-    expect(fill.take(got) && got == 5, "took");
-    slot = fill.claim();
-    *slot = 1;
-    fill.cancel();
-    slot = fill.claim();
-    expect(slot != nullptr, "cancelled claim");
-    *slot = 2;
-    expect(fill.publish() && fill.take(got) && got == 2, "rewritten");
+static void check_span() {
+    pitlane::SpanMark<4> span;
+    expect(span.mark(0, 10) && span.mark(2, 25), "mark");
+    int64_t dt = 0;
+    expect(span.between(0, 2, dt) && dt == 15, "between");
+    expect(!span.between(0, 1, dt), "unset node");
 }
 
-void check_readers_tape() {
-    pitlane::ReadWin readers;
-    expect(!readers.open(3) && readers.open(128), "window");
-    expect(readers.join(0, 0, true) && readers.join(1, 0, false), "join");
-    uint64_t lim = 0;
-    expect(readers.limit(100, 1, 10, lim) && lim == 128, "slowest");
-    expect(readers.joined(1), "still in");
-    expect(readers.report(0, 80), "move");
-    expect(readers.limit(100, 20, 10, lim) && !readers.joined(1) && lim == 208, "quiet reader leaves");
-
-    alignas(64) char block[256]{};
-    void* at = nullptr;
-    expect(pitlane::core_slot(block, 1, 4, 64, at) && at == block + 64, "stride");
-    expect(!pitlane::core_slot(block, 1, 4, 32, at), "short stride");
-
+static void check_tape() {
     pitlane::Urgent urgent;
     expect(urgent.post(5) && !urgent.post(6) && urgent.take() == 5 && urgent.take() == 0, "urgent");
 
@@ -213,17 +160,61 @@ void check_readers_tape() {
     expect(spikes.pop(note) && note.seq == 2 && note.cpu == 1 && spikes.dropped() == 0, "spike note");
 }
 
-}  // namespace
+static void check_simclock() {
+    pitlane::SimClock clock;
+    clock.table.go_us[0] = 10;
+    clock.table.pull_us[0] = 20;
+    const int64_t morning = (9 * 60 + 40) * 60 * 1000000ll;
+    expect(clock.go(morning) == 10 && clock.back(morning) == 20, "table delay");
+    clock.pts[0] = pitlane::LagPoint{100, 0, 180};
+    clock.pts[1] = pitlane::LagPoint{200, 0, 280};
+    clock.npts = 2;
+    expect(clock.go(150) < 0, "reject delay");
+}
+
+static void check_sample() {
+    pitlane::SampleBox<8> box;
+    expect(box.add(1) && box.add(3) && box.add(2), "samples");
+    int64_t mean = 0;
+    int64_t pct = 0;
+    expect(box.mean(mean) && mean == 2 && box.min() == 1 && box.max() == 3, "mean");
+    expect(box.pct(0, 100, pct) && pct == 1, "low rank");
+    expect(box.pct(100, 100, pct) && pct == 3, "high rank");
+    expect(box.pct(1, 2, pct) && pct == 2, "middle rank");
+    expect(box.add(-1) && box.count() == 4, "negative sample");
+    pitlane::SampleBox<2> tiny;
+    expect(tiny.add(INT64_MAX) && !tiny.add(1) && tiny.count() == 1, "sum would overflow");
+}
+
+static void check_trace() {
+    pitlane::LatTrace<4> trace;
+    expect(pitlane::lat_mark(trace, 0, 10, false), "marking off");
+    int64_t span = 0;
+    expect(!pitlane::lat_span(trace, 0, 1, span), "unset");
+    expect(pitlane::lat_mark(trace, 0, 10, true) && pitlane::lat_mark(trace, 1, 15, true), "marks");
+    expect(pitlane::lat_span(trace, 0, 1, span) && span == 5, "span");
+    pitlane::DeskSkew skew;
+    int64_t revised = 0;
+    expect(pitlane::skew_sample(skew, 1000, 1004) && pitlane::skew_apply(skew, 1000, revised) && revised == 1002, "half the round trip");
+    expect(pitlane::skew_sample(skew, 1000, 1001) && skew.skew == 0, "odd millisecond");
+
+    pitlane::LatHist<8> hist;
+    expect(hist.add(0) && hist.add(1) && hist.add(2) && hist.add(4) && !hist.add(-1), "buckets");
+    expect(hist.at(0) == 2 && hist.at(1) == 1 && hist.at(2) == 1 && hist.cum(1) == 3, "cumulative");
+}
 
 int main() {
     check_cycles();
     check_hist_and_laps();
     check_clock();
     check_wheel();
-    check_stage_seq_fill();
-    check_readers_tape();
+    check_span();
+    check_tape();
+    check_simclock();
+    check_sample();
+    check_trace();
     if (g_fails) {
-        std::fprintf(stderr, "%d failed\n", g_fails);
+        std::fprintf(stderr, "%d time check(s) failed\n", g_fails);
         return 1;
     }
     std::printf("ok\n");

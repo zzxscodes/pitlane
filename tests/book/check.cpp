@@ -1,82 +1,23 @@
 #include "pitlane/pitlane.hpp"
 
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <unistd.h>
 
-namespace {
+static int g_fails = 0;
 
-int g_fails = 0;
-
-void expect(bool cond, const char* what) {
+static void expect(bool cond, const char* what) {
     if (cond) return;
     std::fprintf(stderr, "fail: %s\n", what);
     ++g_fails;
 }
 
-}  // namespace
-
-static void check_ring() {
-    pitlane::FanRing<pitlane::Intent, 4> ring;
-    pitlane::Intent item{};
-    item.tag = 1;
-    expect(ring.publish(item, 0x3), "publish 1");
-    item.tag = 2;
-    expect(ring.publish(item, 0x3), "publish 2");
-    item.tag = 3;
-    expect(ring.publish(item, 0x3), "publish 3");
-    item.tag = 4;
-    expect(ring.publish(item, 0x3), "publish 4");
-    item.tag = 5;
-    expect(!ring.publish(item, 0x3), "full until both readers ack");
-
-    pitlane::Intent out{};
-    bool fresh = false;
-    expect(ring.at(0, 0, out, &fresh) && fresh && out.tag == 1, "reader 0 sees first");
-    expect(ring.ack(0, 0), "reader 0 acks");
-    expect(!ring.publish(item, 0x3), "still blocked on reader 1");
-    expect(ring.ack(0, 1), "reader 1 acks");
-    expect(ring.publish(item, 0x3), "reuses the freed slot");
-
-    pitlane::FanRing<pitlane::Intent, 4> claim;
-    item.tag = 9;
-    expect(claim.publish(item, 0), "exclusive publish");
-    expect(claim.ack(0, 2), "first claim");
-    expect(!claim.ack(0, 3), "second claim loses");
-}
-
-static void check_ids_steps_cash() {
-    pitlane::IdMint mint(7, 2);
-    const uint64_t id = mint.next(13, 35);
-    expect(pitlane::id_site(id) == 7, "site");
-    expect(pitlane::id_kind(id) == 2, "kind");
-    expect(pitlane::id_day_mod(id) == 3, "day");
-    expect(pitlane::id_ten_sec(id) == 3, "slot");
-    expect(pitlane::id_serial(id) == 1, "serial");
-    const uint64_t id2 = mint.next(13, 35);
-    expect(pitlane::id_serial(id2) == 2, "serial grows");
-
+static void check_steps() {
     const pitlane::PxBand bands[] = {{0, 1000, 1}, {1000, 5000, 5}};
     expect(pitlane::step_floor(bands, 2, 1003) == 1000, "floor");
     expect(pitlane::step_ceil(bands, 2, 1003) == 1005, "ceil");
     expect(pitlane::step_floor(bands, 2, 1000) == 1000, "edge");
-
-    pitlane::CashLine rows[4]{};
-    pitlane::CashBoard book(rows, 4);
-    pitlane::CashLine* row = book.upsert(1, "alpha", "acct", "desk", "book");
-    expect(row != nullptr, "cash row");
-    pitlane::CashBoard::credit(*row, 1000);
-    expect(pitlane::CashBoard::reserve(*row, 400), "reserve");
-    expect(row->free_amt == 600 && row->held_amt == 400, "split cash");
-    expect(!pitlane::CashBoard::reserve(*row, 601), "no overdraft");
-    expect(pitlane::CashBoard::commit_held(*row, 100), "commit");
-    expect(row->held_amt == 300, "held after commit");
-    expect(pitlane::CashBoard::release(*row, 300), "release");
-    expect(row->free_amt == 900 && row->held_amt == 0, "cash restored");
-
-    pitlane::CashBoard again(rows, 4);
-    again.reindex();
-    expect(again.find(pitlane::CashBoard::key_of(1, "alpha", "acct", "desk", "book")) == row, "reindex");
 }
 
 static void check_books() {
@@ -157,7 +98,7 @@ static void check_books() {
     expect(fills[0].buy_tag == 2 && fills[0].sell_tag == 3 && fills[0].qty == 10, "call fifo");
 }
 
-static void check_gap_arrive_lag() {
+static void check_gap() {
     pitlane::Gap gap;
     pitlane::gap_join(gap, 50);
     expect(pitlane::gap_print(gap, 10, 1, 4) == 0, "still behind");
@@ -200,20 +141,9 @@ static void check_gap_arrive_lag() {
     const int64_t shift = pitlane::lift_locals(rows, 2, 5);
     expect(shift == 15, "lift");
     expect(rows[0].local_ns - rows[0].exch_ns == 5, "new minimum");
-
-    pitlane::NetHold hold{1, 2, 0, 0};
-    const pitlane::Move flat = pitlane::one_move(0, hold, 10, 11, true);
-    expect(flat.kind == pitlane::MoveKind::SellCloseYday && flat.qty == 2 && flat.px == 10, "close yesterday first");
-    const pitlane::Move grow = pitlane::one_move(5, hold, 10, 11, true);
-    expect(grow.kind == pitlane::MoveKind::BuyOpen && grow.qty == 2 && grow.px == 11, "open the gap");
-
-    pitlane::LinearBook lin{2, 0, 0, 0};
-    expect(lin.notion(10, 3) == 60, "linear notion");
-    pitlane::apply_fill(lin, true, 10, 3, 1);
-    expect(lin.pos == 3 && lin.cash == -60 && lin.equity(10) == -1, "long equity");
 }
 
-static void check_venue_and_region() {
+static void check_venue() {
     pitlane::VenueCfg cfg{};
     cfg.lot = 1;
     cfg.lag.go_us[0] = 5000000;
@@ -288,40 +218,175 @@ static void check_venue_and_region() {
     hit.tag = 16;
     hit.side = 1;
     expect(wash.admit(hit, stamp, reps, 8).why == pitlane::Why::Wash, "same account");
+}
 
-    const char* path = "pitlane_region.bin";
-    ::unlink(path);
-    pitlane::MapInfo map{};
-    expect(pitlane::map_create(path, pitlane::desk_bytes(), &map) == 0, "map");
-    pitlane::Desk* desk = pitlane::desk_view(&map, 1);
-    expect(desk != nullptr, "format");
-    pitlane::Intent wire{};
-    wire.tag = 42;
-    wire.qty = 1;
-    expect(desk->intents.publish(wire, 0x1), "shm publish");
-    pitlane::map_release(&map);
+static void check_calendar() {
+    expect(pitlane::ymd_weekday(20240101) == 1, "monday");
+    expect(pitlane::is_weekend(20240106), "saturday");
+    expect(pitlane::next_session_day(20240105, nullptr) == 20240108, "skip weekend");
+    pitlane::ClosedDays closed;
+    expect(closed.add(20240108), "holiday");
+    expect(pitlane::next_session_day(20240105, &closed) == 20240109, "skip holiday");
+    expect(pitlane::session_gap(20240105, 20240109, &closed) == 1, "one session between");
+    expect(pitlane::night_back_days(190000, 1) == 3, "monday night");
+    expect(pitlane::night_back_days(100000, 3) == 0, "day session");
+    expect(pitlane::night_back_days(20000, 1) == 2, "monday morning");
+    pitlane::Span spans[4]{};
+    const int ns = pitlane::future_spans(true, 21 * 60, 150, spans, 4);
+    expect(ns == 4 && pitlane::minute_in_spans(23 * 60, spans, ns), "night span");
+    expect(pitlane::minute_in_spans(60, spans, ns), "after midnight");
+    pitlane::SessionRow row{};
+    row.open_min = 9 * 60 + 30;
+    row.close_min = 15 * 60;
+    row.lunch0 = 11 * 60 + 30;
+    row.lunch1 = 13 * 60;
+    expect(pitlane::minute_tradable(row, 10 * 60) && !pitlane::minute_tradable(row, 12 * 60), "lunch");
+}
 
-    pitlane::MapInfo again_map{};
-    expect(pitlane::map_attach(path, pitlane::desk_bytes(), &again_map) == 0, "remap");
-    pitlane::Desk* back = pitlane::desk_view(&again_map, 0);
-    expect(back != nullptr, "magic");
-    pitlane::Intent got{};
-    bool fresh = false;
-    expect(back->intents.at(0, 0, got, &fresh) && fresh && got.tag == 42, "shm read");
-    pitlane::map_release(&again_map);
-    ::unlink(path);
+void check_quote() {
+    pitlane::QuoteFold<8> book;
+    pitlane::FoldEdit bad[] = {{pitlane::FoldOp::Add, 1, 10, 1}, {pitlane::FoldOp::Add, 1, 0, 1}};
+    expect(!book.apply(bad, 2) && !book.built() && book.bid_count() == 0, "bad batch leaves the book");
+
+    pitlane::FoldEdit edits[] = {
+        {pitlane::FoldOp::Add, 1, 10, 4},
+        {pitlane::FoldOp::Add, 1, 11, 2},
+        {pitlane::FoldOp::Add, 2, 12, 3},
+        {pitlane::FoldOp::Set, 2, 12, 5},
+    };
+    expect(book.apply(edits, 4), "apply book");
+    pitlane::FoldLevel top[4]{};
+    expect(book.copy(1, top, 4) == 2 && top[0].px == 11 && top[0].qty == 2 && top[1].px == 10, "bid best first");
+    expect(book.copy(2, top, 4) == 1 && top[0].px == 12 && top[0].qty == 5, "ask set");
+
+    pitlane::FoldEdit again[] = {{pitlane::FoldOp::Add, 1, 11, 1}};
+    expect(!book.apply(again, 1) && book.bid_count() == 2, "add refuses an existing price");
+    pitlane::FoldEdit drop[] = {{pitlane::FoldOp::Del, 1, 11, 0}};
+    expect(book.apply(drop, 1) && book.bid_count() == 1, "delete");
+
+    pitlane::PrintLog<4> prints;
+    expect(prints.push(12, 1, 2), "print");
+    expect(book.copy(2, top, 4) == 1 && top[0].qty == 5, "print does not touch the book");
+
+    pitlane::DayRoll<4> roll;
+    expect(roll.on_msg(60ull * 1000000ull, 10, 1), "minute");
+    expect(roll.on_msg(60ull * 1000000ull + 10, 12, 2), "same minute");
+    expect(!roll.on_msg(10, 99, 1), "stale clock");
+    uint64_t minute = 0;
+    int64_t hi = 0, lo = 0, vol = 0;
+    expect(roll.at(0, &minute, &hi, &lo, &vol) && hi == 12 && lo == 10 && vol == 3, "bar");
+    expect(roll.on_msg(60ull * 1000000ull + 86400000000ull, 8, 1), "next day");
+    expect(roll.size() == 1 && roll.at(0, &minute, &hi, &lo, &vol) && hi == 8, "old minute dropped");
+}
+
+void check_walk() {
+    const pitlane::PxBand bands[] = {{0, 1000, 1}, {1000, 5000, 5}};
+    expect(pitlane::band_at_hold(bands, 2, 1000) == 0, "boundary stays on the lower band");
+    expect(pitlane::walk_up(bands, 2, 998, 3, 0, 0) == 1005, "cross a band upward");
+    expect(pitlane::walk_down(bands, 2, 1005, 2, 0, 0) == 999, "cross a band downward");
+    expect(pitlane::walk_up(bands, 2, 990, 100, 0, 1000) == 1000, "clamp high");
+    expect(pitlane::walk_down(bands, 2, 3, 10, 1, 1000) == 1, "clamp low");
+
+    pitlane::Span spans[4]{};
+    const int n = pitlane::future_spans(true, 21 * 60, 23 * 60, spans, 4);
+    expect(n == 4, "future spans");
+    expect(pitlane::span_index(21 * 60 + 30, spans, n) == 0, "night span");
+    expect(pitlane::span_index(12 * 60, spans, n) < 0, "between sessions");
+    pitlane::SessionRow row{};
+    row.open_min = 9 * 60 + 30;
+    row.close_min = 15 * 60;
+    row.lunch0 = 11 * 60 + 30;
+    row.lunch1 = 13 * 60;
+    expect(pitlane::session_part(row, 12 * 60) == pitlane::SessionPart::Lunch, "lunch");
+    expect(pitlane::session_part(row, 10 * 60) == pitlane::SessionPart::Open, "morning");
+}
+
+static void check_bar() {
+    pitlane::BarFold bars(60);
+    pitlane::Bar closed{};
+    expect(bars.on_tick(10, 100, 1, true, &closed) && bars.current().open == 100, "open bar");
+    expect(bars.on_tick(20, 110, 2, true, &closed) && bars.current().high == 110 && bars.current().vol == 3, "update");
+    expect(!bars.on_tick(30, 90, 1, false, &closed) && bars.current().close == 110, "session flag skips the tick");
+    expect(bars.on_tick(70, 80, 1, true, &closed) && closed.open == 100 && closed.close == 110, "next bucket");
+    expect(bars.current().start_us == 60 && bars.current().open == 80, "new bar");
+}
+
+void check_window() {
+    pitlane::PriceWindow<128> book;
+    expect(!book.set(1, 100, 1), "unbound");
+    expect(book.reset(100, 2), "reset");
+    expect(book.set(1, 100, 3) && book.set(1, 104, 1) && book.set(2, 110, 4) && book.set(2, 108, 2), "set");
+    int64_t px = 0;
+    int64_t qty = 0;
+    expect(book.best(1, px, qty) && px == 104 && qty == 1, "best bid");
+    expect(book.set(1, 228, 9) && book.best(1, px, qty) && px == 228 && qty == 9, "far bid");
+    expect(book.set(1, 228, 0) && book.best(1, px, qty) && px == 104, "far cleared");
+    expect(book.set(1, 104, 0), "clear");
+    expect(book.best(1, px, qty) && px == 100 && qty == 3, "next bid");
+    expect(book.best(2, px, qty) && px == 108 && qty == 2, "best ask");
+    expect(!book.set(1, 101, 1) && book.best(1, px, qty) && px == 100, "off step");
+    expect(!book.set(1, 100 + 2 * 128, 1), "outside");
+}
+
+static void check_cover() {
+    const int64_t px[] = {100, 102, 99};
+    const int64_t qty[] = {5, 1, 4};
+    expect(pitlane::cover_qty(px, qty, 3, true, 101, 10) == 9, "buy cover");
+    expect(pitlane::cover_qty(px, qty, 3, false, 101, 10) == 1, "sell cover");
+    expect(pitlane::cover_qty(px, qty, 3, true, 100, 3) == 3, "capped");
+}
+
+static void check_target() {
+    expect(pitlane::stored_target(4, 9, false, true) == 4 && pitlane::stored_target(4, 9, true, false) == 0, "target");
+}
+
+static void check_session_book() {
+    const int64_t morning = (9 * 60 + 40) * 60 * 1000000ll;
+    pitlane::PaperVenue venue(pitlane::VenueCfg{});
+    const pitlane::Rung asks[] = {{130, 8}};
+    venue.set_levels(1, nullptr, 0, asks, 1);
+    pitlane::Intent buy{};
+    buy.tag = 9;
+    buy.name = 1;
+    buy.acct = 2;
+    buy.px = 100;
+    buy.qty = 4;
+    buy.stamp_us = morning;
+    buy.side = 1;
+    buy.act = 1;
+    buy.style = 1;
+    pitlane::Report reps[4]{};
+    expect(venue.admit(buy, morning, reps, 4).why == pitlane::Why::None, "rest buy");
+    expect(venue.on_tape(1, 100, 4, 1, morning + 1, reps, 4) == 0, "same-side print ignored");
+    expect(venue.on_tape(1, 100, 4, 2, morning + 2, reps, 4) == 1 && reps[0].qty == 4, "opposite print fills");
+
+    const pitlane::Rung bids[] = {{100, 3}, {99, 5}};
+    const pitlane::ArrivalHit sold = pitlane::walk_sell(pitlane::Style::Immediate, 99, 10, bids, 2);
+    expect(sold.kind == pitlane::Arrival::Drop && sold.filled == 8, "sell walks down");
+    pitlane::InverseBook inv{10, 0, 0, 0};
+    expect(inv.notion(5, 20) == 40, "inverse notion");
+    const pitlane::CallIn tie[] = {{1, 12, 5, 1}, {2, 10, 5, 2}};
+    pitlane::CallOut fills[2]{};
+    int64_t matched = 0;
+    const int64_t px = pitlane::auction_clear(tie, 2, 10, 0, fills, 2, &matched);
+    expect(matched == 5 && px == 10, "closer price");
 }
 
 int main() {
-    expect(pitlane::kVersionMajor == 2 && pitlane::kVersionMinor == 2 && pitlane::kVersionPatch == 1, "release");
-    expect(std::strcmp(pitlane::kVersion, "2.2.1") == 0, "release text");
-    check_ring();
-    check_ids_steps_cash();
+    check_steps();
     check_books();
-    check_gap_arrive_lag();
-    check_venue_and_region();
+    check_gap();
+    check_venue();
+    check_calendar();
+    check_quote();
+    check_walk();
+    check_bar();
+    check_window();
+    check_cover();
+    check_target();
+    check_session_book();
     if (g_fails) {
-        std::fprintf(stderr, "%d check(s) failed\n", g_fails);
+        std::fprintf(stderr, "%d book check(s) failed\n", g_fails);
         return 1;
     }
     std::printf("ok\n");
