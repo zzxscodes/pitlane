@@ -95,6 +95,8 @@ A third set stays on buffers and counters the caller already owns. A byte stream
 
 A sheet keeps one order's life, quantity, cause, and the stamps used for the acknowledgement and the completion. `gate_ask` walks the list, the channel rule, the price distance, the self-trade rows, and the flow window, and returns the first cause. The flow window changes only after the earlier checks pass. The pieces underneath remain available on their own.
 
+`study_step` is the place a strategy is developed. It updates a quote book, fills the spread, mid, imbalance, and microprice, then calls a function the caller supplies. That function returns an order or declines. A returned order can be checked and staged on a sheet. The library does not choose the side or the price, and the call does not send. A relation table, a fixed factor board, a replay cursor, and a four-horizon markout sit beside that step for research. None of them reads a file.
+
 A fourth set measures cycles and keeps fixed tables the caller drives on its own thread. `cycles_read` and `cycles_ordered` read the processor cycle counter. The caller writes a one-line microsecond slot and supplies the integer scale that turns cycles into nanoseconds. A magnitude histogram reports the median and the tail. A tick wheel, a staged ring, a sequence window, a reader window, an in-place fill ring, and per-core trace tapes are fixed tables. The library does not start a thread, does not open a socket, and does not send an order.
 
 ## Build and install

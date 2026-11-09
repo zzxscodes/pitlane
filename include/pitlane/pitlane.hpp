@@ -62,6 +62,7 @@
 #include "pitlane/store.hpp"
 #include "pitlane/stream.hpp"
 #include "pitlane/stride.hpp"
+#include "pitlane/study.hpp"
 #include "pitlane/tape.hpp"
 #include "pitlane/textbuf.hpp"
 #include "pitlane/textutil.hpp"
