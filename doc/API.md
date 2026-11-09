@@ -10,7 +10,7 @@ Include one header:
 
 Everything is in the namespace `pitlane`. Link `libpitlane.a`, or link the shared library with `-lpitlane`. The shared library's soname is `libpitlane.so.1`. The headers are the same for both.
 
-The release is `kVersion`, currently 2.1.0, also split into `kVersionMajor`, `kVersionMinor`, and `kVersionPatch`. `kDeskVersion` is the mapping-file layout and is currently 2. A new library release can leave the layout number where it is.
+The release is `kVersion`, currently 2.2.0, also split into `kVersionMajor`, `kVersionMinor`, and `kVersionPatch`. `kDeskVersion` is the mapping-file layout and is currently 2. A new library release can leave the layout number where it is.
 
 Headers live under `pitlane/desk/`, `pitlane/book/`, `pitlane/order/`, `pitlane/time/`, `pitlane/study/`, and `pitlane/util/`. `version.hpp` stays beside `pitlane.hpp`. The table below names the area in the path.
 
@@ -294,6 +294,14 @@ These calls do not open a socket, do not send an order, and do not start a threa
 
 `margin_both` returns the larger of `price * quantity * multiplier * money_num / money_den` and `per_lot * quantity`. A bad argument returns 0. Overflow returns the maximum signed value. `right_value` uses right 1 for a call and right 2 for a put. An unknown right or a negative price returns -1.
 
+`FillRing` is one producer and one consumer. `claim` returns a slot to fill in place. `publish` makes that slot visible. `cancel` drops a claim that was not published. `take` copies the oldest published slot. The producer remembers the consumer index it last observed, and the consumer remembers the published index. A shared index is read again only when the local copy says the ring is full or empty. A full ring or a second claim fails, and nothing is overwritten.
+
+`TimeLine<Cap>` stores ids at one price, oldest at the front. `Cap` is a power of two from 4 to 256. `push` refuses id 0, a duplicate, and a full line. `pop` removes the front. `erase` removes one id and keeps the order of the rest. A refused call leaves the line unchanged.
+
+`cover_qty` walks prices and quantities the caller already holds. A buy counts a price at or below the limit. A sell counts a price at or above it. Non-positive prices and quantities are skipped. The sum stops at `need`. The arrays stay as they were.
+
+`touch_lines` reads one byte on each cache line of a range, including the last byte. A null pointer or a zero length does nothing.
+
 ## Where the calls live
 
 | Header | What it covers |
@@ -301,6 +309,7 @@ These calls do not open a socket, do not send an order, and do not start a threa
 | `version.hpp` | The library release `kVersion` |
 | `book/bar.hpp` | Bars from ticks the caller marks tradable |
 | `book/calendar.hpp` | Trading days and session times |
+| `book/cover.hpp` | Visible quantity that meets a limit |
 | `book/cross.hpp` | The limit book and the call auction |
 | `book/lags.hpp` | Session bands and sampled delay |
 | `book/ladder.hpp` | A fixed price window and the best occupied tick |
@@ -327,6 +336,7 @@ These calls do not open a socket, do not send an order, and do not start a threa
 | `order/lane.hpp` | Channel rules and `Cause` |
 | `order/ledger.hpp` | Freezes, margin, fees, fills, login ids, and the working slot |
 | `order/life.hpp` | Order transitions and phase names |
+| `order/line.hpp` | Arrival order of ids at one price |
 | `order/lots.hpp` | Splitting one quantity into orders |
 | `order/parent.hpp` | Parent time slices and a basket header |
 | `order/plan.hpp` | The next order, resting room, slices, and chase prices |
@@ -368,3 +378,4 @@ These calls do not open a socket, do not send an order, and do not start a threa
 | `util/stream.hpp` | Frame checksums and byte-stream reassembly |
 | `util/stride.hpp` | The address of one core's slot |
 | `util/textbuf.hpp` | A fixed text buffer |
+| `util/touch.hpp` | A read of each cache line in a caller buffer |

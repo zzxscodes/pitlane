@@ -21,6 +21,8 @@ void check_window() {
     int64_t px = 0;
     int64_t qty = 0;
     expect(book.best(1, px, qty) && px == 104 && qty == 1, "best bid");
+    expect(book.set(1, 228, 9) && book.best(1, px, qty) && px == 228 && qty == 9, "far bid");
+    expect(book.set(1, 228, 0) && book.best(1, px, qty) && px == 104, "far cleared");
     expect(book.set(1, 104, 0), "clear");
     expect(book.best(1, px, qty) && px == 100 && qty == 3, "next bid");
     expect(book.best(2, px, qty) && px == 108 && qty == 2, "best ask");
@@ -53,6 +55,37 @@ void check_batch() {
     expect(ring.ack(0, 0) && ring.ack(1, 0) && ring.publish_batch(items, 2, 0x1) == 2, "after ack");
 }
 
+void check_line_cover_touch() {
+    pitlane::TimeLine<4> line;
+    uint64_t id = 0;
+    expect(line.push(1) && line.push(2) && line.push(3) && line.front(id) && id == 1, "line");
+    expect(!line.push(2) && line.erase(2) && line.pop(id) && id == 1 && line.pop(id) && id == 3, "erase");
+    expect(line.push(4) && line.push(5) && line.push(6) && line.push(7) && !line.push(8), "line full");
+
+    const int64_t px[] = {100, 102, 99};
+    const int64_t qty[] = {5, 1, 4};
+    expect(pitlane::cover_qty(px, qty, 3, true, 101, 10) == 9, "buy cover");
+    expect(pitlane::cover_qty(px, qty, 3, false, 101, 10) == 1, "sell cover");
+    expect(pitlane::cover_qty(px, qty, 3, true, 100, 3) == 3, "capped");
+
+    unsigned char buf[128]{};
+    buf[0] = 1;
+    buf[127] = 2;
+    pitlane::touch_lines(buf, sizeof buf);
+    expect(buf[0] == 1 && buf[127] == 2, "touch");
+
+    pitlane::FillRing<int, 2> ring;
+    int* slot = ring.claim();
+    expect(slot != nullptr, "claim");
+    *slot = 7;
+    expect(ring.publish(), "pub");
+    slot = ring.claim();
+    *slot = 8;
+    expect(ring.publish() && ring.claim() == nullptr, "full");
+    int got = 0;
+    expect(ring.take(got) && got == 7 && ring.take(got) && got == 8 && !ring.take(got), "order");
+}
+
 void check_margin_and_right() {
     expect(pitlane::margin_both(100, 2, 10, 1, 10, 50) == 200, "money larger");
     expect(pitlane::margin_both(100, 2, 10, 1, 10, 200) == 400, "lot larger");
@@ -68,6 +101,7 @@ int main() {
     check_window();
     check_pool();
     check_batch();
+    check_line_cover_touch();
     check_margin_and_right();
     return g_fails == 0 ? 0 : 1;
 }

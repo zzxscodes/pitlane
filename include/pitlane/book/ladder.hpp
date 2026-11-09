@@ -7,13 +7,14 @@
 namespace pitlane {
 
 // A fixed price window. Quantity sits at (price - lo) / step.
-// Occupied ticks are bits, so the best price skips empty ticks a word at a time.
+// Occupied ticks are bits. A summary bit per word lets the best price skip empty words.
 // A price off the step, or outside the window, is refused and the window stays.
 
 template <int Cap>
 class PriceWindow {
 public:
     static_assert(Cap >= 64 && Cap <= 4096 && Cap % 64 == 0, "price window");
+    static_assert(Cap / 64 <= 64, "summary word");
 
     bool reset(int64_t lo, int64_t step) noexcept {
         if (lo <= 0 || step <= 0) return false;
@@ -22,6 +23,7 @@ public:
         for (int s = 0; s < 2; ++s) {
             for (int i = 0; i < Cap; ++i) qty_[s][i] = 0;
             for (int w = 0; w < kWords; ++w) bit_[s][w] = 0;
+            sum_[s] = 0;
         }
         return true;
     }
@@ -33,30 +35,30 @@ public:
         qty_[s][at] = qty;
         const uint64_t mask = 1ull << (at & 63);
         uint64_t& word = bit_[s][at >> 6];
-        if (qty == 0) word &= ~mask;
-        else word |= mask;
+        const int word_at = at >> 6;
+        if (qty == 0) {
+            word &= ~mask;
+            if (word == 0) sum_[s] &= ~(1ull << word_at);
+        } else {
+            word |= mask;
+            sum_[s] |= 1ull << word_at;
+        }
         return true;
     }
 
     bool best(uint8_t side, int64_t& px, int64_t& qty) const noexcept {
         if (step_ <= 0 || !known_side(side)) return false;
         const int s = side == 1 ? 0 : 1;
+        const uint64_t summary = sum_[s];
+        if (summary == 0) return false;
         if (s == 0) {
-            for (int w = kWords - 1; w >= 0; --w) {
-                const uint64_t bits = bit_[0][w];
-                if (bits == 0) continue;
-                const int b = 63 - __builtin_clzll(bits);
-                return read(0, w * 64 + b, px, qty);
-            }
-        } else {
-            for (int w = 0; w < kWords; ++w) {
-                const uint64_t bits = bit_[1][w];
-                if (bits == 0) continue;
-                const int b = __builtin_ctzll(bits);
-                return read(1, w * 64 + b, px, qty);
-            }
+            const int w = 63 - __builtin_clzll(summary);
+            const int b = 63 - __builtin_clzll(bit_[0][w]);
+            return read(0, w * 64 + b, px, qty);
         }
-        return false;
+        const int w = __builtin_ctzll(summary);
+        const int b = __builtin_ctzll(bit_[1][w]);
+        return read(1, w * 64 + b, px, qty);
     }
 
 private:
@@ -82,6 +84,7 @@ private:
     int64_t step_{0};
     int64_t qty_[2][Cap]{};
     uint64_t bit_[2][kWords]{};
+    uint64_t sum_[2]{};
 };
 
 }  // namespace pitlane

@@ -10,7 +10,7 @@
 
 所有名字都在命名空间 `pitlane` 里。链接 `libpitlane.a`，或者用 `-lpitlane` 链接动态库。动态库的 soname 是 `libpitlane.so.1`。两种链接方式使用同一套头文件。
 
-发行版本是 `kVersion`，当前是 2.1.0，并拆成 `kVersionMajor`、`kVersionMinor` 和 `kVersionPatch`。`kDeskVersion` 是映射文件的布局版本，当前是 2。库的一次新发行可以保持布局版本不动。
+发行版本是 `kVersion`，当前是 2.2.0，并拆成 `kVersionMajor`、`kVersionMinor` 和 `kVersionPatch`。`kDeskVersion` 是映射文件的布局版本，当前是 2。库的一次新发行可以保持布局版本不动。
 
 头文件分在 `pitlane/desk/`、`pitlane/book/`、`pitlane/order/`、`pitlane/time/`、`pitlane/study/` 和 `pitlane/util/` 下面。`version.hpp` 与 `pitlane.hpp` 同一层。下面的表在路径里写了区域。
 
@@ -294,6 +294,14 @@ book.apply(edits, 1);
 
 `margin_both` 返回 `价格 * 数量 * 乘数 * 金额分子 / 金额分母` 和 `每手 * 数量` 里较大的一笔。参数不合法时返回 0。溢出时返回有符号最大值。`right_value` 里方向 1 是认购，2 是认沽。方向不认识，或者价格为负，返回 -1。
 
+`FillRing` 是一个写入者和一个读取者。`claim` 返回一个可以就地填写的槽。`publish` 让这个槽可见。`cancel` 丢掉还没有发布的占用。`take` 抄出最早发布的槽。写入者记住上次看到的读取序号，读取者记住上次看到的发布序号。只有本端的副本显示环已满或已空时，才再次读取共享序号。环满，或者已经占着一个槽，再次占用就失败，已有内容不被盖掉。
+
+`TimeLine<Cap>` 按从旧到新保存同一个价格上的编号。`Cap` 是 4 到 256 之间的 2 的幂。`push` 拒绝编号 0、重复编号和已满的队列。`pop` 去掉最前面的编号。`erase` 去掉一个编号，其余编号的先后不变。拒绝时队列保持原样。
+
+`cover_qty` 走调用方已经拿着的价格和数量。买入计入小于等于限价的价格。卖出计入大于等于限价的价格。价格或数量不是正数就跳过。加总到 `need` 就停。数组保持原样。
+
+`touch_lines` 在每一条缓存行上读一个字节，也读最后一个字节。空指针或长度是 0 时什么都不做。
+
 ## 调用所在的头文件
 
 | 头文件 | 内容 |
@@ -301,6 +309,7 @@ book.apply(edits, 1);
 | `version.hpp` | 库的发行版本 `kVersion` |
 | `book/bar.hpp` | 由调用方标成可交易的 tick 生成的 K 线 |
 | `book/calendar.hpp` | 交易日和交易时段 |
+| `book/cover.hpp` | 满足限价的可见数量 |
 | `book/cross.hpp` | 限价簿和集合竞价 |
 | `book/lags.hpp` | 时段时延和采样时延 |
 | `book/ladder.hpp` | 固定价格窗口和有量的最优价 |
@@ -327,6 +336,7 @@ book.apply(edits, 1);
 | `order/lane.hpp` | 通道规则和 `Cause` |
 | `order/ledger.hpp` | 冻结、保证金、费用、成交回写、登录编号和在途槽 |
 | `order/life.hpp` | 委托状态迁移和状态名字 |
+| `order/line.hpp` | 同一个价格上编号的到达顺序 |
 | `order/lots.hpp` | 把一笔数量拆成多张单 |
 | `order/parent.hpp` | 母单时间切片和篮子头 |
 | `order/plan.hpp` | 下一张单、可挂数量、切片和追价 |
@@ -368,3 +378,4 @@ book.apply(edits, 1);
 | `util/stream.hpp` | 帧校验和字节流重组 |
 | `util/stride.hpp` | 某一个核那一槽的地址 |
 | `util/textbuf.hpp` | 定长文本 |
+| `util/touch.hpp` | 读调用方缓冲区里的每一条缓存行 |
