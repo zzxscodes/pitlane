@@ -270,6 +270,16 @@ These calls do not open a socket, do not send an order, and do not start a threa
 
 `gate_ask` runs the checks for one enter or one pull and returns the first cause. A null list, rule, wash table, or flow window is skipped. An enter with a limit price requires a positive price and quantity. A symbol on the list is blocked. A channel that refuses a pull returns the pull-cap cause. A channel that refuses the price mode returns the price cause. Any other channel refusal is blocked. Deviation runs for a limit enter when the cap is zero or positive. Wash runs for an enter when the table is present. The flow window is updated only after those checks pass. A window that is already at the limit returns the order-flow cause, or the pull-flow cause for a pull, and is left unchanged. The call does not send the order.
 
+## Research and a caller decision
+
+`feat_of` reads the top of a book the caller already holds. It returns the spread, the mid, the imbalance, and a microprice. The microprice weights each price by the size on the other side and divides with a wide product, so the quotient is a whole price. A book with no size on either side uses the mid. A bid that is missing, or an ask below the bid, is refused.
+
+`horizon_ticks` turns up to four later prices into whole ticks, truncated toward zero. A negative later price is unset and is written as zero, which is also the result of a flat move. The caller knows which horizons were filled. A buy gains when the later price is higher. A sell gains when it is lower.
+
+`RelBook` stores one underlying for each name, up to 64 names. A later bind for the same name replaces the underlying. `related` copies the names that point at one underlying until the buffer is full. `FactorBoard` stores four latest values for each of 64 names. A later put replaces that slot. `Replay` walks a table the caller already holds. It does not open a file.
+
+`study_step` applies one quote batch, then fills the feature from the new top. The book is updated before the feature is judged. A null choice, or a choice that returns false, leaves the sheet unchanged. A choice that returns an order is checked with `gate_ask` when a gate is present, and then staged on the sheet when a sheet is present. A refused order leaves the sheet unchanged. A local id of zero is refused when a sheet is present. The call does not send the order. The function the caller passes is the place a strategy is written. The library does not choose the side or the price.
+
 ## Where the calls live
 
 | Header | What it covers |
@@ -299,6 +309,7 @@ These calls do not open a socket, do not send an order, and do not start a threa
 | `steps.hpp` | Tick bands and price walks |
 | `life.hpp` | Order transitions and phase names |
 | `sheet.hpp` | One order sheet and one pass over the checks |
+| `study.hpp` | Book features, markouts, relations, factors, replay, and one research step |
 | `bind.hpp` | Counter ids and out-of-order reports |
 | `lane.hpp` | Channel rules and `Cause` |
 | `judge.hpp` | List, flow, ratio, deviation, and self-trade checks |
