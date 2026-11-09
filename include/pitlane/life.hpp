@@ -51,4 +51,19 @@ inline Phase life_next(Phase from, LifeEvent ev) noexcept {
     return Phase::None;
 }
 
+inline const char* phase_text(Phase phase) noexcept {
+    switch (phase) {
+        case Phase::None: return "none";
+        case Phase::Staged: return "staged";
+        case Phase::Working: return "working";
+        case Phase::Partial: return "partial";
+        case Phase::PullWait: return "pull";
+        case Phase::Filled: return "filled";
+        case Phase::Cancelled: return "cancel";
+        case Phase::Denied: return "denied";
+        case Phase::Expired: return "expired";
+    }
+    return "unknown";
+}
+
 }  // namespace pitlane

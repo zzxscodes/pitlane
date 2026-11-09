@@ -50,6 +50,7 @@
 #include "pitlane/seqgate.hpp"
 #include "pitlane/seqwin.hpp"
 #include "pitlane/shed.hpp"
+#include "pitlane/sheet.hpp"
 #include "pitlane/sig.hpp"
 #include "pitlane/sign.hpp"
 #include "pitlane/signal.hpp"
