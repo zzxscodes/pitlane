@@ -537,6 +537,15 @@ void check_sign_rest() {
     expect(!acks.link(num), "row was not cleared");
 }
 
+static void check_typed() {
+    auto draft = pitlane::ticket_draft(9, 10);
+    auto live = pitlane::go_live(pitlane::mark_ready(draft));
+    live = pitlane::apply_fill(live, 3);
+    expect(pitlane::ticket_id(live) == 9 && pitlane::ticket_leaves(live) == 7, "typed live");
+    auto done = pitlane::seal(live);
+    expect(pitlane::ticket_leaves(done) == 0, "typed done");
+}
+
 int main() {
     check_lots();
     check_ledger();
@@ -555,6 +564,7 @@ int main() {
     check_flight();
     check_sign_ack();
     check_sign_rest();
+    check_typed();
     if (g_fails) {
         std::fprintf(stderr, "%d order check(s) failed\n", g_fails);
         return 1;

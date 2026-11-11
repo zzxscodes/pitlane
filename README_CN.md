@@ -14,13 +14,13 @@ pitlane 是一个 C++17 静态库。它给同一台机器上的交易进程准�
 
 使用时包含 `include/pitlane/pitlane.hpp`，链接 `libpitlane.a`。类型和函数都在命名空间 `pitlane` 中。这套接口是单独设计的，不能用来替换已经在运行的其他交易库。
 
-库的发行版本是 2.3.0。`version.hpp` 里的 `pitlane::kVersion` 是同一串文字。动态库文件名带这个版本，soname 保持 `libpitlane.so.1`。工作区布局版本是 `kDeskVersion`，当前是 2。
+库的发行版本是 2.5.0。`version.hpp` 里的 `pitlane::kVersion` 是同一串文字。动态库文件名带这个版本，soname 保持 `libpitlane.so.1`。工作区布局版本是 `kDeskVersion`，当前是 2。
 
-头文件和源文件按区域再分一层目录。`desk` 放共享区和上面的记录。`book` 放行情、交易日和纸面撮合。`order` 放委托生命周期、检查和持仓。`time` 放时钟和延迟记录。`study` 放特征、事后偏移和调用方的决定。`util` 放数值、文本、组帧和定长缓冲。某个区域的源文件在 `src` 下的同名目录里。某个区域的测试在 `tests` 下的同名目录里。延迟程序是 `tests/time/perf.cpp`。单独包含某个头文件时写上区域，例如 `pitlane/order/sheet.hpp`。`version.hpp` 和 `pitlane.hpp` 放在同一层。
+头文件和源文件按区域再分一层目录。`desk` 放共享区和上面的记录。`book` 放行情、交易日和纸面撮合。`order` 放委托生命周期、检查和持仓。`time` 放时钟和延迟记录。`study` 放特征、事后偏移和调用方决策辅助。`util` 放数值、文本、组帧和定长缓冲。`host` 放进程侧的 `sched_setaffinity`、调度策略、IRQ 亲和性、显式大页池、`mlockall` 与 NUMA membind。某个区域若有编译单元，源文件在 `src` 下的同名目录里。某个区域的测试在 `tests` 下的同名目录里。延迟程序是 `tests/time/perf.cpp`。单独包含某个头文件时写上区域，例如 `pitlane/order/sheet.hpp`。`version.hpp` 和 `pitlane.hpp` 放在同一层。
 
 `PriceWindow` 在固定的价格步长上存放数量。最优价沿着占用位往前找，空档按字跳过。`publish_batch` 一次写入多条环槽，尾指针只推进一次。其中一条还忙着，整批都不写入。`SlotPool` 用固定槽保存调用方的记录，并按编号查找。`margin_both` 取按金额和按手数两笔保证金里较大的一笔。`right_value` 给出认购或认沽处于实值的幅度。这些调用都不发单。
 
-`FillRing` 在本端留着对方序号的副本，只有这份副本显示环已满或已空时，才去读共享序号。每个槽独占一条缓存行。`take_span` 一次抄出多条已发布的槽，读取序号只存一次。`ack_span` 连续确认一段环位置，遇到这个读者确认不了的位置就停。`shown_before` 把价格窗里严格优于某个价格的数量加起来。`ExtremeWindow` 保留调用方最近推入的若干价格里的最高价和最低价。`TimeLine` 按到达顺序保存同一个价格上的编号。`cover_qty` 把满足限价的可见数量加起来，加到所要的数量就停。`touch_lines` 读调用方已经拿着的缓冲区里的每一条缓存行。这些调用都不撮合成交。
+`FillRing` 在本端缓存对端序号；仅当本地副本表明环满或环空时，才重新加载共享序号。每个槽独占一条缓存行。`take_span` 一次复制多条已发布槽，消费者序号只持久化一次。`ack_span` 连续确认一段环下标，遇本读者无法确认的位置即停。`shown_before` 对价格窗内严格优于给定价格的数量求和。`ExtremeWindow` 在固定容量的单调双端队列上维护最近推入价格的极值。`TimeLine` 按到达顺序保存同一价格上的编号。`cover_qty` 对满足限价的可见数量累加，达到目标数量即停；买入与卖出分属两条循环。AVX2 一次比较四个价格，SSE4.2 比较两个，其余用四级展开的标量收尾。`touch_lines` 按缓存行预取并加载。`map_create` / `map_attach` 默认按内核 Hugepagesize 对齐映射长度，优先在 hugetlbfs（默认 `/dev/hugepages`）上建立显式大页文件映射；不可用时回退普通页并置 `fallback`。不用 THP / `MADV_HUGEPAGE`。`ByteArena` 默认 `MAP_HUGETLB`，失败则回退普通匿名页。`SpinLock` 为独占缓存行的 TTAS 自旋锁。`DagPlan` 以灰/黑染色求拓扑序。类型态票据以编译期标签禁止非法成交调用。`OwnPair` 保存调用方本地双边最优价。`SeqPublishRing` 为无背压序号发布环，读者落后时允许覆写未消费槽；`FanRing` 与 `FillRing` 满环仍失败并保持原内容。`global_scale_set` 写入进程内共享的整数 TSC 周期换算系数。`DecideScratch` 仅暂存并比较调用方给出的候选评分。`batch_size_for` 按积压自适应微批大小。`RankBits` / `QuadTab` 提供有界编号稠密下标与四键缓存行静态表。`host/` 提供 `sched_setaffinity`、实时调度、IRQ 亲和、`nr_hugepages` / `thp_disable`、`mlockall` 与 NUMA `mbind`。`util/hint.hpp` 与 `util/simd.hpp` 提供分支提示、冷热布局、预取、打包清零、非时间性存储与打包拷贝。这些调用都不撮合成交。
 
 ## 共享区
 
@@ -151,7 +151,7 @@ xychart-beta
 
 柱是上面的中位数。折线是 2 微秒的上限。
 
-编译时打开常规警告，并把警告当作错误。安装到指定目录：
+默认构建使用 `-O3`、`-fno-exceptions` 和 `-fno-rtti`，并打开 `-march=native` 与链接时优化。二进制要跑在别的 CPU 上，或者工具链没有 IPO 时，用 `-DPITLANE_NATIVE=OFF` 和 `-DPITLANE_LTO=OFF` 关掉。配置指导优化先用 `-DPITLANE_PGO=GENERATE` 跑一轮，再用 `-DPITLANE_PGO=USE`。热路径上的打包清零、拷贝和价格比较在头文件里用 SSE2/SSE4.2/AVX2 内建写好，并带标量回退，不依赖编译器自动向量化。不用 AVX-512。共享区与 `ByteArena` 默认走显式大页（hugetlbfs / `MAP_HUGETLB`），不用 THP；不可用时回退普通页。可用 `thp_disable`、`hugepage_count_ensure`、`mem_lock_all` 与 NUMA membind 配齐进程环境。带检测的构建保持 `-O1`，并且不开 LTO。常规警告仍然打开，并当作错误。安装到指定目录：
 
 ```bash
 cmake --install pitlane/build --prefix /opt/pitlane

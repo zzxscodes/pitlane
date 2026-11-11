@@ -367,8 +367,8 @@ static void check_session() {
 }
 
 int main() {
-    expect(pitlane::kVersionMajor == 2 && pitlane::kVersionMinor == 3 && pitlane::kVersionPatch == 0, "release");
-    expect(std::strcmp(pitlane::kVersion, "2.3.0") == 0, "release text");
+    expect(pitlane::kVersionMajor == 2 && pitlane::kVersionMinor == 5 && pitlane::kVersionPatch == 0, "release");
+    expect(std::strcmp(pitlane::kVersion, "2.5.0") == 0, "release text");
     check_ring();
     check_batch();
     check_ids();

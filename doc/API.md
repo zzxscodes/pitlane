@@ -10,9 +10,9 @@ Include one header:
 
 Everything is in the namespace `pitlane`. Link `libpitlane.a`, or link the shared library with `-lpitlane`. The shared library's soname is `libpitlane.so.1`. The headers are the same for both.
 
-The release is `kVersion`, currently 2.3.0, also split into `kVersionMajor`, `kVersionMinor`, and `kVersionPatch`. `kDeskVersion` is the mapping-file layout and is currently 2. A new library release can leave the layout number where it is.
+The release is `kVersion`, currently 2.5.0, also split into `kVersionMajor`, `kVersionMinor`, and `kVersionPatch`. `kDeskVersion` is the mapping-file layout and is currently 2. A new library release can leave the layout number where it is.
 
-Headers live under `pitlane/desk/`, `pitlane/book/`, `pitlane/order/`, `pitlane/time/`, `pitlane/study/`, and `pitlane/util/`. `version.hpp` stays beside `pitlane.hpp`. The table below names the area in the path.
+Headers live under `pitlane/desk/`, `pitlane/book/`, `pitlane/order/`, `pitlane/time/`, `pitlane/study/`, `pitlane/util/`, and `pitlane/host/`. `version.hpp` stays beside `pitlane.hpp`. The table below names the area in the path.
 
 Prices and quantities are integers. Timestamps are microseconds. A side value of 1 buys and 2 sells. Most calls report failure by a `false`, a negative count, or a `Why` other than `Why::None`. They do not throw for ordinary rejects. A full ring or a full queue fails the write and leaves the previous contents in place.
 
@@ -27,9 +27,9 @@ pitlane::Desk* desk = pitlane::desk_view(&map, 1);
 if (!desk) return 1;
 ```
 
-`map_create` creates or extends the file and does not wipe an existing mapping. `desk_view` returns the desk only when the magic is `PITLANE1` and the layout version is `kDeskVersion`, which is 2. The second argument formats a still-blank file when it is non-zero. A file with the wrong magic is left untouched and the call returns null. After the magic is written, do not format the mapping again.
+`map_create` creates or extends the file and does not wipe an existing mapping. The default `MapOpt` uses explicit huge pages only: length rounds to Hugepagesize, and the file is placed on hugetlbfs (default `/dev/hugepages` as `pitlane_<basename>`), or at the caller path when that path is already on hugetlbfs. THP / `MADV_HUGEPAGE` are never used. When explicit pages are unavailable the mapping falls back to the caller path and sets `MapInfo::fallback`. `mlock` is attempted by default; `numa_node >= 0` binds the range with `MPOL_BIND`. `desk_view` returns the desk only when the magic is `PITLANE1` and the layout version is `kDeskVersion`, which is 2. The second argument formats a still-blank file when it is non-zero. A file with the wrong magic is left untouched and the call returns null. After the magic is written, do not format the mapping again.
 
-Another process attaches with `map_attach` and passes 0 to `desk_view`. `map_release` unmaps and closes the file. Each ring has one writer. Readers do not share a cursor.
+Another process attaches with `map_attach` and passes 0 to `desk_view` (same logical path so both sides resolve the same hugetlbfs file). `map_release` unmaps; if the mapping was locked it calls `munlock` first, then closes the file. Each ring has one writer. Readers do not share a cursor.
 
 `desk->clock_us` is the session clock in microseconds. `DeskLoop::beat` stores the time it is given there.
 
@@ -300,9 +300,11 @@ These calls do not open a socket, do not send an order, and do not start a threa
 
 `TimeLine<Cap>` stores ids at one price, oldest at the front. `Cap` is a power of two from 4 to 256. `push` refuses id 0, a duplicate, and a full line. `pop` removes the front. `erase` removes one id and keeps the order of the rest. A refused call leaves the line unchanged.
 
-`cover_qty` walks prices and quantities the caller already holds. A buy counts a price at or below the limit. A sell counts a price at or above it. Non-positive prices and quantities are skipped. The sum stops at `need`. The arrays stay as they were.
+`cover_qty` walks prices and quantities the caller already holds. A buy counts a price at or below the limit. A sell counts a price at or above it. Buy and sell are separate loops. On SSE4.2 each step compares two prices in one packed compare. A four-wide scalar peel finishes the rest. Non-positive prices and quantities are skipped. The sum stops at `need`. The arrays stay as they were.
 
-`touch_lines` reads one byte on each cache line of a range, including the last byte. A null pointer or a zero length does nothing.
+`touch_lines` prefetches and loads each cache line of a range, including the last byte. On SSE2 the load is a packed 16-byte read. A null pointer or a zero length does nothing.
+
+`util/hint.hpp` holds `likely` / `unlikely`, hot and cold placement, cache-line size, and prefetch. `util/simd.hpp` holds packed `zero_i64`, `zero_i64_stream`, `copy_bytes`, `bytes_eq`, and the buy/sell cover helpers. AVX2 clears and compares four int64 values when the build defines it. Both keep a scalar body when the ISA is missing. `ByteArena` is a fixed-capacity anonymous bump arena; by default it maps with `MAP_HUGETLB` (no THP) and falls back to ordinary anonymous pages with `fallback` set when none are reserved; `mlock` and NUMA bind are attempted by default. A full arena fails the next take. `batch_size_for` picks an adaptive micro-batch size from backlog. `RankBits` builds dense ranks with word prefixes and popcount; `QuadTab` seats static keys four per cache line. `SpinLock` is a TTAS lock on its own cache line. `bound.hpp` holds one-compare index checks and a walk budget. `DagPlan` builds a grey/black topological order. Typed tickets make illegal fills uncallable at compile time. `OwnPair` keeps two local tops. `pick_cut` and `tandem_lat` report how to cut a path from intervals the caller already measured. `SeqPublishRing` is a no-backpressure sequence ring that may overwrite unread slots. `global_scale_set` stores a process-wide integer TSC cycle scale. `DecideScratch` holds scored candidate intents the caller arms. `host/` provides `sched_setaffinity`, scheduling policy and nice, IRQ `smp_affinity_list`, `nr_hugepages` / `thp_disable`, `mlockall`, and NUMA `mbind`; refused privileged calls return false.
 
 ## Where the calls live
 
@@ -315,6 +317,7 @@ These calls do not open a socket, do not send an order, and do not start a threa
 | `book/cross.hpp` | The limit book and the call auction |
 | `book/lags.hpp` | Session bands and sampled delay |
 | `book/ladder.hpp` | A fixed price window and the best occupied tick |
+| `book/own.hpp` | Local tops of book the caller feeds |
 | `book/quote.hpp` | Quote batches, the print log, and minute rolls |
 | `book/steps.hpp` | Tick bands and price walks |
 | `book/venue.hpp` | `PaperVenue` |
@@ -325,12 +328,18 @@ These calls do not open a socket, do not send an order, and do not start a threa
 | `desk/ids.hpp` | `IdMint` |
 | `desk/logline.hpp` | `Log` |
 | `desk/names.hpp` | `NameBook` |
-| `desk/region.hpp` | The desk, the mapping, and the ring capacities |
+| `desk/region.hpp` | The desk, `MapOpt` file mapping, and ring capacities |
 | `desk/ring.hpp` | `FanRing` |
 | `desk/runtime.hpp` | `DeskLoop` |
 | `desk/signal.hpp` | `PulseBoard` |
 | `desk/types.hpp` | `Intent`, `Report`, `Quote`, sides, styles, phases, and `Why` |
 | `desk/wire.hpp` | Algo, control, pulse, print, query, and parcel slots |
+| `host/affinity.hpp` | Set CPU affinity for the calling thread or process |
+| `host/hugepage.hpp` | `nr_hugepages`, Hugepagesize, `thp_disable` |
+| `host/memlock.hpp` | Process-wide `mlockall` / `munlockall` |
+| `host/irq.hpp` | Read and write IRQ `smp_affinity_list` |
+| `host/numa.hpp` | NUMA node query and range `mbind` |
+| `host/priority.hpp` | `SCHED_FIFO` / `SCHED_RR` / `SCHED_OTHER` and nice |
 | `order/ack.hpp` | Place and cancel acknowledgement timers |
 | `order/bind.hpp` | Counter ids and out-of-order reports |
 | `order/inbound.hpp` | Commands waiting for their due time |
@@ -348,11 +357,16 @@ These calls do not open a socket, do not send an order, and do not start a threa
 | `order/sheet.hpp` | One order sheet and one pass over the checks |
 | `order/sign.hpp` | Check counts and opening quota |
 | `order/ticket.hpp` | Command snapshot and revision |
+| `order/typed.hpp` | Compile-time ticket tags |
 | `study/corp.hpp` | Corporate-action price factors |
+| `study/decide.hpp` | Scored candidate intents: store and compare |
 | `study/extreme.hpp` | High and low over the last fixed run of prices |
+| `study/plan.hpp` | A grey-black factor order and a fixed act list |
 | `study/study.hpp` | Book features, markouts, relations, factors, replay, and one research step |
 | `time/clock.hpp` | A published cycle scale and wall time |
+| `time/cut.hpp` | Solo versus split path choice from measured gaps |
 | `time/cycle.hpp` | Cycle reads, an integer scale, and a cached microsecond |
+| `time/global.hpp` | Process-wide integer TSC cycle scale |
 | `time/lap.hpp` | Differences of timestamps the caller stored |
 | `time/mag.hpp` | Magnitude buckets and paced notes |
 | `time/sample.hpp` | A fixed list of samples |
@@ -362,21 +376,30 @@ These calls do not open a socket, do not send an order, and do not start a threa
 | `time/trace.hpp` | Latency samples, clock offset, and buckets |
 | `time/urgent.hpp` | One tag that does not wait in a queue |
 | `time/wheel.hpp` | A tick wheel |
+| `util/arena.hpp` | Fixed-capacity arena with default explicit huge pages |
+| `util/batch.hpp` | Adaptive micro-batch size from backlog |
+| `util/bound.hpp` | One-compare bounds and a walk budget |
 | `util/chunk.hpp` | Sparse price blocks and cancel handles |
 | `util/drill.hpp` | Clocks, budgets, ladders, and plain records for tests |
 | `util/fillring.hpp` | A slot filled in place |
 | `util/frame.hpp` | Frames, sequence gaps, and reordering |
 | `util/grace.hpp` | Reader epochs and a retire list |
 | `util/hex.hpp` | Hex and a byte compare |
+| `util/hint.hpp` | Branch tips, hot and cold placement, and prefetch |
 | `util/mix64.hpp` | A split mix |
 | `util/mold.hpp` | Prepared frames, block length, and an id that can be returned |
 | `util/numeric.hpp` | Wide products used by the checks |
+| `util/page.hpp` | Ordinary and huge page sizes; byte round-up |
 | `util/pace.hpp` | Token buckets and theoretical arrival times |
 | `util/readwin.hpp` | The slowest reader plus a window |
 | `util/seqgate.hpp` | Sequence gap recovery |
+| `util/seqpub.hpp` | No-backpressure sequence ring; may overwrite unread slots |
 | `util/seqwin.hpp` | A sequence window that stops at a hole |
+| `util/rankbits.hpp` | `RankBits` dense ranks and `QuadTab` four-key lines |
 | `util/sig.hpp` | Signature buckets |
+| `util/simd.hpp` | Packed clear, packed copy, and cover helpers |
 | `util/snap.hpp` | Snapshot slots published as a whole |
+| `util/spin.hpp` | A TTAS spin lock on its own line |
 | `util/stage.hpp` | A ring finished in claim order |
 | `util/stream.hpp` | Frame checksums and byte-stream reassembly |
 | `util/stride.hpp` | The address of one core's slot |

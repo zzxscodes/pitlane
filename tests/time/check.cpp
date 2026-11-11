@@ -203,6 +203,15 @@ static void check_trace() {
     expect(hist.at(0) == 2 && hist.at(1) == 1 && hist.at(2) == 1 && hist.cum(1) == 3, "cumulative");
 }
 
+static void check_cut() {
+    expect(pitlane::pick_cut(500, 1000, true, 2) == pitlane::CutChoice::KeepSolo, "solo");
+    expect(pitlane::pick_cut(2000, 1000, false, 8) == pitlane::CutChoice::FanoutStateless, "fanout");
+    expect(pitlane::pick_cut(2000, 1000, true, 2) == pitlane::CutChoice::SplitStateful, "split");
+    const uint64_t arrivals[] = {0, 10, 20};
+    uint64_t out[3]{};
+    expect(pitlane::tandem_lat(arrivals, 3, 30, 2, 1, out, 3) == 3 && out[0] == 31, "tandem");
+}
+
 int main() {
     check_cycles();
     check_hist_and_laps();
@@ -213,6 +222,7 @@ int main() {
     check_simclock();
     check_sample();
     check_trace();
+    check_cut();
     if (g_fails) {
         std::fprintf(stderr, "%d time check(s) failed\n", g_fails);
         return 1;
