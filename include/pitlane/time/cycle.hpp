@@ -1,5 +1,6 @@
 #pragma once
 
+#include "pitlane/util/hint.hpp"
 #include "pitlane/util/numeric.hpp"
 
 #include <atomic>
@@ -11,9 +12,9 @@ namespace pitlane {
 // The caller owns every object. The library does not start a thread,
 // does not open a socket, and does not call a clock in the measured section.
 
-inline void compiler_fence() noexcept { asm volatile("" ::: "memory"); }
+PITLANE_INLINE void compiler_fence() noexcept { asm volatile("" ::: "memory"); }
 
-inline void cpu_relax() noexcept {
+PITLANE_INLINE void cpu_relax() noexcept {
 #if defined(__x86_64__) || defined(__i386__)
     asm volatile("pause" ::: "memory");
 #else
@@ -21,7 +22,7 @@ inline void cpu_relax() noexcept {
 #endif
 }
 
-inline void load_fence() noexcept {
+PITLANE_INLINE void load_fence() noexcept {
 #if defined(__x86_64__) || defined(__i386__)
     asm volatile("lfence" ::: "memory");
 #else
@@ -30,11 +31,11 @@ inline void load_fence() noexcept {
 }
 
 template <class T>
-inline void keep(const T& value) noexcept {
+PITLANE_INLINE void keep(const T& value) noexcept {
     asm volatile("" : : "m"(value) : "memory");
 }
 
-inline bool cycles_read(uint64_t& out) noexcept {
+PITLANE_HOT PITLANE_INLINE bool cycles_read(uint64_t& out) noexcept {
 #if defined(__x86_64__) || defined(__i386__)
     unsigned lo = 0;
     unsigned hi = 0;
@@ -47,7 +48,7 @@ inline bool cycles_read(uint64_t& out) noexcept {
 #endif
 }
 
-inline bool cycles_ordered(uint64_t& out) noexcept {
+PITLANE_HOT PITLANE_INLINE bool cycles_ordered(uint64_t& out) noexcept {
 #if defined(__x86_64__) || defined(__i386__)
     unsigned lo = 0;
     unsigned hi = 0;
@@ -62,23 +63,23 @@ inline bool cycles_ordered(uint64_t& out) noexcept {
 #endif
 }
 
-inline bool cycle_gap(uint64_t begin, uint64_t end, uint64_t& out) noexcept {
-    if (end < begin) return false;
+PITLANE_INLINE bool cycle_gap(uint64_t begin, uint64_t end, uint64_t& out) noexcept {
+    if (unlikely(end < begin)) return false;
     out = end - begin;
     return true;
 }
 
 // One cache line. The caller writes it. Hot path code only loads it.
-struct alignas(64) UsSlot {
+struct alignas(kCacheLine) UsSlot {
     std::atomic<int64_t> us{0};
-    unsigned char pad_[64 - sizeof(std::atomic<int64_t>)]{};
+    unsigned char pad_[kCacheLine - sizeof(std::atomic<int64_t>)]{};
 };
 
-static_assert(sizeof(UsSlot) == 64, "microsecond slot occupies one line");
+static_assert(sizeof(UsSlot) == kCacheLine, "microsecond slot occupies one line");
 
-inline void us_store(UsSlot& slot, int64_t us) noexcept { slot.us.store(us, std::memory_order_release); }
+PITLANE_INLINE void us_store(UsSlot& slot, int64_t us) noexcept { slot.us.store(us, std::memory_order_release); }
 
-inline int64_t us_load(const UsSlot& slot) noexcept { return slot.us.load(std::memory_order_acquire); }
+PITLANE_INLINE int64_t us_load(const UsSlot& slot) noexcept { return slot.us.load(std::memory_order_acquire); }
 
 // Nanoseconds are (cycles * mult + half) >> shift. The caller supplies the pair.
 struct CycleScale {
@@ -104,8 +105,8 @@ inline bool scale_set(CycleScale& scale, uint64_t cycles, uint64_t ns) noexcept 
     return false;
 }
 
-inline bool scale_ns(const CycleScale& scale, uint64_t cycles, uint64_t& ns) noexcept {
-    if (!scale.on || scale.shift == 0 || scale.shift >= 64) return false;
+PITLANE_HOT PITLANE_INLINE bool scale_ns(const CycleScale& scale, uint64_t cycles, uint64_t& ns) noexcept {
+    if (unlikely(!scale.on || scale.shift == 0 || scale.shift >= 64)) return false;
     if (cycles == 0) {
         ns = 0;
         return true;

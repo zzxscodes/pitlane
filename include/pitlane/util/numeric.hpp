@@ -1,21 +1,23 @@
 #pragma once
 
+#include "pitlane/util/hint.hpp"
+
 #include <cstdint>
 
 namespace pitlane {
 
-inline int sign_of(int64_t v) noexcept { return (v > 0) - (v < 0); }
-inline int sign_of(double v) noexcept { return (v > 0) - (v < 0); }
+PITLANE_INLINE int sign_of(int64_t v) noexcept { return (v > 0) - (v < 0); }
+PITLANE_INLINE int sign_of(double v) noexcept { return (v > 0) - (v < 0); }
 
-inline int64_t round_down_to(int64_t v, int64_t step) noexcept {
-    if (step <= 0) return v;
-    if (v >= 0) return (v / step) * step;
+PITLANE_INLINE int64_t round_down_to(int64_t v, int64_t step) noexcept {
+    if (unlikely(step <= 0)) return v;
+    if (likely(v >= 0)) return (v / step) * step;
     const int64_t q = v / step;
     return q * step == v ? v : (q - 1) * step;
 }
 
-inline int64_t round_up_to(int64_t v, int64_t step) noexcept {
-    if (step <= 0) return v;
+PITLANE_INLINE int64_t round_up_to(int64_t v, int64_t step) noexcept {
+    if (unlikely(step <= 0)) return v;
     const int64_t down = round_down_to(v, step);
     return down == v ? v : down + step;
 }
@@ -54,7 +56,7 @@ struct Wide {
     uint64_t lo{0};
 };
 
-inline Wide mul_wide(uint64_t a, uint64_t b) noexcept {
+PITLANE_HOT PITLANE_INLINE Wide mul_wide(uint64_t a, uint64_t b) noexcept {
     const uint64_t a0 = a & 0xffffffffull;
     const uint64_t a1 = a >> 32;
     const uint64_t b0 = b & 0xffffffffull;
@@ -70,7 +72,7 @@ inline Wide mul_wide(uint64_t a, uint64_t b) noexcept {
     return w;
 }
 
-inline int cmp_wide(Wide a, Wide b) noexcept {
+PITLANE_INLINE int cmp_wide(Wide a, Wide b) noexcept {
     if (a.hi != b.hi) return a.hi < b.hi ? -1 : 1;
     if (a.lo != b.lo) return a.lo < b.lo ? -1 : 1;
     return 0;
@@ -88,8 +90,8 @@ inline int cmp_prod(int64_t a, int64_t b, int64_t c, int64_t d) noexcept {
 
 // Quotient of a 128-bit value and a 64-bit divisor. Fails when the quotient does not fit in 64 bits.
 // den must be small enough that a remainder below den can be shifted by one bit.
-inline bool div_wide(Wide w, uint64_t den, uint64_t& q) noexcept {
-    if (den == 0 || den > (UINT64_MAX >> 1) || w.hi >= den) return false;
+PITLANE_HOT bool div_wide(Wide w, uint64_t den, uint64_t& q) noexcept {
+    if (unlikely(den == 0 || den > (UINT64_MAX >> 1) || w.hi >= den)) return false;
     uint64_t rem = 0;
     for (int i = 63; i >= 0; --i) {
         rem = (rem << 1) | ((w.hi >> static_cast<unsigned>(i)) & 1ull);

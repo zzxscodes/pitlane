@@ -346,6 +346,10 @@ static void check_cover() {
     expect(pitlane::cover_qty(px, qty, 3, true, 101, 10) == 9, "buy cover");
     expect(pitlane::cover_qty(px, qty, 3, false, 101, 10) == 1, "sell cover");
     expect(pitlane::cover_qty(px, qty, 3, true, 100, 3) == 3, "capped");
+    const int64_t wide_px[] = {100, 101, 102, 103, 104, 105, 90, 91};
+    const int64_t wide_qty[] = {1, 1, 1, 1, 1, 1, 2, 2};
+    expect(pitlane::cover_qty(wide_px, wide_qty, 8, true, 103, 100) == 8, "buy lane");
+    expect(pitlane::cover_qty(wide_px, wide_qty, 8, false, 104, 100) == 2, "sell lane");
 }
 
 static void check_target() {
@@ -384,6 +388,29 @@ static void check_session_book() {
     expect(matched == 5 && px == 10, "closer price");
 }
 
+static void check_own() {
+    pitlane::OwnPair pair;
+    pair.want_a = 1;
+    pair.want_b = 2;
+    pitlane::TopQuote a{};
+    a.venue = 1;
+    a.live = 1;
+    a.bid_px = 105;
+    a.ask_px = 106;
+    a.bid_sz = 1;
+    a.ask_sz = 1;
+    pitlane::TopQuote b{};
+    b.venue = 2;
+    b.live = 1;
+    b.bid_px = 100;
+    b.ask_px = 101;
+    b.bid_sz = 1;
+    b.ask_sz = 1;
+    pair.feed(a);
+    pair.feed(b);
+    expect(pair.ready() && pair.cross_ticks() == 4, "own cross");
+}
+
 int main() {
     check_steps();
     check_books();
@@ -397,6 +424,7 @@ int main() {
     check_cover();
     check_target();
     check_session_book();
+    check_own();
     if (g_fails) {
         std::fprintf(stderr, "%d book check(s) failed\n", g_fails);
         return 1;

@@ -385,6 +385,97 @@ static void check_readers() {
     expect(!pitlane::core_slot(block, 1, 4, 32, at), "short stride");
 }
 
+static void check_seqpub() {
+    pitlane::SeqPublishRing<int, 4> ring;
+    ring.publish([](int& v) { v = 1; });
+    ring.publish([](int& v) { v = 2; });
+    int64_t cur = 0;
+    int sum = 0;
+    cur = ring.drain_from(cur, [&](const int& v) { sum += v; });
+    expect(cur == 2 && sum == 3, "seqpub");
+    for (int i = 0; i < 8; ++i) ring.publish([i](int& v) { v = i + 10; });
+    sum = 0;
+    cur = ring.drain_from(cur, [&](const int& v) { sum += v; });
+    expect(cur == 10 && sum > 0, "overwrite drain");
+}
+
+static void check_global_scale() {
+    expect(pitlane::global_scale_set(1000, 500), "global set");
+    uint64_t ns = 0;
+    expect(pitlane::global_scale_ns(1000, ns) && ns == 500, "global ns");
+    pitlane::global_scale_clear();
+    expect(!pitlane::global_scale_on(), "global clear");
+}
+
+static void check_simd() {
+    alignas(16) int64_t words[8] = {1, 2, 3, 4, 5, 6, 7, 8};
+    pitlane::zero_i64(words, 8);
+    expect(words[0] == 0 && words[7] == 0, "zero");
+    const int64_t src[4] = {9, 8, 7, 6};
+    int64_t dst[4] = {};
+    pitlane::copy_bytes(dst, src, sizeof src);
+    expect(dst[0] == 9 && dst[3] == 6, "copy");
+    expect(pitlane::bytes_eq(src, dst, sizeof src), "eq");
+    expect(pitlane::kSimdI64 >= 1 && pitlane::kUnroll4 == 4, "widths");
+    expect(pitlane::likely(true) && !pitlane::unlikely(false), "hints");
+    pitlane::prefetch_lines(dst, sizeof dst);
+    alignas(16) int64_t big[64];
+    for (int i = 0; i < 64; ++i) big[i] = i + 1;
+    pitlane::zero_i64_stream(big, 64);
+    expect(big[0] == 0 && big[63] == 0, "stream zero");
+}
+
+static void check_bound_spin_arena() {
+    expect(pitlane::index_ok(0, 4) && !pitlane::index_ok(-1, 4) && !pitlane::index_ok(4, 4), "index");
+    expect(pitlane::range_ok(5, 1, 9) && !pitlane::range_ok(0, 1, 9), "range");
+    expect(pitlane::wrap_pow2(17, 16) == 1, "wrap");
+    pitlane::WalkBudget budget(8);
+    pitlane::Walk walk{&budget, 4};
+    expect(walk.enter(3) && walk.enter(3) && !walk.enter(3), "walk");
+    pitlane::SpinLock lock;
+    expect(lock.try_lock() && !lock.try_lock(), "spin try");
+    lock.unlock();
+    lock.lock();
+    lock.unlock();
+    pitlane::ByteArena arena;
+    pitlane::ArenaOpt opt{};
+    opt.hugepage = 0;
+    opt.lock = 0;
+    opt.prefault = 1;
+    expect(arena.open(4096, opt), "arena open");
+    void* a = arena.take(64, 64);
+    void* b = arena.take(32, 8);
+    expect(a && b && arena.used() >= 96, "arena take");
+    expect(arena.clear() && arena.used() == 0, "arena clear");
+    arena.close();
+
+    pitlane::ByteArena huge;
+    expect(huge.open(4096), "arena default open");
+    expect(huge.capacity() >= 4096, "arena default cap");
+    expect(huge.take(16, 8) != nullptr, "arena default take");
+    huge.close();
+
+    expect(pitlane::page_size_bytes() >= 4096u, "page size");
+    expect(pitlane::hugepage_size_bytes() >= pitlane::page_size_bytes(), "huge size");
+    expect(pitlane::round_up_bytes(1, 4096) == 4096, "round bytes");
+
+    expect(pitlane::batch_size_for(0) == 1, "batch low");
+    expect(pitlane::batch_size_for(20) == 32, "batch mid");
+    expect(pitlane::batch_size_for(100) == 256, "batch high");
+    expect(pitlane::batch_size_capped(100, 10) == 10, "batch cap");
+
+    pitlane::RankBits<2> ranks;
+    const uint32_t ids[] = {1, 3, 65};
+    expect(ranks.build(ids, 3) && ranks.live() == 3, "rank build");
+    expect(ranks.find(1) == 0 && ranks.find(3) == 1 && ranks.find(65) == 2, "rank find");
+    expect(ranks.find(2) < 0, "rank miss");
+
+    pitlane::QuadTab<4> tab;
+    const uint64_t keys[] = {10, 20, 30, 40, 50};
+    expect(tab.seat(keys, 5), "quad seat");
+    expect(tab.find(10) >= 0 && tab.find(50) >= 0 && tab.find(99) < 0, "quad find");
+}
+
 static void check_touch() {
     unsigned char buf[128]{};
     buf[0] = 1;
@@ -476,6 +567,10 @@ int main() {
     check_sig_grace();
     check_stage_seq_fill();
     check_readers();
+    check_seqpub();
+    check_global_scale();
+    check_simd();
+    check_bound_spin_arena();
     check_touch();
     check_chunk();
     check_mold();

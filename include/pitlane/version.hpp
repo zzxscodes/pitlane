@@ -6,8 +6,8 @@ namespace pitlane {
 // kDeskVersion is the on-disk layout of a mapping file, and it moves on its own.
 
 inline constexpr int kVersionMajor = 2;
-inline constexpr int kVersionMinor = 3;
+inline constexpr int kVersionMinor = 5;
 inline constexpr int kVersionPatch = 0;
-inline constexpr char kVersion[] = "2.3.0";
+inline constexpr char kVersion[] = "2.5.0";
 
 }  // namespace pitlane

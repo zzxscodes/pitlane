@@ -123,6 +123,48 @@ static void check_corp() {
     expect(pitlane::act_mul(income, step) && step.num == 10 && step.den == 9, "income dividend");
 }
 
+static void check_decide() {
+    pitlane::DecideScratch d;
+    pitlane::decide_clear(d);
+    expect(pitlane::decide_arm(d, 100, 2, 1, 5), "arm");
+    expect(!pitlane::decide_prefer(d, 101, 2, 1, 4), "worse score");
+    expect(pitlane::decide_prefer(d, 101, 2, 1, 9), "better score");
+    pitlane::Idea idea{};
+    expect(pitlane::decide_take(d, idea) && idea.px == 101 && idea.side == 1, "take");
+    pitlane::BookTop top{};
+    top.bid_px = 99;
+    top.ask_px = 100;
+    top.bid_qty = 1;
+    top.ask_qty = 1;
+    expect(pitlane::decide_from_top(top, true, 1, idea) && idea.px == 100, "from ask");
+}
+
+static void check_plan() {
+    pitlane::DagPlan<4> dag;
+    dag.clear();
+    expect(dag.add_edge(0, 1) && dag.add_edge(1, 2) && dag.build(0), "dag");
+    expect(dag.size() == 3 && dag.at(0) == 2 && dag.at(2) == 0, "order");
+    int seen = 0;
+    expect(dag.run([&](int node) {
+        ++seen;
+        (void)node;
+        return true;
+    }) && seen == 3,
+           "run");
+    dag.clear();
+    expect(dag.add_edge(0, 1) && dag.add_edge(1, 0) && !dag.build(0) && dag.cycle(), "cycle");
+    pitlane::ActPlan<int, 4> acts;
+    acts.step[0] = 7;
+    acts.step[1] = 8;
+    acts.n = 2;
+    int sum = 0;
+    expect(acts.run([&](int a) {
+        sum += a;
+        return true;
+    }) && sum == 15,
+           "act plan");
+}
+
 static void check_extreme() {
     pitlane::ExtremeWindow<4> trail;
     int64_t hi = 0;
@@ -148,6 +190,8 @@ int main() {
     check_tables();
     check_step();
     check_corp();
+    check_decide();
+    check_plan();
     check_extreme();
     check_right();
     if (g_fails) {
