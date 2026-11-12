@@ -7,8 +7,8 @@ namespace pitlane {
 
 #define PITLANE_VERSION_MAJOR 2
 #define PITLANE_VERSION_MINOR 16
-#define PITLANE_VERSION_PATCH 0
-#define PITLANE_VERSION_STRING "2.16.0"
+#define PITLANE_VERSION_PATCH 1
+#define PITLANE_VERSION_STRING "2.16.1"
 
 inline constexpr int kVersionMajor = PITLANE_VERSION_MAJOR;
 inline constexpr int kVersionMinor = PITLANE_VERSION_MINOR;

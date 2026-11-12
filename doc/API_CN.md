@@ -10,7 +10,7 @@
 
 所有名字都在命名空间 `pitlane` 里。链接 `libpitlane.a`，或者用 `-lpitlane` 链接动态库。动态库的 soname 是 `libpitlane.so.1`。两种链接方式使用同一套头文件。
 
-发行版本是 `kVersion`，当前是 2.16.0，并拆成 `kVersionMajor`、`kVersionMinor` 和 `kVersionPatch`。`kDeskVersion` 是 desk 映射文件的布局版本，当前是 3。`kYardVersion` 是独立的标的/行情池布局版本，当前是 2。库的一次新发行可以保持任一布局版本不动。
+发行版本是 `kVersion`，当前是 2.16.1，并拆成 `kVersionMajor`、`kVersionMinor` 和 `kVersionPatch`。`kDeskVersion` 是 desk 映射文件的布局版本，当前是 3。`kYardVersion` 是独立的标的/行情池布局版本，当前是 2。库的一次新发行可以保持任一布局版本不动。
 
 带左侧分节导航的静态网页在 `doc/site/`（`python3 doc/gen_site.py` 生成）。打开**本地** `doc/site/index.html` 或 GitHub Pages；在 `github.com/.../blob/...` 里打开只会看到源码。启动期设置见 **启动配置**。
 
@@ -192,7 +192,7 @@ pitlane::VenueOut out = venue.admit(in, in.stamp_us, reps, 4);
 
 PitConf `[venue]` 对齐模拟器 `match.ini`：九段 go/pull 延迟、`rigid_rule`→`rigid`、`use_ext`→`tape_first`，以及 lot/rate/notional 等。用 `conf_venue_cfg` 得到 `VenueCfg`。
 
-组合层（热路径仍无堆）：`FeedHub`、`TradeLane`、`StratHook`、`seed_cash` / `seed_hold`；本地基础数据用 `seed_facts` / `seed_hours` / `seed_holidays`；本机 topic 用 `TopicBus`；策略→算法绑定用 `RouteBook`。
+组合层（热路径仍无堆）：`FeedHub`、`TradeLane`、`StratHook`、`seed_cash` / `seed_hold`；本地基础数据用 `seed_facts` / `seed_hours` / `seed_holidays`；本机 topic 用 `TopicBus`；策略→算法绑定用 `RouteBook`。`pulse_bridge` 把 `PulseBoard` 队列扇入 Desk `pulses`（本机信号分发）。
 
 `Style::Day` 打到限价时，剩余数量全部成交，可以多于该档显示量。`Style::Passive` 一旦会打穿就过期。`Style::Immediate` 只保留显示量。`Style::All` 在显示量不够整张时整张过期。同一账户的买卖互打时，这张单停止。
 
@@ -400,9 +400,10 @@ book.apply(edits, 1);
 | `desk/config.hpp` | 启动期 `PitConf` 加载、纠偏、host 应用、资金/持仓软上限、`conf_yard_plan` / `conf_venue_cfg` |
 | `desk/feedhub.hpp` | 本地行情组合层 `FeedHub` / `feed_push_*` |
 | `desk/seed.hpp` | 启动期 `CashSeed` / `HoldSeed` |
-| `desk/shelf.hpp` | 本地基础数据种子（`seed_facts` / hours / holidays） |
+| `desk/shelf.hpp` | 本地基础数据种子（`seed_facts` / hours / holidays / `load_holidays`） |
 | `desk/bus.hpp` | 本地 topic 总线（`TopicBus`） |
 | `desk/routebook.hpp` | 本地算法路由表（`RouteBook`） |
+| `desk/pulsehub.hpp` | `pulse_bridge`：PulseBoard → desk pulses |
 | `desk/yard.hpp` | 启动期标的/行情池（`YardPlan`、claim/bind/publish/latest） |
 | `order/prelock.hpp` | 两阶段冻结 reserve / commit |
 | `order/credit.hpp` | 负债空头池与 `option_free` |

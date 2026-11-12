@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.16.1] - 2026-11-12
+
+### Added
+
+- `pulse_bridge` (`PulseBoard` → desk `pulses`); `load_holidays` cold file loader
+- Deeper FeedHub/Yard/WantMask, TradeLane tape, StratHook+`DeskLoop`, and holiday-file tests
+
+### Changed
+
+- Library release version is 2.16.1
+
 ## [2.16.0] - 2026-11-12
 
 ### Added
