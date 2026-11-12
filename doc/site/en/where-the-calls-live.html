@@ -78,6 +78,14 @@
 <td><code>PaperVenue</code></td>
 </tr>
 <tr>
+<td><code>book/tradelane.hpp</code></td>
+<td>Local TD <code>TradeLane</code> / <code>lane_beat</code></td>
+</tr>
+<tr>
+<td><code>book/drill.hpp</code></td>
+<td><code>DrillCue</code> / <code>DrillBook</code></td>
+</tr>
+<tr>
 <td><code>desk/acct.hpp</code></td>
 <td>Trader→accounts table and <code>acct_idle</code></td>
 </tr>
@@ -95,7 +103,15 @@
 </tr>
 <tr>
 <td><code>desk/config.hpp</code></td>
-<td>Startup <code>PitConf</code> load, normalize, host apply, cash/hold soft tune, <code>conf_yard_plan</code></td>
+<td>Startup <code>PitConf</code> load, normalize, host apply, cash/hold soft tune, <code>conf_yard_plan</code> / <code>conf_venue_cfg</code></td>
+</tr>
+<tr>
+<td><code>desk/feedhub.hpp</code></td>
+<td>Local MD <code>FeedHub</code> / <code>feed_push_*</code></td>
+</tr>
+<tr>
+<td><code>desk/seed.hpp</code></td>
+<td>Startup <code>CashSeed</code> / <code>HoldSeed</code></td>
 </tr>
 <tr>
 <td><code>desk/yard.hpp</code></td>
@@ -292,6 +308,10 @@
 <tr>
 <td><code>study/study.hpp</code></td>
 <td>Book features, markouts, relations, factors, replay, and one research step</td>
+</tr>
+<tr>
+<td><code>study/strathook.hpp</code></td>
+<td>Strategy façade <code>StratHook</code> / <code>strat_stage_*</code></td>
 </tr>
 <tr>
 <td><code>time/clock.hpp</code></td>

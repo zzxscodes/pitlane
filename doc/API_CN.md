@@ -10,7 +10,7 @@
 
 所有名字都在命名空间 `pitlane` 里。链接 `libpitlane.a`，或者用 `-lpitlane` 链接动态库。动态库的 soname 是 `libpitlane.so.1`。两种链接方式使用同一套头文件。
 
-发行版本是 `kVersion`，当前是 2.14.0，并拆成 `kVersionMajor`、`kVersionMinor` 和 `kVersionPatch`。`kDeskVersion` 是 desk 映射文件的布局版本，当前是 3。`kYardVersion` 是独立的标的/行情池布局版本，当前是 2。库的一次新发行可以保持任一布局版本不动。
+发行版本是 `kVersion`，当前是 2.15.0，并拆成 `kVersionMajor`、`kVersionMinor` 和 `kVersionPatch`。`kDeskVersion` 是 desk 映射文件的布局版本，当前是 3。`kYardVersion` 是独立的标的/行情池布局版本，当前是 2。库的一次新发行可以保持任一布局版本不动。
 
 带左侧分节导航的静态网页在 `doc/site/`（`python3 doc/gen_site.py` 生成）。打开**本地** `doc/site/index.html` 或 GitHub Pages；在 `github.com/.../blob/...` 里打开只会看到源码。启动期设置见 **启动配置**。
 
@@ -188,7 +188,11 @@ pitlane::Report reps[4]{};
 pitlane::VenueOut out = venue.admit(in, in.stamp_us, reps, 4);
 ```
 
-`admit` 把回报写入调用方的缓冲区，并设置 `out.why`。`VenueCfg::trade_open=0` 时新报单以 `Why::Closed` 失败。`on_clock` 把时延已到的暂存单推进去，并完成到期的撤单（`hang` 粘滞时跳过）。`on_print` / `on_tape` 减少挂单前面的数量；`tape_keep` 丢掉同向主动成交。`force_fill` / `force_pull` / `force_deny` / `drill_apply` 对齐 `paper matcher` forced fill 类注入（`DrillCue`）。`TouchMode` / `resolve_px` 解析对手/本方/最新/中间/五档价。主动方向传 0 时，每一笔都保留。`on_shown` 处理后来的显示量变化，同一笔成交不会被计算两次。
+`admit` 把回报写入调用方的缓冲区，并设置 `out.why`。`VenueCfg::trade_open=0` 时新报单以 `Why::Closed` 失败。`on_clock` 把时延已到的暂存单推进去，并完成到期的撤单（`hang` 粘滞时跳过）。`on_print` / `on_tape` 减少挂单前面的数量；`VenueCfg::rigid` 打开时 `tape_keep` 丢掉同向主动成交。`force_fill` / `force_pull` / `force_deny` / `drill_apply` 对齐 `paper matcher` forced fill 类注入（`DrillCue`；`Warn` 为空操作）。`TouchMode` / `resolve_px` 解析对手/本方/最新/中间/五档价。主动方向传 0 时，每一笔都保留。`on_shown` 处理后来的显示量变化，同一笔成交不会被计算两次。
+
+PitConf `[venue]` 对齐 `paper matcher` `match.ini`：九段 go/pull 延迟（`go_usN` / `pull_usN`，或小数秒 `delayN` / `cancel_delayN` / `go_secN` / `pull_secN`）、`rigid_rule`→`rigid`、`use_ext`→`tape_first`、`rigid_extra`、`trade_open`、`lot`、`rate_cap`、`notional_cap`、`cancel_pow_x1000`。`conf_venue_cfg` 拷进 `VenueCfg`。
+
+`FeedHub` 把 mark/print/tick 扇入 `Yard` 与 Desk 环（本地行情组合层）。`TradeLane::lane_beat` 把意图经 `PaperVenue`（可选 `DrillBook`）排出并发布回报（本地交易通道）。`StratHook` / `strat_bind_loop` / `strat_stage_enter` / `strat_stage_pull` 把策略回调绑到 `DeskLoop` 并投递意图。`seed_cash` / `seed_hold` 在启动期写入资金/持仓行（模拟器账户/持仓种子角色）。热路径仍无堆；启动期可以分配。
 
 `Style::Day` 打到限价时，剩余数量全部成交，可以多于该档显示量。`Style::Passive` 一旦会打穿就过期。`Style::Immediate` 只保留显示量。`Style::All` 在显示量不够整张时整张过期。同一账户的买卖互打时，这张单停止。
 
@@ -387,11 +391,15 @@ book.apply(edits, 1);
 | `book/steps.hpp` | 价位档、价格移动，以及带档位游标缓存的 `TickGrid` |
 | `study/factorcal.hpp` | 定长因子日历序列与按名挂载环（笔记 §22） |
 | `book/venue.hpp` | `PaperVenue` |
+| `book/tradelane.hpp` | 本地交易通道 `TradeLane` / `lane_beat` |
+| `book/drill.hpp` | `DrillCue` / `DrillBook` |
 | `desk/acct.hpp` | 交易员→多账户表与 `acct_idle` |
 | `desk/broker.hpp` | `BrokerWatch`、`QueryFold` 与 `QueryWant` |
 | `desk/risk.hpp` | `risk_merge` 与 `AcctRiskTab` |
 | `desk/cash.hpp` | 资金/持仓板与 `cash_enough` |
-| `desk/config.hpp` | 启动期 `PitConf` 加载、纠偏、host 应用、资金/持仓软上限、`conf_yard_plan` |
+| `desk/config.hpp` | 启动期 `PitConf` 加载、纠偏、host 应用、资金/持仓软上限、`conf_yard_plan` / `conf_venue_cfg` |
+| `desk/feedhub.hpp` | 本地行情组合层 `FeedHub` / `feed_push_*` |
+| `desk/seed.hpp` | 启动期 `CashSeed` / `HoldSeed` |
 | `desk/yard.hpp` | 启动期标的/行情池（`YardPlan`、claim/bind/publish/latest） |
 | `order/prelock.hpp` | 两阶段冻结 reserve / commit |
 | `order/credit.hpp` | 负债空头池与 `option_free` |
@@ -441,6 +449,7 @@ book.apply(edits, 1);
 | `study/extreme.hpp` | 最近一段固定价格里的最高价和最低价 |
 | `study/plan.hpp` | 灰/黑染色因子拓扑序与固定动作表 |
 | `study/study.hpp` | 盘口特征、事后偏移、关联、因子、回放，以及一次研究步骤 |
+| `study/strathook.hpp` | 策略门面 `StratHook` / `strat_stage_*` |
 | `time/clock.hpp` | 发布出去的周期比例和墙钟 |
 | `time/cut.hpp` | 依已测间隔判定是否切分路径 |
 | `time/cycle.hpp` | 周期读取、整数比例和缓存的微秒 |

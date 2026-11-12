@@ -78,6 +78,14 @@
 <td><code>PaperVenue</code></td>
 </tr>
 <tr>
+<td><code>book/tradelane.hpp</code></td>
+<td>本地交易通道 <code>TradeLane</code> / <code>lane_beat</code></td>
+</tr>
+<tr>
+<td><code>book/drill.hpp</code></td>
+<td><code>DrillCue</code> / <code>DrillBook</code></td>
+</tr>
+<tr>
 <td><code>desk/acct.hpp</code></td>
 <td>交易员→多账户表与 <code>acct_idle</code></td>
 </tr>
@@ -95,7 +103,15 @@
 </tr>
 <tr>
 <td><code>desk/config.hpp</code></td>
-<td>启动期 <code>PitConf</code> 加载、纠偏、host 应用、资金/持仓软上限、<code>conf_yard_plan</code></td>
+<td>启动期 <code>PitConf</code> 加载、纠偏、host 应用、资金/持仓软上限、<code>conf_yard_plan</code> / <code>conf_venue_cfg</code></td>
+</tr>
+<tr>
+<td><code>desk/feedhub.hpp</code></td>
+<td>本地行情组合层 <code>FeedHub</code> / <code>feed_push_*</code></td>
+</tr>
+<tr>
+<td><code>desk/seed.hpp</code></td>
+<td>启动期 <code>CashSeed</code> / <code>HoldSeed</code></td>
 </tr>
 <tr>
 <td><code>desk/yard.hpp</code></td>
@@ -292,6 +308,10 @@
 <tr>
 <td><code>study/study.hpp</code></td>
 <td>盘口特征、事后偏移、关联、因子、回放，以及一次研究步骤</td>
+</tr>
+<tr>
+<td><code>study/strathook.hpp</code></td>
+<td>策略门面 <code>StratHook</code> / <code>strat_stage_*</code></td>
 </tr>
 <tr>
 <td><code>time/clock.hpp</code></td>

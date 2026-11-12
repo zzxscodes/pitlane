@@ -628,11 +628,52 @@ static void check_yard() {
     pitlane::conf_defaults(sc);
     pitlane::StudyPlan sp = pitlane::conf_study_plan(sc);
     expect(sp.signal_pools == 1000 && sp.factor_depth == 20, "study plan");
+
+    {
+        FILE* vf = std::fopen("pitlane_venue.conf", "w");
+        expect(vf != nullptr, "venue conf file");
+        if (vf) {
+            std::fputs("[venue]\ndelay1=0.5\ncancel_delay2=1.25\nrigid_rule=1\nuse_ext=1\nlot=100\n", vf);
+            std::fclose(vf);
+        }
+        pitlane::PitConf vc{};
+        expect(pitlane::conf_load("pitlane_venue.conf", vc), "venue load");
+        expect(vc.venue_go_us[0] == 500000 && vc.venue_pull_us[1] == 1250000, "venue sec delays");
+        expect(vc.venue_rigid == 1 && vc.venue_tape_first == 1 && vc.venue_lot == 100, "venue flags");
+        pitlane::VenueCfg cfg = pitlane::conf_venue_cfg(vc);
+        expect(cfg.lag.go_us[0] == 500000 && cfg.lag.pull_us[1] == 1250000, "venue cfg lags");
+        expect(cfg.rigid == 1 && cfg.tape_first == 1 && cfg.lot == 100, "venue cfg copy");
+        ::unlink("pitlane_venue.conf");
+    }
+
+    {
+        pitlane::CashLine cash_rows[4]{};
+        pitlane::HoldLine hold_rows[4]{};
+        pitlane::CashBoard cash(cash_rows, 4);
+        pitlane::HoldBoard hold(hold_rows, 4);
+        pitlane::CashSeed cs{};
+        cs.tier = 1;
+        expect(pitlane::seed_copy16(cs.prod, "stock") && pitlane::seed_copy24(cs.acct, "A1"), "seed copy");
+        expect(pitlane::seed_copy16(cs.desk, "D") && pitlane::seed_copy16(cs.book, "B"), "seed desk");
+        cs.free_amt = 1000000;
+        expect(pitlane::seed_cash(cash, &cs, 1) == 1, "seed cash");
+        pitlane::HoldSeed hs{};
+        hs.tier = 1;
+        expect(pitlane::seed_copy16(hs.prod, "stock") && pitlane::seed_copy24(hs.acct, "A1"), "hold acct");
+        expect(pitlane::seed_copy16(hs.name, "IF2501"), "hold name");
+        hs.long_yday = 10;
+        hs.sellable = 7;
+        hs.frozen_yday = 1;
+        expect(pitlane::seed_hold(hold, &hs, 1) == 1, "seed hold");
+        const uint64_t hk = pitlane::HoldBoard::key_of(1, "stock", "A1", "IF2501");
+        const pitlane::HoldLine* hl = hold.find(hk);
+        expect(hl && hl->sellable == 7 && hl->long_yday == 10, "seed hold values");
+    }
 }
 
 int main() {
-    expect(pitlane::kVersionMajor == 2 && pitlane::kVersionMinor == 14 && pitlane::kVersionPatch == 0, "release");
-    expect(std::strcmp(pitlane::kVersion, "2.14.0") == 0, "release text");
+    expect(pitlane::kVersionMajor == 2 && pitlane::kVersionMinor == 15 && pitlane::kVersionPatch == 0, "release");
+    expect(std::strcmp(pitlane::kVersion, "2.15.0") == 0, "release text");
     expect(pitlane::kDeskVersion == 3, "desk layout");
     check_conf();
     check_yard();

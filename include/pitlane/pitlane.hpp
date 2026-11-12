@@ -9,7 +9,9 @@
 #include "pitlane/desk/config.hpp"
 #include "pitlane/desk/risk.hpp"
 #include "pitlane/desk/feed.hpp"
+#include "pitlane/desk/feedhub.hpp"
 #include "pitlane/desk/ids.hpp"
+#include "pitlane/desk/seed.hpp"
 #include "pitlane/desk/layout.hpp"
 #include "pitlane/desk/logline.hpp"
 #include "pitlane/desk/names.hpp"
@@ -37,6 +39,7 @@
 #include "pitlane/book/quote.hpp"
 #include "pitlane/book/steps.hpp"
 #include "pitlane/book/touch.hpp"
+#include "pitlane/book/tradelane.hpp"
 #include "pitlane/book/venue.hpp"
 
 #include "pitlane/order/ack.hpp"
@@ -87,6 +90,7 @@
 #include "pitlane/study/factorcal.hpp"
 #include "pitlane/study/flow.hpp"
 #include "pitlane/study/plan.hpp"
+#include "pitlane/study/strathook.hpp"
 #include "pitlane/study/study.hpp"
 
 #include "pitlane/host/affinity.hpp"

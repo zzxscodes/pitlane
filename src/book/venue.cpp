@@ -509,6 +509,8 @@ int PaperVenue::drill_apply(const DrillRow& row, int64_t now_us, Report* buf, in
         case DrillCue::Closed:
             cfg_.trade_open = 0;
             return 0;
+        case DrillCue::Warn:
+            return 0;
         default:
             return -1;
     }
@@ -526,7 +528,7 @@ int PaperVenue::on_tape(uint32_t name, int64_t px, int64_t qty, uint8_t aggresso
     for (uint32_t i = 0; i < kTickets; ++i) {
         Ticket& t = tickets_[i];
         if (!t.used || t.name != name) continue;
-        if (!tape_keep(aggressor, t.side, cfg_.rigid_extra != 0)) continue;
+        if (!tape_keep(aggressor, t.side, cfg_.rigid != 0)) continue;
         const uint8_t phase = t.phase;
         if (phase != static_cast<uint8_t>(Phase::Working) && phase != static_cast<uint8_t>(Phase::Partial) &&
             phase != static_cast<uint8_t>(Phase::PullWait))
