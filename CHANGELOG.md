@@ -1,5 +1,26 @@
 # Changelog
 
+## [2.10.0] - 2026-11-12
+
+### Added
+
+- `risk_merge` / `AcctRiskTab` account risk overlay (stricter positive limits; miss fail-closed)
+- `gate_ask` cash / inventory / `RiskCaps` path before flow; failures leave flow and inflight unchanged
+- `BasketBook` / `basket_gap` / `basket_topup` per-name target ledger
+- `TraderAcctTab` / `acct_idle` trader→accounts map and delete-time idle check
+- `board_lot_*` and `MarginBook` spot / margin quantity helpers
+- `QueryFold` `(acct, kind)` coalesce with optional `page` token; `pending_kind`
+- `LaneBook` / `lane_pick` fixed counter→`LaneRule` table
+- `BrokerWatch::due` list-only timeouts; `inflight_scan` composer
+- `sheet` / `recon_cancel_qty` partial cancel under PullWait; late fill stays PullWait until flat
+- `sign_begin` multi-module sign composition helper; `cash_enough` account buying-power predicate
+- `QuoteFold::top` / `apply_ordered` / `clear`; `SeqGate::gap_width` / `reset`; `seq_start`
+- `MacAllow` (≤3) and `RoleBits` byte/bit helpers
+
+### Changed
+
+- Library release version is 2.10.0
+
 ## [2.9.0] - 2026-11-12
 
 ### Added

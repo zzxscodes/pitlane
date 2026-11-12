@@ -1,5 +1,6 @@
 #pragma once
 
+#include <climits>
 #include <cstdint>
 
 namespace pitlane {
@@ -26,12 +27,28 @@ public:
     bool recovering() const noexcept { return recover_ != 0; }
     int parked() const noexcept { return side_n_; }
     uint64_t last() const noexcept { return last_; }
+    bool started() const noexcept { return started_ != 0; }
 
     bool missing(uint64_t& lo, uint64_t& hi) const noexcept {
         if (!recover_) return false;
         lo = miss_lo_;
         hi = miss_hi_;
         return true;
+    }
+
+    // Inclusive gap width while recovering; 0 otherwise.
+    uint64_t gap_width() const noexcept {
+        if (!recover_ || miss_hi_ < miss_lo_) return 0;
+        return miss_hi_ - miss_lo_ + 1;
+    }
+
+    void reset() noexcept {
+        last_ = 0;
+        side_n_ = 0;
+        recover_ = 0;
+        miss_lo_ = 0;
+        miss_hi_ = 0;
+        started_ = 0;
     }
 
     // 1 when this number is released. 0 when it is stale, inside the gap, or parked.

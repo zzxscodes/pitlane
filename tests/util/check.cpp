@@ -645,6 +645,23 @@ void check_seq_latest_lane_ema() {
     expect(pitlane::ema_dev_open(dev, 3, 100) && pitlane::ema_dev_push(dev, 110, std_out) && std_out >= 0, "ema dev");
 }
 
+static void check_authbits_seqgate() {
+    pitlane::MacAllow<3> macs;
+    pitlane::MacAddr a{{1, 2, 3, 4, 5, 6}};
+    pitlane::MacAddr b{{1, 2, 3, 4, 5, 7}};
+    expect(macs.put(a) && macs.has(a) && !macs.has(b), "mac");
+    pitlane::RoleBits roles = 0;
+    roles = pitlane::role_set(roles, 1);
+    expect(pitlane::role_has(roles, 1) && !pitlane::role_has(roles, 2), "role");
+
+    pitlane::SeqGate<4> gate;
+    expect(gate.start(10) && gate.gap_width() == 0, "seq start");
+    uint64_t out[4]{};
+    expect(gate.live(12, out, 4) == 0 && gate.recovering() && gate.gap_width() == 2, "gap width");
+    gate.reset();
+    expect(!gate.started(), "seq reset");
+}
+
 static void check_pin_phase() {
     pitlane::PrioSnap<int, 3> snap;
     expect(snap.view() == nullptr, "prio empty");
@@ -697,6 +714,7 @@ int main() {
     check_mold();
     check_seq_latest_lane_ema();
     check_pin_phase();
+    check_authbits_seqgate();
     if (g_fails) {
         std::fprintf(stderr, "%d util check(s) failed\n", g_fails);
         return 1;

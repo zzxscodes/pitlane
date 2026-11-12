@@ -74,6 +74,15 @@ struct SeqWatch {
     uint8_t started{0};
 };
 
+// Contiguous feed after start. Returns 0 on the next id, positive gap size, -1 on old.
+// Does not auto-start; call seq_start first (fail-closed for unordered sources).
+inline bool seq_start(SeqWatch& watch, uint64_t first) noexcept {
+    if (first == 0 || watch.started) return false;
+    watch.next = first;
+    watch.started = 1;
+    return true;
+}
+
 inline int seq_feed(SeqWatch& watch, uint64_t seq, uint64_t* missed) noexcept {
     if (missed) *missed = 0;
     if (!watch.started) {

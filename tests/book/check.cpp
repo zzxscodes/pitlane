@@ -423,6 +423,23 @@ static void check_own() {
     expect(gate.pair.ready() && gate.pair.cross_ticks() == 4, "seeded");
 }
 
+static void check_quote_ordered() {
+    pitlane::QuoteFold<8> fold;
+    const pitlane::FoldEdit edits[2] = {
+        {pitlane::FoldOp::Set, 1, 100, 4},
+        {pitlane::FoldOp::Set, 2, 101, 3},
+    };
+    pitlane::SeqWatch watch{};
+    expect(fold.apply_ordered(1, edits, 2, watch), "ordered first");
+    int64_t bp = 0, bq = 0, ap = 0, aq = 0;
+    expect(fold.top(&bp, &bq, &ap, &aq) && bp == 100 && ap == 101, "top");
+    expect(!fold.apply_ordered(3, edits, 2, watch), "gap fail");
+    expect(fold.top(&bp, &bq, &ap, &aq) && bp == 100, "book kept");
+    expect(fold.apply_ordered(2, edits, 2, watch), "next");
+    fold.clear();
+    expect(!fold.built(), "cleared");
+}
+
 static void check_cumtick() {
     pitlane::CumSnap prev{};
     prev.vol = 10;
@@ -458,6 +475,7 @@ int main() {
     check_target();
     check_session_book();
     check_own();
+    check_quote_ordered();
     check_cumtick();
     if (g_fails) {
         std::fprintf(stderr, "%d book check(s) failed\n", g_fails);

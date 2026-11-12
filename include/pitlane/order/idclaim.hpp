@@ -71,6 +71,11 @@ public:
         return row_[i].kind;
     }
 
+    uint64_t id_at(int i) const noexcept {
+        if (i < 0 || i >= Cap || row_[i].kind == IdKind::Empty) return 0;
+        return row_[i].id;
+    }
+
 private:
     struct Row {
         uint64_t id{0};

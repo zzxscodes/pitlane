@@ -1,6 +1,9 @@
 #pragma once
 
+#include "pitlane/desk/broker.hpp"
+#include "pitlane/desk/cash.hpp"
 #include "pitlane/order/judge.hpp"
+#include "pitlane/order/ledger.hpp"
 #include "pitlane/time/lap.hpp"
 #include "pitlane/order/life.hpp"
 #include "pitlane/util/textbuf.hpp"
@@ -82,6 +85,21 @@ inline bool sheet_event(SheetOp op, LifeEvent& out) noexcept {
 inline bool sheet_apply(Sheet& sheet, SheetOp op, int64_t qty, int64_t stamp_ns, Cause cause) noexcept {
     LifeEvent ev{};
     if (sheet.local == 0 || !sheet_event(op, ev)) return false;
+    // Partial cancel under PullWait: qty is the cancelled residual; left must stay positive or move to Cancelled.
+    if (op == SheetOp::ConfirmPull && qty > 0) {
+        if (sheet.phase != Phase::PullWait || qty > sheet.left) return false;
+        Sheet updated = sheet;
+        updated.left -= qty;
+        updated.qty = updated.filled + updated.left;
+        if (updated.left == 0) {
+            updated.phase = Phase::Cancelled;
+            if (stamp_ns >= 0 && updated.done_ns < 0) updated.done_ns = stamp_ns;
+        } else {
+            updated.phase = updated.filled > 0 ? Phase::Partial : Phase::Working;
+        }
+        sheet = updated;
+        return true;
+    }
     const Phase next = life_next(sheet.phase, ev);
     if (next == Phase::None) return false;
     if (op == SheetOp::Fill && (qty <= 0 || qty > sheet.left)) return false;
@@ -90,6 +108,8 @@ inline bool sheet_apply(Sheet& sheet, SheetOp op, int64_t qty, int64_t stamp_ns,
     if (op == SheetOp::Fill) {
         updated.filled += qty;
         updated.left -= qty;
+        // Late fill under PullWait stays PullWait unless the order is fully filled (life_next keeps PullWait).
+        if (sheet.phase == Phase::PullWait && updated.left == 0) updated.phase = Phase::Filled;
     }
     if (op == SheetOp::Reject) updated.cause = cause;
     if (stamp_ns >= 0) {
@@ -127,7 +147,8 @@ bool sheet_line(const Sheet& sheet, TextBuf<Cap>& out) noexcept {
 }
 
 // One pass over the checks a new or pulled order meets before the caller sends it.
-// A null piece is skipped. The flow window changes only after every earlier check has passed.
+// A null piece is skipped. Cash, inventory, and risk run before the flow window.
+// Any earlier failure leaves the flow window and inflight side state unchanged.
 // The call does not send the order.
 
 struct GateAsk {
@@ -152,7 +173,25 @@ struct GateAsk {
     int64_t last{0};
     int64_t dev_den{0};
     int64_t dev_cap{-1};
+    const RiskCaps* risk{nullptr};
+    const BrokerWatch* watch{nullptr};
+    const CashLine* cash{nullptr};
+    int64_t cash_need{0};  // notional + fee; checked with cash_enough when cash is set
+    const LotLock* lots{nullptr};
+    int64_t lock_qty{0};  // when > 0 and lots set, read-only inventory check
+    uint8_t cash_sell{0}; // 1 → lock_cash_sell_ok instead of lock_future_ok
 };
+
+inline Cause why_to_cause(Why why) noexcept {
+    switch (why) {
+        case Why::None: return Cause::Ok;
+        case Why::Qty: return Cause::BadQty;
+        case Why::Notional: return Cause::CashCap;
+        case Why::Rate: return Cause::OrderCap;
+        case Why::Side: return Cause::Blocked;
+        default: return Cause::Blocked;
+    }
+}
 
 inline Cause gate_ask(const GateAsk& ask) noexcept {
     if (ask.act != Act::Enter && ask.act != Act::Pull) return Cause::Blocked;
@@ -180,6 +219,35 @@ inline Cause gate_ask(const GateAsk& ask) noexcept {
     if (ask.act == Act::Enter && ask.wash != nullptr && ask.wash_n > 0) {
         const Cause wash = wash_cause(ask.wash, ask.wash_n, ask.acct, ask.group, ask.name_id, ask.side, ask.px);
         if (wash != Cause::Ok) return wash;
+    }
+    if (ask.act == Act::Enter && ask.cash != nullptr && ask.cash_need > 0) {
+        if (!cash_enough(*ask.cash, ask.cash_need, 0)) return Cause::NoCash;
+    }
+    if (ask.act == Act::Enter && ask.lots != nullptr && ask.lock_qty > 0) {
+        if (ask.cash_sell) {
+            if (!lock_cash_sell_ok(*ask.lots, ask.lock_qty)) return Cause::NoPos;
+        } else {
+            const LotErr err = lock_future_ok(*ask.lots, ask.off, ask.lock_qty);
+            if (err == LotErr::NoToday) return Cause::NoToday;
+            if (err != LotErr::Ok) return Cause::NoPos;
+        }
+    }
+    if (ask.act == Act::Enter && ask.risk != nullptr) {
+        Intent probe{};
+        probe.qty = ask.qty;
+        probe.px = ask.px;
+        probe.side = ask.side;
+        const int live = ask.watch ? ask.watch->live() : 0;
+        RiskCaps caps = *ask.risk;
+        if (caps.max_live > 0 && live >= caps.max_live) return Cause::OrderCap;
+        // screen uses watch's live_; when watch is null, only qty/notional axes apply.
+        if (ask.watch) {
+            const Cause c = why_to_cause(ask.watch->screen(probe, caps));
+            if (c != Cause::Ok) return c;
+        } else {
+            if (caps.max_qty > 0 && ask.qty > caps.max_qty) return Cause::BadQty;
+            if (caps.max_notional > 0 && ask.px > 0 && ask.qty > caps.max_notional / ask.px) return Cause::CashCap;
+        }
     }
     if (ask.flow != nullptr && ask.flow_limit > 0) {
         const Cause flow_cause = ask.act == Act::Pull ? Cause::PullFlow : Cause::OrderFlow;

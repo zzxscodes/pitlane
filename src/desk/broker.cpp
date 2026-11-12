@@ -51,17 +51,37 @@ bool BrokerWatch::mark_pull(uint64_t tag, int64_t now_us) noexcept {
     return false;
 }
 
+bool BrokerWatch::row_due(const Sent& s, int64_t now_us, int64_t ack_limit_us, int64_t life_limit_us,
+                          int64_t pull_limit_us) noexcept {
+    if (!s.used) return false;
+    if (!s.acked && ack_limit_us > 0 && now_us - s.sent_us >= ack_limit_us) return true;
+    if (s.acked && life_limit_us > 0 && now_us - s.sent_us >= life_limit_us) return true;
+    if (s.pull_us > 0 && pull_limit_us > 0 && now_us - s.pull_us >= pull_limit_us) return true;
+    return false;
+}
+
+int BrokerWatch::due(int64_t now_us, int64_t ack_limit_us, int64_t life_limit_us, int64_t pull_limit_us, uint64_t* tags,
+                     int cap) const noexcept {
+    if (!tags || cap <= 0) return -1;
+    int need = 0;
+    for (int i = 0; i < kCap; ++i) {
+        if (row_due(row_[i], now_us, ack_limit_us, life_limit_us, pull_limit_us)) ++need;
+    }
+    if (need > cap) return -1;
+    int n = 0;
+    for (int i = 0; i < kCap; ++i) {
+        if (!row_due(row_[i], now_us, ack_limit_us, life_limit_us, pull_limit_us)) continue;
+        tags[n++] = row_[i].tag;
+    }
+    return n;
+}
+
 int BrokerWatch::expire(int64_t now_us, int64_t ack_limit_us, int64_t life_limit_us, int64_t pull_limit_us,
                         uint64_t* tags, int cap) noexcept {
     int n = 0;
     for (int i = 0; i < kCap && n < cap; ++i) {
         Sent& s = row_[i];
-        if (!s.used) continue;
-        bool due = false;
-        if (!s.acked && ack_limit_us > 0 && now_us - s.sent_us >= ack_limit_us) due = true;
-        if (s.acked && life_limit_us > 0 && now_us - s.sent_us >= life_limit_us) due = true;
-        if (s.pull_us > 0 && pull_limit_us > 0 && now_us - s.pull_us >= pull_limit_us) due = true;
-        if (!due) continue;
+        if (!row_due(s, now_us, ack_limit_us, life_limit_us, pull_limit_us)) continue;
         if (tags) tags[n] = s.tag;
         ++n;
         s.used = 0;
@@ -70,11 +90,16 @@ int BrokerWatch::expire(int64_t now_us, int64_t ack_limit_us, int64_t life_limit
     return n;
 }
 
-bool QueryFold::push(uint32_t engine, uint32_t acct) noexcept {
-    if (engine >= kEngines || acct >= kAccounts) return false;
+bool QueryFold::push(uint32_t engine, uint32_t acct) noexcept { return push(engine, acct, 0, 0); }
+
+bool QueryFold::push(uint32_t engine, uint32_t acct, uint8_t kind, uint64_t page) noexcept {
+    if (engine >= kEngines || acct >= kAccounts || kind >= kKinds) return false;
     Lane& lane = lane_[engine];
     if (lane.tail - lane.head >= kQueue) return false;
-    lane.q[lane.tail % kQueue] = acct;
+    const uint32_t slot = lane.tail % kQueue;
+    lane.q[slot] = acct;
+    lane.kind[slot] = kind;
+    lane.page[slot] = page;
     ++lane.tail;
     return true;
 }
@@ -83,9 +108,14 @@ void QueryFold::fold() noexcept {
     for (uint32_t e = 0; e < kEngines; ++e) {
         Lane& lane = lane_[e];
         while (lane.head != lane.tail) {
-            const uint32_t acct = lane.q[lane.head % kQueue];
+            const uint32_t slot = lane.head % kQueue;
+            const uint32_t acct = lane.q[slot];
+            const uint8_t kind = lane.kind[slot];
+            const uint64_t page = lane.page[slot];
             ++lane.head;
-            if (acct < kAccounts) wait_[e][acct] = 1;
+            if (acct >= kAccounts || kind >= kKinds) continue;
+            wait_[e][acct][kind] = 1;
+            page_[e][acct][kind] = page;
         }
     }
 }
@@ -94,7 +124,14 @@ int QueryFold::pending(uint32_t* out, int cap) const noexcept {
     int n = 0;
     for (uint32_t a = 0; a < kAccounts && n < cap; ++a) {
         bool any = false;
-        for (uint32_t e = 0; e < kEngines; ++e) any = any || wait_[e][a] != 0;
+        for (uint32_t e = 0; e < kEngines && !any; ++e) {
+            for (uint32_t k = 0; k < kKinds; ++k) {
+                if (wait_[e][a][k] != 0) {
+                    any = true;
+                    break;
+                }
+            }
+        }
         if (!any) continue;
         if (out) out[n] = a;
         ++n;
@@ -102,9 +139,45 @@ int QueryFold::pending(uint32_t* out, int cap) const noexcept {
     return n;
 }
 
+int QueryFold::pending_kind(QueryWant* out, int cap) const noexcept {
+    if (!out || cap <= 0) return -1;
+    int n = 0;
+    for (uint32_t a = 0; a < kAccounts; ++a) {
+        for (uint32_t k = 0; k < kKinds; ++k) {
+            bool any = false;
+            uint64_t page = 0;
+            for (uint32_t e = 0; e < kEngines; ++e) {
+                if (wait_[e][a][k] == 0) continue;
+                any = true;
+                page = page_[e][a][k];
+            }
+            if (!any) continue;
+            if (n >= cap) return -1;
+            out[n].acct = a;
+            out[n].kind = static_cast<uint8_t>(k);
+            out[n].page = page;
+            ++n;
+        }
+    }
+    return n;
+}
+
 void QueryFold::clear_acct(uint32_t acct) noexcept {
     if (acct >= kAccounts) return;
-    for (uint32_t e = 0; e < kEngines; ++e) wait_[e][acct] = 0;
+    for (uint32_t e = 0; e < kEngines; ++e) {
+        for (uint32_t k = 0; k < kKinds; ++k) {
+            wait_[e][acct][k] = 0;
+            page_[e][acct][k] = 0;
+        }
+    }
+}
+
+void QueryFold::clear_want(uint32_t acct, uint8_t kind) noexcept {
+    if (acct >= kAccounts || kind >= kKinds) return;
+    for (uint32_t e = 0; e < kEngines; ++e) {
+        wait_[e][acct][kind] = 0;
+        page_[e][acct][kind] = 0;
+    }
 }
 
 bool acct_visible(const AcctLink* rows, int n, const char* trader, const char* counter, const char* account) noexcept {

@@ -32,6 +32,16 @@ inline void sign_reset(SignSlip& slip) noexcept {
     slip.rejected = 0;
 }
 
+// Multi-module convention: sign_begin(need) → each module sign_pass/sign_reject → sign_ready.
+// Typical need=3 for global / account / lane. Reject sticks until sign_reset/sign_begin.
+
+inline bool sign_begin(SignSlip& slip, uint8_t need) noexcept {
+    if (need == 0) return false;
+    sign_reset(slip);
+    slip.need = need;
+    return true;
+}
+
 // Opening pre-holds quantity and one cancel credit. Closing holds neither.
 // The caller keeps OpenHold. A timed-out open returns both. A cancel that did not reach the venue returns the credit.
 

@@ -10,7 +10,7 @@
 
 所有名字都在命名空间 `pitlane` 里。链接 `libpitlane.a`，或者用 `-lpitlane` 链接动态库。动态库的 soname 是 `libpitlane.so.1`。两种链接方式使用同一套头文件。
 
-发行版本是 `kVersion`，当前是 2.9.0，并拆成 `kVersionMajor`、`kVersionMinor` 和 `kVersionPatch`。`kDeskVersion` 是映射文件的布局版本，当前是 3。库的一次新发行可以保持布局版本不动。
+发行版本是 `kVersion`，当前是 2.10.0，并拆成 `kVersionMajor`、`kVersionMinor` 和 `kVersionPatch`。`kDeskVersion` 是映射文件的布局版本，当前是 3。库的一次新发行可以保持布局版本不动。
 
 头文件分在 `pitlane/desk/`、`pitlane/book/`、`pitlane/order/`、`pitlane/time/`、`pitlane/study/`、`pitlane/util/` 和 `pitlane/host/` 下面。`version.hpp` 与 `pitlane.hpp` 同一层。下面的表在路径里写了区域。
 
@@ -144,7 +144,7 @@ pitlane::VenueOut out = venue.admit(in, in.stamp_us, reps, 4);
 
 `BrokerWatch::screen` 检查数量、方向、名义金额和在途笔数。`remember` 跟踪一笔已发出的委托。`expire` 去掉未及时确认、超过存活时间，或撤单后等待过久的委托。上限小于等于 0 时，这一项检查关闭。
 
-`QueryFold` 最多接受 4 个引擎和 32 个账号，每个引擎 16 条排队请求。引擎、账号或队列超出范围时，`push` 失败。`fold` 合并这些队列，`pending` 把每个账号列出一次。库不会在两页之间睡眠。下一次什么时候查，由调用方决定。
+`QueryFold` 最多接受 4 个引擎和 32 个账号，每个引擎 16 条排队请求，查询种类最多 8。`push(engine, acct)` 保持仅按账号合并的旧路径。`push(engine, acct, kind, page)` 可带 page token；引擎、账号、kind 越界或队列满时失败。`fold` 合并队列。`pending` 每个账号列出一次。`pending_kind` 列出互异的 `(acct, kind)` 及最后一次 page；输出缓冲过短返回 -1。库不会在两页之间睡眠。下一次什么时候查，由调用方决定。
 
 `session_date` 把一个时刻归到它所属的交易日。8 点到 18 点不回退。18 点之后，周一回退 3 天，其余日子回退 1 天。凌晨则周一回退 2 天，其余日子回退 1 天。然后再跳过周末和 `ClosedDays` 里的日期。
 
@@ -274,7 +274,9 @@ book.apply(edits, 1);
 
 `sheet_apply` 按状态表推进这张单。状态表不允许的事件，所有字段都保持原样。成交数量大于还没完成的数量，同样整张不动。一次成交把剩余做完时，状态停在部分成交，剩余为 0。全部完成要再给一次结束事件。拒绝会记下调用方传入的原因。发送、接受和结束这几类事件只保留第一次非负的时刻。负数时刻不写。`sheet_ack_ns` 和 `sheet_done_ns` 把这些时刻相减。`sheet_line` 用一行替换文本缓冲，里面是编号、方向、状态、原因、数量、已成和剩余。本地编号放不进有符号 64 位时拒绝，原来的那一行留下。
 
-`gate_ask` 对一次下单或一次撤单按顺序做检查，返回第一个原因。名单、通道规则、自成交表或流速窗口是空指针时，这一项跳过。限价下单要求价格和数量都是正数。名字在名单上就是拦截。通道不接受撤单时，返回撤单上限这一原因。通道不接受这种价格类型时，返回价格原因。通道的其他拒绝都是拦截。偏离只在限价下单、并且上限大于等于 0 时检查。自成交只在下单、并且表存在时检查。前面的检查都通过以后，才改流速窗口。窗口已经到达上限时，下单返回流速原因，撤单返回撤单流速原因，窗口保持原样。这次调用不发单。
+`gate_ask` 对一次下单或一次撤单按顺序做检查，返回第一个原因。名单、通道规则、自成交表、资金行、持仓锁、风控上限、`BrokerWatch` 或流速窗口是空指针时，这一项跳过。限价下单要求价格和数量都是正数。名字在名单上就是拦截。通道不接受撤单时，返回撤单上限这一原因。通道不接受这种价格类型时，返回价格原因。通道的其他拒绝都是拦截。偏离只在限价下单、并且上限大于等于 0 时检查。自成交只在下单、并且表存在时检查。设置了 `cash` 与 `cash_need` 时走 `cash_enough`。设置了 `lots` 与 `lock_qty` 时只读检查持仓（`lock_future_ok` / `lock_cash_sell_ok`）。设置了 `risk` 时检查数量/名义/在途上限（有 `watch` 时走 `BrokerWatch::screen`）。前面这些检查都通过以后，才改流速窗口；任一更早失败都不改流速窗与在途侧状态。窗口已经到达上限时，下单返回流速原因，撤单返回撤单流速原因，窗口保持原样。这次调用不发单。
+
+`risk_merge` 对每个正上限取更严（更小）的一侧，0 表示该轴关闭。`AcctRiskTab` 存账户级上限，未命中 fail-closed。`sign_begin(need)` 复位 `SignSlip` 并设定模块数，各模块再 `sign_pass` / `sign_reject`，最后 `sign_ready`（常见 need=3：全局/账户/通道）；拒绝一直保持到复位。
 
 ## 研究，以及调用方自己的决定
 
@@ -321,11 +323,13 @@ book.apply(edits, 1);
 | `book/lags.hpp` | 时段时延和采样时延 |
 | `book/ladder.hpp` | 固定价格窗口和有量的最优价 |
 | `book/own.hpp` | 调用方本地双边最优价 |
-| `book/quote.hpp` | 行情批次、逐笔记录和分钟滚动 |
+| `book/quote.hpp` | 行情批次、有序 apply、逐笔记录和分钟滚动 |
 | `book/steps.hpp` | 价位档和价格移动 |
 | `book/venue.hpp` | `PaperVenue` |
-| `desk/broker.hpp` | `BrokerWatch` 和 `QueryFold` |
-| `desk/cash.hpp` | 资金行和持仓行 |
+| `desk/acct.hpp` | 交易员→多账户表与 `acct_idle` |
+| `desk/broker.hpp` | `BrokerWatch`、`QueryFold` 与 `QueryWant` |
+| `desk/risk.hpp` | `risk_merge` 与 `AcctRiskTab` |
+| `desk/cash.hpp` | 资金/持仓板与 `cash_enough` |
 | `desk/codec.hpp` | 品种、开平和方向 |
 | `desk/feed.hpp` | 订阅掩码、价格缩放和原始行情 |
 | `desk/ids.hpp` | `IdMint` |
@@ -348,18 +352,20 @@ book.apply(edits, 1);
 | `order/idclaim.hpp` | 定容 id 状态表（Wait / Live / Final） |
 | `order/inbound.hpp` | 等到到期时刻再放出的命令 |
 | `order/judge.hpp` | 名单、流速、比例、偏离和自成交 |
-| `order/lane.hpp` | 通道规则和 `Cause` |
+| `order/inflight.hpp` | 只列出超时在途标签的扫描 |
+| `order/lane.hpp` | 通道规则、`LaneBook` 和 `Cause` |
+| `order/basket.hpp` | 按合约的篮子目标账本 |
 | `order/ledger.hpp` | 冻结、保证金、费用、成交回写、登录编号和在途槽 |
 | `order/life.hpp` | 委托状态迁移和状态名字 |
 | `order/line.hpp` | 同一个价格上编号的到达顺序 |
-| `order/lots.hpp` | 把一笔数量拆成多张单 |
-| `order/parent.hpp` | 母单时间切片和篮子头 |
+| `order/lots.hpp` | 手数拆分、整手校验与两融数量辅助 |
+| `order/parent.hpp` | 母单时间切片和篮子控制头 |
 | `order/plan.hpp` | 下一张单、可挂数量、切片和追价 |
 | `order/pool.hpp` | 按编号查找的固定槽 |
 | `order/recon.hpp` | 本地成交和柜台成交对齐 |
 | `order/shed.hpp` | 按停留时长丢弃 |
-| `order/sheet.hpp` | 一张委托单，以及一次把检查跑完 |
-| `order/sign.hpp` | 检查计数和开仓额度 |
+| `order/sheet.hpp` | 委托单、部分撤与 `gate_ask` |
+| `order/sign.hpp` | 多模块签字组合与开仓额度 |
 | `order/ticket.hpp` | 命令快照和版本 |
 | `order/typed.hpp` | 带编译期标签的票据类型 |
 | `study/acb.hpp` | FIFO 手数队列与平均成本持仓账本 |
@@ -388,6 +394,7 @@ book.apply(edits, 1);
 | `util/chunk.hpp` | 稀疏价位块和撤单句柄 |
 | `util/drill.hpp` | 测试用的时钟、预算、档位和普通记录 |
 | `util/fillring.hpp` | 原地填写的槽 |
+| `util/authbits.hpp` | MAC 白名单（≤3）与角色位测 |
 | `util/frame.hpp` | 组帧、序号缺口和重排 |
 | `util/grace.hpp` | 读者代和回收列表 |
 | `util/hex.hpp` | 十六进制和逐字节比较 |
@@ -401,7 +408,7 @@ book.apply(edits, 1);
 | `util/phase.hpp` | 有符号票号 PhaseGate；`flip_ready` 非阻塞等待上一轮排空；ActiveSum 轮换计数器 |
 | `util/pinbank.hpp` | PrioSnap 优先级三槽缓冲；PinBank 按槽引用计数的多读者快照 |
 | `util/readwin.hpp` | 最慢读者再加上一段窗口 |
-| `util/seqgate.hpp` | 序号缺口恢复 |
+| `util/seqgate.hpp` | 序号缺口恢复、`gap_width` 与 `reset` |
 | `util/seqpub.hpp` | 无背压、可覆写未消费槽的序号发布环 |
 | `util/seqwin.hpp` | 遇到空洞就停下的序号窗口 |
 | `util/rankbits.hpp` | `RankBits` 稠密下标与 `QuadTab` 四键表 |

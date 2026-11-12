@@ -567,6 +567,102 @@ static void check_idclaim() {
     expect(!ids.claim(0, 1), "zero id");
 }
 
+static void check_basket_lane_inflight() {
+    pitlane::BasketBook<4> book;
+    expect(book.open(9) && book.put(1, 100) && book.put(2, 50), "basket open");
+    expect(pitlane::basket_gap(*book.at(0)) == 100, "gap");
+    expect(book.add_working(1, 30) && pitlane::basket_topup(*book.at(0), 10) == 70, "topup");
+    expect(book.add_done(1, 10) && pitlane::basket_gap(*book.at(0)) == 70, "done");
+
+    pitlane::LaneBook<4> lanes;
+    pitlane::LaneRule rule{};
+    rule.limit = 1;
+    rule.market = 1;
+    expect(lanes.put(7, rule) && pitlane::lane_pick(lanes, 7, rule) && !lanes.pick(8), "lane book");
+
+    pitlane::BrokerWatch watch;
+    pitlane::Intent in{};
+    in.tag = 42;
+    in.side = 1;
+    in.qty = 1;
+    in.px = 10;
+    expect(watch.remember(in, 1000), "remember");
+    uint64_t tags[4]{};
+    expect(watch.due(2000, 500, 0, 0, tags, 4) == 1 && tags[0] == 42 && watch.live() == 1, "due keeps");
+    pitlane::IdClaim<4> claim;
+    expect(claim.claim(42, 1) && claim.arm_live(42), "claim");
+    pitlane::InflightScan opt{};
+    opt.now_us = 2000;
+    opt.ack_limit_us = 500;
+    opt.claim_all_live = 1;
+    expect(pitlane::inflight_scan(watch, &claim, static_cast<pitlane::AckBook<4>*>(nullptr), opt, tags, 4) == 1,
+           "inflight");
+}
+
+static void check_gate_cash_risk() {
+    pitlane::GateAsk ask{};
+    ask.act = pitlane::Act::Enter;
+    ask.mode = pitlane::PxMode::Limit;
+    ask.px = 10;
+    ask.qty = 5;
+    ask.side = 1;
+    pitlane::CashLine cash{};
+    cash.free_amt = 30;
+    ask.cash = &cash;
+    ask.cash_need = 40;
+    expect(pitlane::gate_ask(ask) == pitlane::Cause::NoCash, "gate cash");
+    ask.cash_need = 20;
+    pitlane::RiskCaps caps{};
+    caps.max_qty = 3;
+    ask.risk = &caps;
+    expect(pitlane::gate_ask(ask) == pitlane::Cause::BadQty, "gate risk qty");
+    caps.max_qty = 10;
+    ask.qty = 5;
+    pitlane::LotLock lots{};
+    lots.total = 2;
+    lots.free_lots = 2;
+    ask.lots = &lots;
+    ask.lock_qty = 3;
+    ask.off = pitlane::Off::Close;
+    expect(pitlane::gate_ask(ask) == pitlane::Cause::NoPos, "gate pos");
+    ask.lock_qty = 0;
+    expect(pitlane::gate_ask(ask) == pitlane::Cause::Ok, "gate ok");
+}
+
+static void check_lots_margin_sign_pull() {
+    expect(pitlane::board_lot_ok(200) && !pitlane::board_lot_ok(150) && pitlane::board_lot_floor(250) == 200, "board lot");
+    pitlane::MarginBook m{};
+    m.buying_power = 10000;
+    m.short_avail = 5;
+    expect(pitlane::margin_buy_ok(m, 100, 50) && !pitlane::margin_buy_ok(m, 100, 200), "margin buy");
+    expect(pitlane::margin_short_ok(m, 5) && !pitlane::margin_short_ok(m, 6), "margin short");
+
+    pitlane::SignSlip slip{};
+    expect(pitlane::sign_begin(slip, 3) && !pitlane::sign_ready(slip), "sign begin");
+    expect(pitlane::sign_pass(slip) && pitlane::sign_pass(slip) && pitlane::sign_pass(slip) && pitlane::sign_ready(slip),
+           "sign three");
+
+    pitlane::Sheet sheet{};
+    expect(pitlane::sheet_open(sheet, 1, 1, 100, 10), "sheet");
+    expect(pitlane::sheet_apply(sheet, pitlane::SheetOp::Stage, 0, 1, pitlane::Cause::Ok), "stage");
+    expect(pitlane::sheet_apply(sheet, pitlane::SheetOp::Accept, 0, 2, pitlane::Cause::Ok), "accept");
+    expect(pitlane::sheet_apply(sheet, pitlane::SheetOp::AskPull, 0, 3, pitlane::Cause::Ok), "ask pull");
+    expect(pitlane::sheet_apply(sheet, pitlane::SheetOp::Fill, 3, 4, pitlane::Cause::Ok) && sheet.phase == pitlane::Phase::PullWait,
+           "late fill pullwait");
+    expect(pitlane::sheet_apply(sheet, pitlane::SheetOp::ConfirmPull, 4, 5, pitlane::Cause::Ok) &&
+               sheet.left == 3 && sheet.phase == pitlane::Phase::Partial,
+           "partial cancel");
+
+    pitlane::BookOrder order{};
+    order.known = 1;
+    order.qty = 10;
+    order.filled = 2;
+    order.phase = pitlane::Phase::PullWait;
+    pitlane::ReconEvent ev{};
+    expect(pitlane::recon_cancel_qty(order, 3, ev) && order.qty == 7 && order.phase == pitlane::Phase::Partial, "recon part");
+    expect(!pitlane::recon_cancel_qty(order, 20, ev), "recon over");
+}
+
 int main() {
     check_lots();
     check_ledger();
@@ -588,6 +684,9 @@ int main() {
     check_typed();
     check_latch();
     check_idclaim();
+    check_basket_lane_inflight();
+    check_gate_cash_risk();
+    check_lots_margin_sign_pull();
     if (g_fails) {
         std::fprintf(stderr, "%d order check(s) failed\n", g_fails);
         return 1;
