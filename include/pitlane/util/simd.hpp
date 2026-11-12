@@ -51,7 +51,7 @@ PITLANE_HOT inline void zero_i64(int64_t* __restrict dst, int n) noexcept {
 #if defined(__AVX2__)
     const __m256i z256 = _mm256_setzero_si256();
     if (aligned32(dst)) {
-        int64_t* aligned = assume_aligned(dst, 32);
+        int64_t* aligned = assume_aligned<32>(dst);
 PITLANE_IVDEP
         for (; i + 3 < n; i += 4) {
             _mm256_store_si256(reinterpret_cast<__m256i*>(aligned + i), z256);
@@ -69,7 +69,7 @@ PITLANE_IVDEP
 #if defined(__SSE2__)
     const __m128i z = _mm_setzero_si128();
     if (aligned16(dst)) {
-        int64_t* aligned = assume_aligned(dst, 16);
+        int64_t* aligned = assume_aligned<16>(dst);
 PITLANE_IVDEP
         for (; i + 1 < n; i += 2) {
             _mm_store_si128(reinterpret_cast<__m128i*>(aligned + i), z);

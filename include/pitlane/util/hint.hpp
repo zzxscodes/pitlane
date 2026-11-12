@@ -33,22 +33,22 @@ inline constexpr std::size_t kCacheLine = 64;
 PITLANE_INLINE bool likely(bool cond) noexcept { return PITLANE_LIKELY(cond); }
 PITLANE_INLINE bool unlikely(bool cond) noexcept { return PITLANE_UNLIKELY(cond); }
 
-template <class T>
-PITLANE_INLINE T* assume_aligned(T* p, std::size_t align) noexcept {
+template <std::size_t Align, class T>
+PITLANE_INLINE T* assume_aligned(T* p) noexcept {
+    static_assert(Align != 0 && (Align & (Align - 1)) == 0, "power of two");
 #if defined(__GNUC__) || defined(__clang__)
-    return static_cast<T*>(__builtin_assume_aligned(p, align));
+    return static_cast<T*>(__builtin_assume_aligned(p, Align));
 #else
-    (void)align;
     return p;
 #endif
 }
 
-template <class T>
-PITLANE_INLINE const T* assume_aligned(const T* p, std::size_t align) noexcept {
+template <std::size_t Align, class T>
+PITLANE_INLINE const T* assume_aligned(const T* p) noexcept {
+    static_assert(Align != 0 && (Align & (Align - 1)) == 0, "power of two");
 #if defined(__GNUC__) || defined(__clang__)
-    return static_cast<const T*>(__builtin_assume_aligned(p, align));
+    return static_cast<const T*>(__builtin_assume_aligned(p, Align));
 #else
-    (void)align;
     return p;
 #endif
 }
