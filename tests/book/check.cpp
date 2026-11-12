@@ -578,14 +578,102 @@ static void check_framework() {
                r.phase == static_cast<uint8_t>(pitlane::Phase::Staged),
            "report phase");
 
+    // FeedHub → Yard + WantMask reject
+    pitlane::YardPlan yp{};
+    yp.sym_slots = 4;
+    yp.quote_lanes = 4;
+    yp.quote_depth = 4;
+    yp.order_lanes = 1;
+    yp.trade_lanes = 1;
+    yp.rebuild_lanes = 1;
+    yp.mix_lanes = 1;
+    yp.order_depth = 4;
+    yp.trade_depth = 4;
+    yp.rebuild_depth = 4;
+    yp.mix_depth = 4;
+    yp.base_info_cap = 4;
+    yp.trade_time_cap = 2;
+    char ypath[64];
+    std::snprintf(ypath, sizeof ypath, "/tmp/pitlane-feed-%d.bin", static_cast<int>(::getpid()));
+    ::unlink(ypath);
+    pitlane::YardView yard{};
+    expect(pitlane::yard_open(ypath, yp, &yard, map_opt_tmp(), 1) == 0, "feed yard");
+    const uint32_t sid = pitlane::yard_claim_sym(yard, "IF2501");
+    expect(sid == 1 && pitlane::yard_bind_quote(yard, sid) && pitlane::yard_bind_trade(yard, sid), "bind");
+
+    pitlane::WantMask want;
+    want.filter(true);
+    want.allow(sid, true);
     pitlane::FeedHub hub{};
     hub.desk = desk;
+    hub.yard = &yard;
+    hub.want = &want;
+    pitlane::YardMark mark{};
+    mark.bid_px = 99;
+    mark.ask_px = 101;
+    mark.bid_qty = 1;
+    mark.ask_qty = 1;
+    mark.ts_us = stamp;
     pitlane::Quote q{};
-    q.name = 1;
+    q.name = sid;
     q.bid_px = 99;
     q.ask_px = 101;
-    expect(pitlane::feed_push_mark(hub, 1, pitlane::YardMark{}, &q), "feed quote desk");
+    expect(pitlane::feed_push_mark(hub, sid, mark, &q), "feed mark yard");
+    pitlane::YardMark got{};
+    expect(pitlane::yard_latest(yard, sid, got) && got.bid_px == 99, "yard got mark");
+    expect(!pitlane::feed_push_mark(hub, 99, mark, &q), "want reject");
 
+    pitlane::YardPrint ypr{};
+    ypr.px = 100;
+    ypr.qty = 2;
+    ypr.side = 2;
+    ypr.ts_us = stamp;
+    pitlane::TapePrint tp{};
+    tp.name = sid;
+    tp.px = 100;
+    tp.qty = 2;
+    tp.aggressor = 2;
+    expect(pitlane::feed_push_print(hub, sid, ypr, &tp), "feed print");
+
+    // Resting order then TradeLane on_tape path (reuse lane cursors)
+    pitlane::PaperVenue rest(pitlane::VenueCfg{});
+    const pitlane::Rung bid[] = {{100, 10}};
+    const pitlane::Rung ask_hi[] = {{130, 10}};
+    rest.set_levels(sid, bid, 1, ask_hi, 1);
+    lane.venue = &rest;
+    lane.drills = nullptr;
+    lane.yard = &yard;
+    pitlane::Intent rest_in = in;
+    rest_in.tag = 90;
+    rest_in.name = sid;
+    rest_in.px = 100;
+    rest_in.qty = 3;
+    expect(pitlane::strat_stage_enter(*desk, rest_in, 0), "rest stage");
+    expect(pitlane::lane_beat(lane, *desk, stamp) >= 1, "rest admit");
+    expect(desk->prints.publish(tp, 0), "print pub");
+    expect(pitlane::lane_beat(lane, *desk, stamp + 1) >= 0, "tape beat");
+
+    expect(pitlane::strat_stage_pull(*desk, 91, sid, 1, stamp + 2, 0), "stage pull");
+    expect(pitlane::lane_beat(lane, *desk, stamp + 2) >= 0, "pull beat");
+
+    // StratHook + DeskLoop drain reports already on the ring
+    g_reports = 0;
+    pitlane::DeskLoop dloop;
+    const int beats = dloop.beat(*desk, stamp + 3, loop);
+    expect(beats >= 0 && g_reports >= 1, "deskloop reports");
+
+    pitlane::PulseBoard pulses;
+    expect(pulses.watch(sid, "mid", 0, false), "pulse watch");
+    pitlane::Pulse pulse{};
+    pulse.name = sid;
+    std::snprintf(pulse.topic, sizeof pulse.topic, "mid");
+    pulse.stamp_us = stamp;
+    pulse.value = 1;
+    expect(pulses.offer(pulse), "pulse offer");
+    expect(pitlane::pulse_bridge(pulses, *desk, 0) == 1, "pulse bridge");
+
+    pitlane::yard_close(&yard);
+    ::unlink(ypath);
     pitlane::map_release(&map);
     ::unlink(path);
 }

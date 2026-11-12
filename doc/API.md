@@ -10,7 +10,7 @@ Include one header:
 
 Everything is in the namespace `pitlane`. Link `libpitlane.a`, or link the shared library with `-lpitlane`. The shared library's soname is `libpitlane.so.1`. The headers are the same for both.
 
-The release is `kVersion`, currently 2.16.0, also split into `kVersionMajor`, `kVersionMinor`, and `kVersionPatch`. `kDeskVersion` is the desk mapping-file layout and is currently 3. `kYardVersion` is the separate symbol/quote yard layout and is currently 2. A new library release can leave either layout number where it is.
+The release is `kVersion`, currently 2.16.1, also split into `kVersionMajor`, `kVersionMinor`, and `kVersionPatch`. `kDeskVersion` is the desk mapping-file layout and is currently 3. `kYardVersion` is the separate symbol/quote yard layout and is currently 2. A new library release can leave either layout number where it is.
 
 A browsable static site with a left-hand section list is generated into `doc/site/` (`python3 doc/gen_site.py`). Open a local `doc/site/index.html` or the GitHub Pages deployment — viewing the file on `github.com/.../blob/...` shows source only. Startup settings are covered under **Startup configuration**.
 
@@ -192,7 +192,7 @@ pitlane::VenueOut out = venue.admit(in, in.stamp_us, reps, 4);
 
 PitConf `[venue]` mirrors simulator `match.ini`: nine go/pull lags (`go_usN` / `pull_usN`, or fractional-second `delayN` / `cancel_delayN`), `rigid_rule`→`rigid`, `use_ext`→`tape_first`, plus lot/rate/notional/`cancel_pow_x1000`. Use `conf_venue_cfg` to build a `VenueCfg`.
 
-Composition helpers (still allocation-free on the hot path): `FeedHub` into Yard/Desk; `TradeLane::lane_beat` for paper TD; `StratHook` onto `DeskLoop`; `seed_cash` / `seed_hold` for account rows; `seed_facts` / `seed_hours` / `seed_holidays` for local basic-data tables; `TopicBus` for same-machine topic pub/sub; `RouteBook` for strategy→algo binding.
+Composition helpers (still allocation-free on the hot path): `FeedHub` into Yard/Desk; `TradeLane::lane_beat` for paper TD; `StratHook` onto `DeskLoop`; `seed_cash` / `seed_hold` for account rows; `seed_facts` / `seed_hours` / `seed_holidays` for local basic-data tables; `TopicBus` for same-machine topic pub/sub; `RouteBook` for strategy→algo binding. `pulse_bridge` fans `PulseBoard` into desk `pulses`.
 
 `Style::Day` fills the whole remainder at its limit, even past the size shown there. `Style::Passive` expires if it would cross. `Style::Immediate` keeps only the shown size. `Style::All` expires the whole order when the shown size is short. A self-trade against the same account stops the order.
 
@@ -400,9 +400,10 @@ These calls do not open a socket, do not send an order, and do not start a threa
 | `desk/config.hpp` | Startup `PitConf` load, normalize, host apply, cash/hold soft tune, `conf_yard_plan` / `conf_venue_cfg` |
 | `desk/feedhub.hpp` | Local MD `FeedHub` / `feed_push_*` |
 | `desk/seed.hpp` | Startup `CashSeed` / `HoldSeed` |
-| `desk/shelf.hpp` | Local basic-data seeds (`seed_facts` / hours / holidays) |
+| `desk/shelf.hpp` | Local basic-data seeds (`seed_facts` / hours / holidays / `load_holidays`) |
 | `desk/bus.hpp` | Local topic bus (`TopicBus`) |
 | `desk/routebook.hpp` | Local algo route table (`RouteBook`) |
+| `desk/pulsehub.hpp` | `pulse_bridge` PulseBoard → desk pulses |
 | `desk/yard.hpp` | Startup symbol/quote yard (`YardPlan`, claim/bind/publish/latest) |
 | `order/prelock.hpp` | Two-phase freeze reserve / commit |
 | `order/credit.hpp` | Liability short pools and `option_free` |

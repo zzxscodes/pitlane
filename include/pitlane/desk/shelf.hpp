@@ -4,6 +4,7 @@
 #include "pitlane/desk/yard.hpp"
 #include "pitlane/util/hint.hpp"
 
+#include <cstdio>
 #include <cstdint>
 #include <cstring>
 
@@ -94,6 +95,29 @@ inline int seed_holidays(ClosedDays& days, const int* ymds, int n) noexcept {
         if (!days.add(ymds[i])) return -1;
         ++ok;
     }
+    return ok;
+}
+
+// Cold file loader: one YYYYMMDD per line (# comments / blanks skipped). Startup only.
+inline int load_holidays(ClosedDays& days, const char* path) noexcept {
+    if (!path || !path[0]) return -1;
+    FILE* f = std::fopen(path, "r");
+    if (!f) return -1;
+    char line[64];
+    int ok = 0;
+    while (std::fgets(line, sizeof line, f)) {
+        char* p = line;
+        while (*p == ' ' || *p == '\t') ++p;
+        if (!*p || *p == '#' || *p == ';' || *p == '\n' || *p == '\r') continue;
+        int ymd = 0;
+        for (; *p >= '0' && *p <= '9'; ++p) ymd = ymd * 10 + (*p - '0');
+        if (!ymd_valid(ymd) || !days.add(ymd)) {
+            std::fclose(f);
+            return -1;
+        }
+        ++ok;
+    }
+    std::fclose(f);
     return ok;
 }
 

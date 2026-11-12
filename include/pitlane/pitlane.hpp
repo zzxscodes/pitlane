@@ -12,6 +12,7 @@
 #include "pitlane/desk/bus.hpp"
 #include "pitlane/desk/feedhub.hpp"
 #include "pitlane/desk/ids.hpp"
+#include "pitlane/desk/pulsehub.hpp"
 #include "pitlane/desk/routebook.hpp"
 #include "pitlane/desk/seed.hpp"
 #include "pitlane/desk/shelf.hpp"

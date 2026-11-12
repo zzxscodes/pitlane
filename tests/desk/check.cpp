@@ -727,13 +727,26 @@ static void check_local_shelf_bus() {
     char names[4][pitlane::RouteBook::kName]{};
     expect(routes.lookup("algo_book", names, 4) == 2, "route lookup");
 
+    {
+        FILE* hf = std::fopen("pitlane_holidays.txt", "w");
+        expect(hf != nullptr, "hol file");
+        if (hf) {
+            std::fputs("# holidays\n20260101\n20261001\n", hf);
+            std::fclose(hf);
+        }
+        pitlane::ClosedDays from_file;
+        expect(pitlane::load_holidays(from_file, "pitlane_holidays.txt") == 2, "load holidays");
+        expect(from_file.has(20261001), "loaded day");
+        ::unlink("pitlane_holidays.txt");
+    }
+
     pitlane::yard_close(&y);
     ::unlink(path);
 }
 
 int main() {
-    expect(pitlane::kVersionMajor == 2 && pitlane::kVersionMinor == 16 && pitlane::kVersionPatch == 0, "release");
-    expect(std::strcmp(pitlane::kVersion, "2.16.0") == 0, "release text");
+    expect(pitlane::kVersionMajor == 2 && pitlane::kVersionMinor == 16 && pitlane::kVersionPatch == 1, "release");
+    expect(std::strcmp(pitlane::kVersion, "2.16.1") == 0, "release text");
     expect(pitlane::kDeskVersion == 3, "desk layout");
     check_conf();
     check_yard();
