@@ -21,7 +21,7 @@ Order slots, ledger rows, and live orders sit in fixed arrays. Cash and position
 
 Include `include/pitlane/pitlane.hpp` and link `libpitlane.a`. Types and functions live in the `pitlane` namespace. The interface is designed on its own and cannot replace another trading library that is already running.
 
-The library release is 2.12.0. `pitlane::kVersion` in `version.hpp` holds the same text. The shared library file carries this number, and its soname stays `libpitlane.so.1`. The desk layout version stays `kDeskVersion`, currently 3.
+The library release is 2.14.0. `pitlane::kVersion` in `version.hpp` holds the same text. The shared library file carries this number, and its soname stays `libpitlane.so.1`. The desk layout version stays `kDeskVersion`, currently 3. The symbol/quote yard (`Yard`, magic `PITYARD2`, `kYardVersion` 2) is a separate startup map for startup pool-scale pools.
 
 Startup configuration is an optional INI-like file (`examples/pitlane.conf`). `conf_load` overlays keys onto code defaults; empty values keep the default. `conf_normalize` clamps unsafe values (for example ring sizes to a power of two within the compile-time maximum) and writes hint lines for the caller to print. `conf_map_opt` / `conf_arena_opt` / `desk_apply_conf` apply the result at map/desk creation only. The hot path never opens the file again.
 
@@ -72,7 +72,7 @@ Close-today, close-yesterday, and a plain close freeze different quantities. A s
 
 Before an order goes to the counter, the library can limit the quantity, the notional, and the number of orders still working. Working orders are checked against three limits: no acknowledgement for too long, a lifetime that has expired, and a cancel that has waited too long. An expired order leaves the working list.
 
-Position and cash queries are queued per engine, for at most 4 engines and 32 accounts. Requests for the same account become one query. A new request fails when the queue is full. The caller decides when to ask for the next page.
+Position and cash queries are queued per engine, for at most 32 engines and 64 accounts. Requests for the same account become one query. A new request fails when the queue is full. The caller decides when to ask for the next page.
 
 ## Market data and the trading day
 

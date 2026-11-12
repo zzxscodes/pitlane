@@ -4,8 +4,8 @@
 #include <cstdio>
 #include <cstring>
 #include <new>
-#include <unistd.h>
 #include <sys/wait.h>
+#include <unistd.h>
 
 static int g_fails = 0;
 
@@ -17,9 +17,9 @@ static pitlane::MapOpt map_opt_tmp() noexcept {
     return opt;
 }
 
-
 static void expect(bool cond, const char* what) {
-    if (cond) return;
+    if (cond)
+        return;
     std::fprintf(stderr, "fail: %s\n", what);
     ++g_fails;
 }
@@ -162,7 +162,8 @@ static void check_codec() {
     shf.px = 3500;
     shf.qty = 2;
     const pitlane::GateResult a = pitlane::normalize_gate(shf);
-    expect(a.why == pitlane::Why::None && a.off == pitlane::Off::CloseYday && a.mode == pitlane::PxMode::Limit, "shf close becomes yesterday");
+    expect(a.why == pitlane::Why::None && a.off == pitlane::Off::CloseYday && a.mode == pitlane::PxMode::Limit,
+           "shf close becomes yesterday");
 
     pitlane::GateForm cash = shf;
     std::snprintf(cash.symbol, sizeof cash.symbol, "600000.SH");
@@ -184,7 +185,8 @@ static void check_codec() {
     expect(pitlane::final_phase(static_cast<uint8_t>(pitlane::Phase::Filled)), "final");
     expect(pitlane::hanging_phase(static_cast<uint8_t>(pitlane::Phase::Partial)), "hanging");
     expect(!pitlane::running_phase(static_cast<uint8_t>(pitlane::Phase::Expired)), "expired is not running");
-    expect(std::strcmp(pitlane::phase_text(static_cast<uint8_t>(pitlane::Phase::Working)), "working") == 0, "phase text");
+    expect(std::strcmp(pitlane::phase_text(static_cast<uint8_t>(pitlane::Phase::Working)), "working") == 0,
+           "phase text");
     expect(std::strcmp(pitlane::why_text(pitlane::Why::Wash), "wash") == 0, "why text");
     expect(pitlane::exchange_id("INE") == 7 && std::strcmp(pitlane::exchange_text(7), "INE") == 0, "exchange");
     expect(std::strcmp(pitlane::holder_for("000001.SZ", "sh-holder", "sz-holder"), "sz-holder") == 0, "holder");
@@ -209,7 +211,8 @@ static void check_feed() {
     in[1].px = 25000;
     in[1].qty = 3;
     pitlane::RawTick got[2]{};
-    expect(pitlane::take_ticks(in, 2, 9, 10000, got, 2) == 1 && got[0].px == 2 && got[0].recv_us == 9, "scale and skip");
+    expect(pitlane::take_ticks(in, 2, 9, 10000, got, 2) == 1 && got[0].px == 2 && got[0].recv_us == 9,
+           "scale and skip");
 }
 
 static void check_names() {
@@ -280,8 +283,12 @@ static void check_hold() {
 
 static int g_quotes = 0;
 static int g_timers = 0;
-static void on_quote(void*, const pitlane::Quote&) { ++g_quotes; }
-static void on_timer(void*, uint64_t, int64_t) { ++g_timers; }
+static void on_quote(void*, const pitlane::Quote&) {
+    ++g_quotes;
+}
+static void on_timer(void*, uint64_t, int64_t) {
+    ++g_timers;
+}
 
 static void check_session() {
     const char* path = "pitlane_suite_region.bin";
@@ -342,7 +349,7 @@ static void check_session() {
     expect(watch.expire(4000, 0, 0, 500, expired, 4) == 1 && expired[0] == 2, "pull timeout");
 
     pitlane::QueryFold fold;
-    expect(fold.push(0, 3) && fold.push(1, 3) && !fold.push(9, 1), "fold push");
+    expect(fold.push(0, 3) && fold.push(1, 3) && !fold.push(pitlane::QueryFold::kEngines, 1), "fold push");
     fold.fold();
     uint32_t accts[4]{};
     expect(fold.pending(accts, 4) == 1 && accts[0] == 3, "coalesced");
@@ -394,18 +401,22 @@ static void check_session() {
     log.write(2, "debug");
     log.write(0, "err");
     expect(log.dropped() == 1 && log.emitted() == 1 && sink_level == 0, "log filter");
-    expect(pitlane::measure().desk == pitlane::desk_bytes() && pitlane::measure().total() > pitlane::measure().desk, "footprint");
+    expect(pitlane::measure().desk == pitlane::desk_bytes() && pitlane::measure().total() > pitlane::measure().desk,
+           "footprint");
 
     const pid_t child = ::fork();
     expect(child >= 0, "fork");
     if (child == 0) {
         pitlane::MapInfo child_map{};
-        if (pitlane::map_attach(path, pitlane::desk_bytes(), &child_map, map_opt_tmp()) != 0) _exit(2);
+        if (pitlane::map_attach(path, pitlane::desk_bytes(), &child_map, map_opt_tmp()) != 0)
+            _exit(2);
         pitlane::Desk* seen = pitlane::desk_view(&child_map, 0);
-        if (!seen) _exit(3);
+        if (!seen)
+            _exit(3);
         pitlane::Quote child_q{};
         bool fresh = false;
-        if (!seen->quotes.at(0, pitlane::kLoopReader, child_q, &fresh) || child_q.ask_px != 11) _exit(4);
+        if (!seen->quotes.at(0, pitlane::kLoopReader, child_q, &fresh) || child_q.ask_px != 11)
+            _exit(4);
         pitlane::map_release(&child_map);
         _exit(0);
     }
@@ -482,13 +493,149 @@ static void check_conf() {
     expect(pulses.watch(1, "t", 0, false), "watch");
     pitlane::PulseSub subs[4]{};
     expect(pulses.copy_subs(subs, 4) == 1 && subs[0].name == 1, "copy_subs");
+
+    expect(conf.yard_sym_slots == pitlane::kYardSymSlotsDefault, "yard default slots");
+    conf.yard_quote_depth = 100;
+    conf.yard_sym_slots = 0;
+    char yh[256]{};
+    const int yn = pitlane::conf_normalize(conf, yh, 256);
+    expect(yn >= 1 && conf.yard_sym_slots == 1 && conf.yard_quote_depth == 64, "yard normalize");
+    pitlane::YardPlan yp = pitlane::conf_yard_plan(conf);
+    expect(yp.sym_slots == 1 && yp.quote_depth == 64, "yard plan");
+
+    {
+        FILE* yf = std::fopen("pitlane_yard.conf", "w");
+        expect(yf != nullptr, "yard conf file");
+        if (yf) {
+            std::fputs("[yard]\nsym_slots=64\nquote_lanes=64\nquote_depth=16\n", yf);
+            std::fclose(yf);
+        }
+        pitlane::PitConf yc{};
+        expect(pitlane::conf_load("pitlane_yard.conf", yc), "yard load");
+        expect(yc.yard_sym_slots == 64 && yc.yard_quote_lanes == 64 && yc.yard_quote_depth == 16, "yard loaded");
+        ::unlink("pitlane_yard.conf");
+    }
+}
+
+static void check_yard() {
+    pitlane::YardPlan plan{};
+    plan.sym_slots = 8;
+    plan.quote_lanes = 8;
+    plan.quote_depth = 4;
+    plan.order_lanes = 2;
+    plan.trade_lanes = 2;
+    plan.rebuild_lanes = 2;
+    plan.mix_lanes = 2;
+    plan.order_depth = 8;
+    plan.trade_depth = 8;
+    plan.rebuild_depth = 8;
+    plan.mix_depth = 8;
+    plan.base_info_cap = 4;
+    plan.trade_time_cap = 4;
+    expect(pitlane::yard_plan_ok(plan), "yard plan ok");
+    const std::size_t bytes = pitlane::yard_bytes(plan);
+    expect(bytes > sizeof(pitlane::YardHead) && bytes < (1u << 20), "yard bytes tiny");
+
+    char path[64];
+    std::snprintf(path, sizeof path, "/tmp/pitlane-yard-%d.bin", static_cast<int>(::getpid()));
+    ::unlink(path);
+    pitlane::YardView y{};
+    expect(pitlane::yard_open(path, plan, &y, map_opt_tmp(), 1) == 0, "yard open");
+    expect(y.head && y.head->version == pitlane::kYardVersion && y.facts && y.hours, "yard head");
+
+    const uint32_t id = pitlane::yard_claim_sym(y, "IF2501");
+    expect(id == 1, "claim");
+    expect(pitlane::yard_claim_sym(y, "IF2501") == 1, "claim idempotent");
+    expect(pitlane::yard_bind_quote(y, id), "bind quote");
+    expect(pitlane::yard_bind_order(y, id) && pitlane::yard_bind_trade(y, id), "bind order trade");
+    expect(pitlane::yard_bind_rebuild(y, id) && pitlane::yard_bind_mix(y, id), "bind rebuild mix");
+
+    pitlane::YardMark m{};
+    m.bid_px = 100;
+    m.ask_px = 101;
+    m.bid_qty = 2;
+    m.ask_qty = 3;
+    m.ts_us = 42;
+    expect(pitlane::yard_publish(y, id, m), "publish");
+    pitlane::YardMark out{};
+    expect(pitlane::yard_latest(y, id, out) && out.bid_px == 100 && out.seq == 1, "latest");
+
+    pitlane::YardTick tick{};
+    tick.px = 100;
+    tick.qty = 5;
+    tick.side = 1;
+    tick.ts_us = 43;
+    expect(pitlane::yard_publish_tick(y, id, tick), "tick");
+    pitlane::YardTick tick_out{};
+    expect(pitlane::yard_latest_tick(y, id, tick_out) && tick_out.qty == 5 && tick_out.seq == 1, "latest tick");
+
+    pitlane::YardPrint pr{};
+    pr.px = 101;
+    pr.qty = 1;
+    pr.side = 2;
+    pr.ts_us = 44;
+    expect(pitlane::yard_publish_print(y, id, pr), "print");
+    pitlane::YardPrint pr_out{};
+    expect(pitlane::yard_latest_print(y, id, pr_out) && pr_out.px == 101 && pr_out.seq == 1, "latest print");
+
+    expect(pitlane::yard_publish_rebuild(y, id, m) && pitlane::yard_latest_rebuild(y, id, out) && out.seq == 1,
+           "rebuild");
+    expect(pitlane::yard_publish_mix(y, id, m) && pitlane::yard_latest_mix(y, id, out) && out.seq == 1, "mix");
+
+    const uint32_t hid = pitlane::yard_claim_hours(y, "CFFEX");
+    expect(hid == 1, "hours");
+    pitlane::YardHours* hours = pitlane::yard_hours(y, hid);
+    expect(hours != nullptr, "hours ptr");
+    if (hours) {
+        hours->open_sec = 9 * 3600;
+        hours->close_sec = 15 * 3600;
+    }
+    const uint32_t fid = pitlane::yard_claim_facts(y, "IF2501");
+    expect(fid == 1, "facts");
+    pitlane::YardFacts* facts = pitlane::yard_facts(y, fid);
+    expect(facts != nullptr, "facts ptr");
+    if (facts) {
+        facts->tick_sz = 2;
+        facts->lot_sz = 1;
+        facts->mult = 300;
+    }
+    expect(pitlane::yard_link_facts(y, id, fid) && pitlane::yard_link_hours(y, id, hid), "link");
+    expect(pitlane::yard_sym(y, id)->facts_id == static_cast<int32_t>(fid), "sym facts");
+    expect(pitlane::yard_facts(y, fid)->hours_id == static_cast<int32_t>(hid), "facts hours");
+
+    expect(pitlane::yard_claim_sym(y, "") == 0, "empty code");
+    expect(!pitlane::yard_publish(y, 0, m), "bad id");
+
+    for (uint32_t i = 0; i < plan.sym_slots - 1; ++i) {
+        char code[16];
+        std::snprintf(code, sizeof code, "S%u", i);
+        expect(pitlane::yard_claim_sym(y, code) != 0, "fill slots");
+    }
+    expect(pitlane::yard_claim_sym(y, "FULL") == 0, "full fail-closed");
+
+    pitlane::yard_close(&y);
+    expect(y.head == nullptr, "closed");
+
+    pitlane::YardView y2{};
+    expect(pitlane::yard_open(path, plan, &y2, map_opt_tmp(), 0) == 0, "reattach");
+    expect(pitlane::yard_sym(y2, 1) != nullptr && pitlane::yard_latest(y2, 1, out) && out.seq == 1, "persist quote");
+    expect(pitlane::yard_latest_tick(y2, 1, tick_out) && tick_out.seq == 1, "persist tick");
+    expect(pitlane::yard_facts(y2, 1) != nullptr && pitlane::yard_hours(y2, 1) != nullptr, "persist tables");
+    pitlane::yard_close(&y2);
+    ::unlink(path);
+
+    pitlane::PitConf sc{};
+    pitlane::conf_defaults(sc);
+    pitlane::StudyPlan sp = pitlane::conf_study_plan(sc);
+    expect(sp.signal_pools == 1000 && sp.factor_depth == 20, "study plan");
 }
 
 int main() {
-    expect(pitlane::kVersionMajor == 2 && pitlane::kVersionMinor == 12 && pitlane::kVersionPatch == 0, "release");
-    expect(std::strcmp(pitlane::kVersion, "2.12.0") == 0, "release text");
+    expect(pitlane::kVersionMajor == 2 && pitlane::kVersionMinor == 14 && pitlane::kVersionPatch == 0, "release");
+    expect(std::strcmp(pitlane::kVersion, "2.14.0") == 0, "release text");
     expect(pitlane::kDeskVersion == 3, "desk layout");
     check_conf();
+    check_yard();
     check_ring();
     check_batch();
     check_ids();

@@ -10,7 +10,7 @@ Include one header:
 
 Everything is in the namespace `pitlane`. Link `libpitlane.a`, or link the shared library with `-lpitlane`. The shared library's soname is `libpitlane.so.1`. The headers are the same for both.
 
-The release is `kVersion`, currently 2.12.0, also split into `kVersionMajor`, `kVersionMinor`, and `kVersionPatch`. `kDeskVersion` is the mapping-file layout and is currently 3. A new library release can leave the layout number where it is.
+The release is `kVersion`, currently 2.14.0, also split into `kVersionMajor`, `kVersionMinor`, and `kVersionPatch`. `kDeskVersion` is the desk mapping-file layout and is currently 3. `kYardVersion` is the separate symbol/quote yard layout and is currently 2. A new library release can leave either layout number where it is.
 
 A browsable static site with a left-hand section list is generated into `doc/site/` (`python3 doc/gen_site.py`). Open a local `doc/site/index.html` or the GitHub Pages deployment — viewing the file on `github.com/.../blob/...` shows source only. Startup settings are covered under **Startup configuration**.
 
@@ -21,6 +21,8 @@ Prices and quantities are integers. Timestamps are microseconds. A side value of
 ## Startup configuration
 
 All tunables that the library accepts at process start live in an optional INI-like file (see `examples/pitlane.conf`). Defaults are the member initializers on `PitConf` in `desk/config.hpp`. Omit a key, or leave the value empty, to keep that default. Unknown keys are ignored. Hard parse errors (truncated line, non-numeric where a number is required) make `conf_load` return false.
+
+Broker `ack_limit_us` / `life_limit_us` / `pull_limit_us` default to `60000000` (60s), matching a typical `trading center` `HeartBeatIntervalSec`. Set a limit to `0` to turn that axis off. Host defaults enable `thp_disable` and `mlockall`. Desk FanRing soft caps stay at the compile-time maxima (`kIntentCap` …). startup pool-scale symbol/quote pools live in the separate `[yard]` / `Yard` map (sized once at startup; hot path does not allocate). `examples/pitlane.conf` comments list the trading center field map; Mongo / algo route keys are never imported.
 
 `conf_normalize` runs once after load. It clamps ring capacities to a power of two in `[2, compile-time Cap]`, restores compile-time-only sizes (`QueryFold`, `BrokerWatch::kCap`) with a hint, and writes one human-readable line per adjustment into a caller buffer. Print those lines at startup. The hot path never opens the file again.
 
@@ -40,7 +42,7 @@ if (!desk) return 1;
 if (!pitlane::desk_apply_conf(*desk, conf)) return 1;  // FanRing::tune, empty desk only
 ```
 
-`conf_map_opt` / `conf_arena_opt` / `conf_risk_caps` copy the normalized fields into the option structs used by map, arena, and risk helpers. `desk_apply_conf` calls `FanRing::tune` on each desk ring while the ring is still empty. Soft capacity never grows past the compile-time slot array; the on-disk `Desk` layout stays `kDeskVersion`.
+`conf_map_opt` / `conf_arena_opt` / `conf_risk_caps` / `conf_yard_plan` / `conf_study_plan` copy the normalized fields into the option structs used by map, arena, risk, yard, and study helpers. `desk_apply_conf` calls `FanRing::tune` on each desk ring while the ring is still empty. Soft capacity never grows past the compile-time slot array; the on-disk `Desk` layout stays `kDeskVersion`.
 
 | Section | Keys (summary) |
 | --- | --- |
@@ -51,6 +53,8 @@ if (!pitlane::desk_apply_conf(*desk, conf)) return 1;  // FanRing::tune, empty d
 | `[query]` | `engines`, `accounts`, `queue`, `kinds` (hint-only; compile-time) |
 | `[host]` | `cpu`, `policy`, `priority`, `nice` / `set_nice`, `hugepages`, `thp_disable`, `mlockall`, `numa_node`, `irq_list` |
 | `[shed]` / `[pace]` | StayShed / TokenBook–GCRA defaults for the caller to construct |
+| `[yard]` | `sym_slots`, `quote_lanes`, `quote_depth`, `order_*` / `trade_*` / `rebuild_*` / `mix_*` lanes and depths (depths power-of-two), `base_info_cap`, `trade_time_cap` |
+| `[study]` | `signal_pools`, `sample_pools`, `factor_pools`, `nonstruct_pools`, `sample_depth`, `factor_depth`, `nonstruct_depth` |
 
 `conf_load_ex` reports the failing 1-based line. `conf_apply_host` is best-effort. `cash_apply_conf` / `hold_apply_conf` soft-tune row boards.
 
@@ -70,6 +74,24 @@ if (!desk) return 1;
 Another process attaches with `map_attach` and passes 0 to `desk_view` (same logical path so both sides resolve the same hugetlbfs file). `map_release` unmaps; if the mapping was locked it calls `munlock` first, then closes the file. Each ring has one writer. Readers do not share a cursor.
 
 `desk->clock_us` is the session clock in microseconds. `DeskLoop::beat` stores the time it is given there.
+
+## Symbol / quote yard
+
+`Yard` is a separate startup map (magic `PITYARD2`, layout `kYardVersion` 2) for startup pool-scale pools: dense symbols, quote / order / trade / rebuild / mix tapes, plus `YardFacts` and `YardHours` tables. Defaults match trading center (`sym`/`quote` 150000×256, order/trade lanes 10×32768, rebuild 10×128, mix 10×32768, facts 35000, hours 500). `yard_open` sizes once; claim / bind / publish / latest paths never allocate. Full pools fail closed. Names are pitlane-owned (`YardTick`, `YardPrint`, `YardFacts`, `YardHours`), not borrowed identifiers.
+
+```cpp
+pitlane::YardPlan plan = pitlane::conf_yard_plan(conf);  // or a tiny plan in tests
+pitlane::YardView yard{};
+if (pitlane::yard_open("yard.bin", plan, &yard, pitlane::conf_map_opt(conf), 1) != 0) return 1;
+uint32_t id = pitlane::yard_claim_sym(yard, "IF2501");
+if (!id || !pitlane::yard_bind_quote(yard, id) || !pitlane::yard_bind_order(yard, id)) return 1;
+pitlane::YardMark mark{/* bid/ask px qty, ts_us */};
+if (!pitlane::yard_publish(yard, id, mark)) return 1;
+pitlane::YardTick tick{/* px qty side ts_us */};
+if (!pitlane::yard_publish_tick(yard, id, tick)) return 1;
+```
+
+`conf_study_plan` copies study pool-scale defaults for caller-side `FactorSeries` / `NamedFactorRing` sizing (not a shared mmap).
 
 ## Publish and read
 
@@ -166,7 +188,7 @@ pitlane::Report reps[4]{};
 pitlane::VenueOut out = venue.admit(in, in.stamp_us, reps, 4);
 ```
 
-`admit` writes reports into the caller buffer and sets `out.why`. `on_clock` promotes staged orders whose delay has elapsed and completes cancels that are due. `on_print` and `on_tape` reduce the quantity ahead of a resting order. A print whose aggressive side equals the resting order's side does not fill it. Pass 0 as the aggressor to keep every print. `on_shown` applies a later change in displayed size without counting the same trade twice.
+`admit` writes reports into the caller buffer and sets `out.why`. With `VenueCfg::trade_open=0`, new enters fail with `Why::Closed`. `on_clock` promotes staged orders whose delay has elapsed and completes cancels that are due (skipped while `hang` sticky). `on_print` and `on_tape` reduce the quantity ahead of a resting order; `tape_keep` drops same-side aggressor prints. `force_fill` / `force_pull` / `force_deny` / `drill_apply` cover `paper matcher` forced fill-style injects via `DrillCue` (pitlane names). `TouchMode` / `resolve_px` resolve opp/own/last/mid/best5 prices. Pass 0 as the aggressor to keep every print. `on_shown` applies a later change in displayed size without counting the same trade twice.
 
 `Style::Day` fills the whole remainder at its limit, even past the size shown there. `Style::Passive` expires if it would cross. `Style::Immediate` keeps only the shown size. `Style::All` expires the whole order when the shown size is short. A self-trade against the same account stops the order.
 
@@ -182,7 +204,7 @@ Before 09:30 the delay tables are zero. After that, `session_band` splits the da
 
 `BrokerWatch::screen` checks quantity, side, notional, and the number of live orders. `remember` tracks a sent order. `expire` drops orders that missed their acknowledgement limit, passed their lifetime, or waited too long after a cancel. A limit of 0 or less turns that check off.
 
-`QueryFold` accepts at most 4 engines and 32 accounts, with 16 queued requests per engine and 8 query kinds. `push(engine, acct)` keeps the old acct-only path. `push(engine, acct, kind, page)` stores an optional page token; out-of-range engine, account, kind, or a full queue fails closed. `fold` merges the queues. `pending` lists each account once. `pending_kind` lists distinct `(acct, kind)` rows with the last page token; a short output buffer returns -1. The library does not sleep between pages. The caller decides when to query again.
+`QueryFold` accepts at most 32 engines and 64 accounts, with 16 queued requests per engine and 8 query kinds. `push(engine, acct)` keeps the old acct-only path. `push(engine, acct, kind, page)` stores an optional page token; out-of-range engine, account, kind, or a full queue fails closed. `fold` merges the queues. `pending` lists each account once. `pending_kind` lists distinct `(acct, kind)` rows with the last page token; a short output buffer returns -1. The library does not sleep between pages. The caller decides when to query again.
 
 `session_date` moves a clock reading onto its trading day. From 08:00 through 18:00 the shift is 0. After 18:00, Monday shifts back 3 days and other days shift back 1. In the early morning, Monday shifts back 2 days and other days shift back 1. Weekends and days in `ClosedDays` are then skipped.
 
@@ -198,7 +220,7 @@ book.apply(edits, 1);
 
 Side 1 is the bid and side 2 is the ask. `Add` fails when that price already exists. `Set` with quantity 0 removes a level. `Del` of a missing price succeeds.
 
-`band_at_hold` keeps a price that sits exactly on the next band's start in the lower band. `walk_up` and `walk_down` then take ticks from that band. After a step lands on the next start, later steps use the new band. `clamp_px` applies only when the upper limit is above the lower limit. `span_index` returns the span that contains a minute, or -1. An overnight span has an end at or before its begin. `session_part` returns open, lunch, or closed for a `SessionRow`.
+`band_at_hold` keeps a price that sits exactly on the next band's start in the lower band. `walk_up` and `walk_down` then take ticks from that band. After a step lands on the next start, later steps use the new band. `clamp_px` applies only when the upper limit is above the lower limit. `TickGrid` holds up to ten bands plus limit prices and caches the last band index on the hot path (same role as `cts::TickSizeHandler`, but integer-only). `span_index` returns the span that contains a minute, or -1. An overnight span has an end at or before its begin. `session_part` returns open, lunch, or closed for a `SessionRow`.
 
 `life_next` returns the next `Phase`. `Phase::None` means the event is not allowed from that phase. A fill while a cancel is waiting stays in `PullWait`. `Resume` and `ResumePartial` move a rejected cancel back to working or partial.
 
@@ -362,13 +384,15 @@ These calls do not open a socket, do not send an order, and do not start a threa
 | `book/ladder.hpp` | A fixed price window and the best occupied tick |
 | `book/own.hpp` | Local tops of book the caller feeds |
 | `book/quote.hpp` | Quote batches, ordered apply, the print log, and minute rolls |
-| `book/steps.hpp` | Tick bands and price walks |
+| `book/steps.hpp` | Tick bands, price walks, and `TickGrid` with a cached band cursor |
+| `study/factorcal.hpp` | Fixed-depth factor calendar series and named rings (notes §22) |
 | `book/venue.hpp` | `PaperVenue` |
 | `desk/acct.hpp` | Trader→accounts table and `acct_idle` |
 | `desk/broker.hpp` | `BrokerWatch`, `QueryFold`, and `QueryWant` |
 | `desk/risk.hpp` | `risk_merge` and `AcctRiskTab` |
 | `desk/cash.hpp` | Cash/hold boards and `cash_enough` |
-| `desk/config.hpp` | Startup `PitConf` load, normalize, host apply, cash/hold soft tune |
+| `desk/config.hpp` | Startup `PitConf` load, normalize, host apply, cash/hold soft tune, `conf_yard_plan` |
+| `desk/yard.hpp` | Startup symbol/quote yard (`YardPlan`, claim/bind/publish/latest) |
 | `order/prelock.hpp` | Two-phase freeze reserve / commit |
 | `order/credit.hpp` | Liability short pools and `option_free` |
 | `study/fair.hpp` | Integer fair, book bias, pressure score |

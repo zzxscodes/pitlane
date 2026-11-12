@@ -15,7 +15,7 @@
       <a href="#" class="active">中文</a>
     </div>
     <nav>
-      <a href="index.html">概述</a><a href="启动配置.html">启动配置</a><a href="打开共享区.html">打开共享区</a><a href="发布和读取.html">发布和读取</a><a href="跑会话循环.html">跑会话循环</a><a href="准备一张委托.html">准备一张委托</a><a href="在纸面场所撮合.html">在纸面场所撮合</a><a href="合约-信号和柜台.html">合约、信号和柜台</a><a href="辅助函数.html" class="active">辅助函数</a><a href="调用方自己保管的辅助函数.html">调用方自己保管的辅助函数</a><a href="组帧-节奏和快照.html">组帧、节奏和快照</a><a href="周期计数和定长低延迟表.html">周期计数和定长低延迟表</a><a href="一张委托单.html">一张委托单</a><a href="研究-以及调用方自己的决定.html">研究，以及调用方自己的决定</a><a href="价格窗口-槽池和两笔费用.html">价格窗口、槽池和两笔费用</a><a href="调用所在的头文件.html">调用所在的头文件</a>
+      <a href="index.html">概述</a><a href="启动配置.html">启动配置</a><a href="打开共享区.html">打开共享区</a><a href="标的-行情池-yard.html">标的 / 行情池（Yard）</a><a href="发布和读取.html">发布和读取</a><a href="跑会话循环.html">跑会话循环</a><a href="准备一张委托.html">准备一张委托</a><a href="在纸面场所撮合.html">在纸面场所撮合</a><a href="合约-信号和柜台.html">合约、信号和柜台</a><a href="辅助函数.html" class="active">辅助函数</a><a href="调用方自己保管的辅助函数.html">调用方自己保管的辅助函数</a><a href="组帧-节奏和快照.html">组帧、节奏和快照</a><a href="周期计数和定长低延迟表.html">周期计数和定长低延迟表</a><a href="一张委托单.html">一张委托单</a><a href="研究-以及调用方自己的决定.html">研究，以及调用方自己的决定</a><a href="价格窗口-槽池和两笔费用.html">价格窗口、槽池和两笔费用</a><a href="调用所在的头文件.html">调用所在的头文件</a>
     </nav>
   </aside>
   <main class="main">
@@ -28,7 +28,7 @@ const pitlane::FoldEdit edits[] = {{pitlane::FoldOp::Add, 1, 10, 4}};
 book.apply(edits, 1);
 </code></pre>
 <p>方向 1 是买盘，方向 2 是卖盘。价格已经存在时，<code>Add</code> 失败。<code>Set</code> 的数量为 0 时删掉这一档。<code>Del</code> 一个不存在的价格仍然成功。</p>
-<p><code>band_at_hold</code> 在价格正好等于下一档起点时留在较低的一档。<code>walk_up</code> 和 <code>walk_down</code> 从这一档开始走 tick。一步落到下一档起点之后，后面的 tick 用新档的步长。<code>clamp_px</code> 只在上限高于下限时夹价格。<code>span_index</code> 返回包含这一分钟的时段，没有则返回 -1。结束分钟不大于开始分钟的时段跨过午夜。<code>session_part</code> 对一个 <code>SessionRow</code> 返回开市、午休或休市。</p>
+<p><code>band_at_hold</code> 在价格正好等于下一档起点时留在较低的一档。<code>walk_up</code> 和 <code>walk_down</code> 从这一档开始走 tick。一步落到下一档起点之后，后面的 tick 用新档的步长。<code>clamp_px</code> 只在上限高于下限时夹价格。<code>TickGrid</code> 最多十档，带涨跌停，并在热路径缓存当前档下标（对应 <code>cts::TickSizeHandler</code>，但只用整数价）。<code>span_index</code> 返回包含这一分钟的时段，没有则返回 -1。结束分钟不大于开始分钟的时段跨过午夜。<code>session_part</code> 对一个 <code>SessionRow</code> 返回开市、午休或休市。</p>
 <p><code>life_next</code> 返回下一个 <code>Phase</code>。从当前阶段不能接受这个事件时，结果是 <code>Phase::None</code>。撤单等待期间的成交仍留在 <code>PullWait</code>。<code>Resume</code> 和 <code>ResumePartial</code> 把被拒绝的撤单退回已报或部分成交。</p>
 <p><code>margin_need</code> 用乘数乘价格乘数量，再乘保证金分子，除以保证金分母。<code>charge_class</code> 对股票、债券、基金、科创板、指数和回购使用现货公式，其余品种使用费率公式。乘数和保证金比例由 <code>scale_of</code> 给出。</p>
 <p><code>rest_room</code> 是一条腿还能挂出的数量。两腿一起打时结果是 0。<code>cut_hedge</code> 在一条腿被削减后，按差额削减另一条腿。<code>slice_weight</code> 把一半进位，新的一段不大于 0 时返回 false。<code>align_leg</code> 先除以行情系数，再按最小变动价位四舍五入，一半进位。<code>pair_qty_ok</code> 对 688 和 689 要求至少 180，对其他沪深代码要求至少 80。<code>chase_px</code> 买入向上走，卖出向下走。</p>

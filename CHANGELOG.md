@@ -1,5 +1,30 @@
 # Changelog
 
+## [2.14.0] - 2026-11-12
+
+### Added
+
+- Paper drill surface aligned with `paper matcher` forced fill/session state roles: `DrillCue` / `DrillBook`, `PaperVenue::{force_fill,force_pull,force_deny,hang,drill_apply}`, `Why::Closed` / `VenueCfg::trade_open`
+- `TouchMode` / `resolve_px` / `tape_keep`; `HoldLine::{sellable,frozen,frozen_yday}` + `sellable_of` / `sell_room` / `acct_ready`
+
+### Changed
+
+- Library release version is 2.14.0
+
+## [2.13.0] - 2026-11-12
+
+### Added
+
+- `Yard` v2 (`PITYARD2`): startup pool-scale startup map — symbol table, quote/order/trade/rebuild/mix tapes (`YardMark` / `YardTick` / `YardPrint`), `YardFacts` / `YardHours` tables; bind + publish/latest APIs; hot path allocation-free; fail-closed when full
+- PitConf `[yard]` (incl. `mix_*`) and `conf_yard_plan`; `[study]` / `StudyPlan` / `conf_study_plan` for study pool-scale factor sizing
+- `TickGrid` / `FactorSeries` / `NamedFactorRing` study helpers
+
+### Changed
+
+- `QueryFold::kEngines` 16 → 32 (covers cts strategy engine count+trading engine count with headroom)
+- Library release version is 2.13.0
+- README QueryFold engine/account counts match headers (32 / 64)
+
 ## [2.12.0] - 2026-11-12
 
 ### Added
