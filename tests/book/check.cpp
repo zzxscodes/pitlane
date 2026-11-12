@@ -461,6 +461,16 @@ static void check_cumtick() {
     expect(pitlane::infer_lots(prev, cur, 0, 1, false, px, lots, 4) == -1, "bad tick");
 }
 
+static void check_auction_est_maker() {
+    uint8_t side = 0;
+    expect(pitlane::auction_estimate_fill(7, 5, &side) == 5 && side == 1, "est buy");
+    expect(pitlane::auction_estimate_fill(-3, 10, &side) == 3 && side == 2, "est sell");
+    expect(pitlane::maker_only_style(pitlane::Style::Passive), "maker style");
+    pitlane::Rung asks[1]{{100, 1}};
+    const auto hit = pitlane::walk_buy(pitlane::Style::Passive, 100, 1, asks, 1);
+    expect(hit.kind == pitlane::Arrival::Drop, "maker drop cross");
+}
+
 int main() {
     check_steps();
     check_books();
@@ -477,6 +487,7 @@ int main() {
     check_own();
     check_quote_ordered();
     check_cumtick();
+    check_auction_est_maker();
     if (g_fails) {
         std::fprintf(stderr, "%d book check(s) failed\n", g_fails);
         return 1;

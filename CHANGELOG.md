@@ -1,5 +1,21 @@
 # Changelog
 
+## [2.12.0] - 2026-11-12
+
+### Added
+
+- Two-phase ledger freeze (`prelock_*`), credit/liability pools + `option_free`
+- `CurvePlan` / `lag_share_remaining`, `HysteresisGate` / `end_flat_pull`
+- `study/fair.hpp` integer fair / bias / pressure score
+- `wash_plan` STP disposition list, `freeze_px`, `auction_estimate_fill`, `maker_only_style`
+- `PulseBoard::copy_subs`, `util/breach.hpp` first-breach / pool watermark
+- PitConf `[host]`/`[shed]`/`[pace]`, `conf_load_ex` line errors, `conf_apply_host`, cash/hold soft `tune`
+- GitHub Pages workflow, pkg-config, install of `pitlane.conf` + `doc/site`, `CONTRIBUTING`/`SECURITY`, `HOST_TUNING` docs
+
+### Changed
+
+- Library release version is 2.12.0
+
 ## [2.11.0] - 2026-11-12
 
 ### Added

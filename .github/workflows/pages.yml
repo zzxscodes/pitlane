@@ -1,0 +1,41 @@
+name: pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "doc/site/**"
+      - "doc/API.md"
+      - "doc/API_CN.md"
+      - "doc/gen_site.py"
+      - ".github/workflows/pages.yml"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Regenerate site
+        run: python3 doc/gen_site.py
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: doc/site
+  deploy:
+    needs: build
+    runs-on: ubuntu-22.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

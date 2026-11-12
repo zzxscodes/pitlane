@@ -10,9 +10,9 @@ Include one header:
 
 Everything is in the namespace `pitlane`. Link `libpitlane.a`, or link the shared library with `-lpitlane`. The shared library's soname is `libpitlane.so.1`. The headers are the same for both.
 
-The release is `kVersion`, currently 2.11.0, also split into `kVersionMajor`, `kVersionMinor`, and `kVersionPatch`. `kDeskVersion` is the mapping-file layout and is currently 3. A new library release can leave the layout number where it is.
+The release is `kVersion`, currently 2.12.0, also split into `kVersionMajor`, `kVersionMinor`, and `kVersionPatch`. `kDeskVersion` is the mapping-file layout and is currently 3. A new library release can leave the layout number where it is.
 
-A browsable static site with a left-hand section list is generated into `doc/site/` (`python3 doc/gen_site.py`). Open `doc/site/index.html`. Startup settings are covered under **Startup configuration**.
+A browsable static site with a left-hand section list is generated into `doc/site/` (`python3 doc/gen_site.py`). Open a local `doc/site/index.html` or the GitHub Pages deployment — viewing the file on `github.com/.../blob/...` shows source only. Startup settings are covered under **Startup configuration**.
 
 Headers live under `pitlane/desk/`, `pitlane/book/`, `pitlane/order/`, `pitlane/time/`, `pitlane/study/`, `pitlane/util/`, and `pitlane/host/`. `version.hpp` stays beside `pitlane.hpp`. The table below names the area in the path.
 
@@ -49,6 +49,10 @@ if (!pitlane::desk_apply_conf(*desk, conf)) return 1;  // FanRing::tune, empty d
 | `[desk]` | `intent_cap` … `query_cap`, `cash_cap`, `hold_cap` |
 | `[broker]` | `max_qty`, `max_notional`, `max_live`, `*_limit_us`, `watch_cap` (hint-only) |
 | `[query]` | `engines`, `accounts`, `queue`, `kinds` (hint-only; compile-time) |
+| `[host]` | `cpu`, `policy`, `priority`, `nice` / `set_nice`, `hugepages`, `thp_disable`, `mlockall`, `numa_node`, `irq_list` |
+| `[shed]` / `[pace]` | StayShed / TokenBook–GCRA defaults for the caller to construct |
+
+`conf_load_ex` reports the failing 1-based line. `conf_apply_host` is best-effort. `cash_apply_conf` / `hold_apply_conf` soft-tune row boards.
 
 ## Open a shared desk
 
@@ -364,7 +368,11 @@ These calls do not open a socket, do not send an order, and do not start a threa
 | `desk/broker.hpp` | `BrokerWatch`, `QueryFold`, and `QueryWant` |
 | `desk/risk.hpp` | `risk_merge` and `AcctRiskTab` |
 | `desk/cash.hpp` | Cash/hold boards and `cash_enough` |
-| `desk/config.hpp` | Startup `PitConf` load, normalize, and apply |
+| `desk/config.hpp` | Startup `PitConf` load, normalize, host apply, cash/hold soft tune |
+| `order/prelock.hpp` | Two-phase freeze reserve / commit |
+| `order/credit.hpp` | Liability short pools and `option_free` |
+| `study/fair.hpp` | Integer fair, book bias, pressure score |
+| `util/breach.hpp` | First-breach sticky flags and pool watermarks |
 | `desk/codec.hpp` | Symbol class, offset, and direction |
 | `desk/feed.hpp` | Subscription mask, price scale, and raw ticks |
 | `desk/ids.hpp` | `IdMint` |

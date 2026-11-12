@@ -13,6 +13,9 @@ struct Rung {
 
 enum class Arrival : uint8_t { Rest = 1, Take = 2, Drop = 3 };
 
+// Maker-only is Style::Passive: any cross drops. Alias helper for call sites.
+inline bool maker_only_style(Style style) noexcept { return style == Style::Passive; }
+
 struct ArrivalHit {
     Arrival kind{Arrival::Drop};
     int64_t filled{0};

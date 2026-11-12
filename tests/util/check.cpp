@@ -691,6 +691,30 @@ static void check_pin_phase() {
     expect(b.n.load() == 3 && a.n.load() == 5, "phase switched");
 }
 
+static void check_breach_fuzz_smoke() {
+    expect(pitlane::pool_low(9, 10, 900000), "pool low");
+    pitlane::BreachFlag f{};
+    expect(pitlane::first_breach_high(f, 10, 5, 1) && f.latched, "breach");
+    expect(!pitlane::first_breach_high(f, 100, 5, 2), "sticky");
+    pitlane::breach_clear(f);
+    // Deterministic fuzz-style: random-looking keys into FanRing soft capacity.
+    pitlane::FanRing<int64_t, 8> ring;
+    expect(ring.tune(4), "fuzz tune");
+    uint64_t x = 0x9e3779b97f4a7c15ull;
+    int published = 0;
+    for (int i = 0; i < 32; ++i) {
+        x = x * 0xbf58476d1ce4e5b9ull + 1;
+        int64_t v = static_cast<int64_t>(x);
+        if (ring.publish(v, 0)) ++published;
+        else {
+            int64_t out = 0;
+            bool fresh = false;
+            if (ring.at(0, 0, out, &fresh)) ring.ack(0, 0);
+        }
+    }
+    expect(published > 0, "fuzz publish");
+}
+
 int main() {
     check_numeric();
     check_wide();
@@ -715,6 +739,7 @@ int main() {
     check_seq_latest_lane_ema();
     check_pin_phase();
     check_authbits_seqgate();
+    check_breach_fuzz_smoke();
     if (g_fails) {
         std::fprintf(stderr, "%d util check(s) failed\n", g_fails);
         return 1;

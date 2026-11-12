@@ -459,11 +459,34 @@ static void check_conf() {
     loaded.query_cap = 128;
     expect(pitlane::conf_normalize(loaded, nullptr, 0) >= 0, "norm again");
     expect(pitlane::desk_apply_conf(*desk, loaded) && desk->intents.capacity() == 256, "desk tune");
+
+    pitlane::CashLine cash_rows[8]{};
+    pitlane::CashBoard cash(cash_rows, 8);
+    loaded.cash_cap = 4;
+    expect(pitlane::cash_apply_conf(cash, loaded) && cash.capacity() == 4, "cash soft");
+    expect(cash.upsert(1, "p", "a", "d", "b") != nullptr, "cash upsert soft");
+
+    {
+        int err = 0;
+        FILE* bf = std::fopen("pitlane_bad.conf", "w");
+        if (bf) {
+            std::fputs("[desk]\nintent_cap=notnum\n", bf);
+            std::fclose(bf);
+        }
+        pitlane::PitConf bad{};
+        expect(!pitlane::conf_load_ex("pitlane_bad.conf", bad, &err) && err == 2, "err line");
+        ::unlink("pitlane_bad.conf");
+    }
+
+    pitlane::PulseBoard pulses;
+    expect(pulses.watch(1, "t", 0, false), "watch");
+    pitlane::PulseSub subs[4]{};
+    expect(pulses.copy_subs(subs, 4) == 1 && subs[0].name == 1, "copy_subs");
 }
 
 int main() {
-    expect(pitlane::kVersionMajor == 2 && pitlane::kVersionMinor == 11 && pitlane::kVersionPatch == 0, "release");
-    expect(std::strcmp(pitlane::kVersion, "2.11.0") == 0, "release text");
+    expect(pitlane::kVersionMajor == 2 && pitlane::kVersionMinor == 12 && pitlane::kVersionPatch == 0, "release");
+    expect(std::strcmp(pitlane::kVersion, "2.12.0") == 0, "release text");
     expect(pitlane::kDeskVersion == 3, "desk layout");
     check_conf();
     check_ring();

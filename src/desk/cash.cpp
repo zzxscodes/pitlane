@@ -31,7 +31,13 @@ uint64_t fnv_start(uint8_t tier) noexcept {
 
 }  // namespace
 
-CashBoard::CashBoard(CashLine* lines, uint32_t cap) noexcept : lines_(lines), cap_(cap) {}
+CashBoard::CashBoard(CashLine* lines, uint32_t cap) noexcept : lines_(lines), cap_(cap), soft_(cap) {}
+
+bool CashBoard::tune(uint32_t soft) noexcept {
+    if (soft < 1u || soft > cap_) return false;
+    soft_ = soft;
+    return true;
+}
 
 uint64_t CashBoard::key_of(uint8_t tier, const char* prod, const char* acct, const char* desk, const char* book) noexcept {
     uint64_t h = fnv_start(tier);
@@ -81,13 +87,13 @@ CashLine* CashBoard::upsert(uint8_t tier, const char* prod, const char* acct, co
     const uint64_t key = key_of(tier, prod, acct, desk, book);
     if (CashLine* hit = find(key)) return hit;
     if (!lines_) return nullptr;
-    for (uint32_t i = 0; i < cap_; ++i) {
+    for (uint32_t i = 0; i < soft_; ++i) {
         if (lines_[i].live.load(std::memory_order_acquire) == 1 && lines_[i].key == key) {
             remember(key, i);
             return &lines_[i];
         }
     }
-    for (uint32_t i = 0; i < cap_; ++i) {
+    for (uint32_t i = 0; i < soft_; ++i) {
         uint8_t expect = 0;
         if (!lines_[i].live.compare_exchange_strong(expect, 2, std::memory_order_acq_rel, std::memory_order_acquire))
             continue;
@@ -151,7 +157,13 @@ void CashBoard::credit(CashLine& row, int64_t amt) noexcept {
     row.gate.leave();
 }
 
-HoldBoard::HoldBoard(HoldLine* lines, uint32_t cap) noexcept : lines_(lines), cap_(cap) {}
+HoldBoard::HoldBoard(HoldLine* lines, uint32_t cap) noexcept : lines_(lines), cap_(cap), soft_(cap) {}
+
+bool HoldBoard::tune(uint32_t soft) noexcept {
+    if (soft < 1u || soft > cap_) return false;
+    soft_ = soft;
+    return true;
+}
 
 uint64_t HoldBoard::key_of(uint8_t tier, const char* prod, const char* acct, const char* name) noexcept {
     uint64_t h = fnv_start(tier);
@@ -200,13 +212,13 @@ HoldLine* HoldBoard::upsert(uint8_t tier, const char* prod, const char* acct, co
     const uint64_t key = key_of(tier, prod, acct, name);
     if (HoldLine* hit = find(key)) return hit;
     if (!lines_) return nullptr;
-    for (uint32_t i = 0; i < cap_; ++i) {
+    for (uint32_t i = 0; i < soft_; ++i) {
         if (lines_[i].live.load(std::memory_order_acquire) == 1 && lines_[i].key == key) {
             remember(key, i);
             return &lines_[i];
         }
     }
-    for (uint32_t i = 0; i < cap_; ++i) {
+    for (uint32_t i = 0; i < soft_; ++i) {
         uint8_t expect = 0;
         if (!lines_[i].live.compare_exchange_strong(expect, 2, std::memory_order_acq_rel, std::memory_order_acquire))
             continue;

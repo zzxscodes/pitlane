@@ -43,6 +43,23 @@ jobs:
         env:
           ASAN_OPTIONS: detect_leaks=0
 
+  docs:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Regenerate site and diff
+        run: |
+          python3 doc/gen_site.py
+          git diff --exit-code -- doc/site
+      - name: clang-format dry-run (2.12 headers)
+        run: |
+          sudo apt-get update && sudo apt-get install -y clang-format
+          clang-format --dry-run --Werror \
+            include/pitlane/order/prelock.hpp \
+            include/pitlane/order/credit.hpp \
+            include/pitlane/study/fair.hpp \
+            include/pitlane/util/breach.hpp
+
   package:
     runs-on: ubuntu-22.04
     steps:

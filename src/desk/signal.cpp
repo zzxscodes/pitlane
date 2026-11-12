@@ -54,4 +54,14 @@ int PulseBoard::drain(Pulse* out, int cap) noexcept {
     return n;
 }
 
+int PulseBoard::copy_subs(PulseSub* dst, int cap) const noexcept {
+    if (!dst || cap <= 0) return 0;
+    int n = 0;
+    for (int i = 0; i < nsub_ && n < cap; ++i) {
+        if (!sub_[i].live) continue;
+        dst[n++] = sub_[i];
+    }
+    return n;
+}
+
 }  // namespace pitlane

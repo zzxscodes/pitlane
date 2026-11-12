@@ -1,5 +1,10 @@
 #include "pitlane/desk/config.hpp"
 
+#include "pitlane/host/affinity.hpp"
+#include "pitlane/host/hugepage.hpp"
+#include "pitlane/host/memlock.hpp"
+#include "pitlane/host/priority.hpp"
+
 #include <cstdio>
 #include <cstring>
 
@@ -207,6 +212,30 @@ int set_key(PitConf& conf, const char* section, const char* key, const char* val
         if (std::strcmp(key, "queue") == 0) return ok(parse_u32(val, conf.query_queue));
         if (std::strcmp(key, "kinds") == 0) return ok(parse_u32(val, conf.query_kinds));
     }
+    if (std::strcmp(sec, "host") == 0 || sec[0] == 0) {
+        if (std::strcmp(key, "cpu") == 0) return ok(parse_i32(val, conf.host_cpu));
+        if (std::strcmp(key, "policy") == 0) return ok(parse_i32(val, conf.host_policy));
+        if (std::strcmp(key, "priority") == 0) return ok(parse_i32(val, conf.host_priority));
+        if (std::strcmp(key, "nice") == 0) return ok(parse_i32(val, conf.host_nice));
+        if (std::strcmp(key, "set_nice") == 0) return ok(parse_u8(val, conf.host_set_nice));
+        if (std::strcmp(key, "hugepages") == 0) return ok(parse_i64(val, conf.host_hugepages));
+        if (std::strcmp(key, "thp_disable") == 0) return ok(parse_u8(val, conf.host_thp_disable));
+        if (std::strcmp(key, "mlockall") == 0) return ok(parse_u8(val, conf.host_mlockall));
+        if (std::strcmp(key, "numa_node") == 0) return ok(parse_i32(val, conf.host_numa_node));
+        if (std::strcmp(key, "irq_list") == 0) return ok(copy_dir(conf.host_irq_list, sizeof conf.host_irq_list, val));
+    }
+    if (std::strcmp(sec, "shed") == 0 || sec[0] == 0) {
+        if (std::strcmp(key, "target") == 0) return ok(parse_i64(val, conf.shed_target));
+        if (std::strcmp(key, "window") == 0) return ok(parse_i64(val, conf.shed_window));
+    }
+    if (std::strcmp(sec, "pace") == 0 || sec[0] == 0) {
+        if (std::strcmp(key, "burst") == 0) return ok(parse_i64(val, conf.pace_burst));
+        if (std::strcmp(key, "rate") == 0) return ok(parse_i64(val, conf.pace_rate));
+        if (std::strcmp(key, "per") == 0) return ok(parse_i64(val, conf.pace_per));
+        if (std::strcmp(key, "idle") == 0) return ok(parse_i64(val, conf.pace_idle));
+        if (std::strcmp(key, "gcra_interval") == 0) return ok(parse_i64(val, conf.gcra_interval));
+        if (std::strcmp(key, "gcra_tolerance") == 0) return ok(parse_i64(val, conf.gcra_tolerance));
+    }
     return 0;
 }
 
@@ -214,7 +243,8 @@ int set_key(PitConf& conf, const char* section, const char* key, const char* val
 
 void conf_defaults(PitConf& conf) noexcept { conf = PitConf{}; }
 
-bool conf_load(const char* path, PitConf& conf) noexcept {
+bool conf_load_ex(const char* path, PitConf& conf, int* err_line) noexcept {
+    if (err_line) *err_line = 0;
     conf_defaults(conf);
     if (!path || !path[0]) return true;
     FILE* f = std::fopen(path, "r");
@@ -229,12 +259,14 @@ bool conf_load(const char* path, PitConf& conf) noexcept {
         if (*p == '[') {
             char* end = std::strchr(p, ']');
             if (!end) {
+                if (err_line) *err_line = nline;
                 std::fclose(f);
                 return false;
             }
             *end = 0;
             char* name = trim(p + 1);
             if (std::strlen(name) >= sizeof section) {
+                if (err_line) *err_line = nline;
                 std::fclose(f);
                 return false;
             }
@@ -243,6 +275,7 @@ bool conf_load(const char* path, PitConf& conf) noexcept {
         }
         char* eq = std::strchr(p, '=');
         if (!eq) {
+            if (err_line) *err_line = nline;
             std::fclose(f);
             return false;
         }
@@ -250,20 +283,23 @@ bool conf_load(const char* path, PitConf& conf) noexcept {
         char* key = trim(p);
         char* val = trim(eq + 1);
         if (!*key) {
+            if (err_line) *err_line = nline;
             std::fclose(f);
             return false;
         }
         if (!*val) continue;  // empty → keep default
         const int rc = set_key(conf, section, key, val);
         if (rc < 0) {
+            if (err_line) *err_line = nline;
             std::fclose(f);
             return false;
         }
-        (void)nline;
     }
     std::fclose(f);
     return true;
 }
+
+bool conf_load(const char* path, PitConf& conf) noexcept { return conf_load_ex(path, conf, nullptr); }
 
 int conf_normalize(PitConf& conf, char* hints, int hints_cap) noexcept {
     if (hints && hints_cap > 0) hints[0] = 0;
@@ -372,6 +408,21 @@ int conf_normalize(PitConf& conf, char* hints, int hints_cap) noexcept {
         conf.query_kinds = QueryFold::kKinds;
         ++n;
     }
+    if (conf.host_policy < 0 || conf.host_policy > 2) {
+        conf.host_policy = 0;
+        at = append_hint(hints, hints_cap, at, "host.policy: clamped to 0|1|2");
+        ++n;
+    }
+    if (conf.host_set_nice > 1) conf.host_set_nice = 1;
+    if (conf.host_thp_disable > 1) conf.host_thp_disable = 1;
+    if (conf.host_mlockall > 1) conf.host_mlockall = 1;
+    if (conf.shed_target < 0) conf.shed_target = 0;
+    if (conf.shed_window < 0) conf.shed_window = 0;
+    if (conf.pace_per <= 0) conf.pace_per = 1;
+    if (conf.pace_burst < 0) conf.pace_burst = 0;
+    if (conf.pace_rate < 0) conf.pace_rate = 0;
+    if (conf.gcra_interval < 0) conf.gcra_interval = 0;
+    if (conf.gcra_tolerance < 0) conf.gcra_tolerance = 0;
     return n;
 }
 
@@ -412,6 +463,54 @@ bool desk_apply_conf(Desk& desk, const PitConf& conf) noexcept {
     if (!desk.prints.tune(conf.print_cap)) return false;
     if (!desk.queries.tune(conf.query_cap)) return false;
     return true;
+}
+
+bool cash_apply_conf(CashBoard& board, const PitConf& conf) noexcept { return board.tune(conf.cash_cap); }
+
+bool hold_apply_conf(HoldBoard& board, const PitConf& conf) noexcept { return board.tune(conf.hold_cap); }
+
+int conf_apply_host(const PitConf& conf, char* hints, int hints_cap) noexcept {
+    if (hints && hints_cap > 0) hints[0] = 0;
+    int at = 0;
+    int ok_n = 0;
+    char msg[192];
+    if (conf.host_cpu >= 0) {
+        if (pin_thread(conf.host_cpu)) {
+            ++ok_n;
+        } else {
+            std::snprintf(msg, sizeof msg, "host.cpu=%d: pin_thread failed", conf.host_cpu);
+            at = append_hint(hints, hints_cap, at, msg);
+        }
+    }
+    if (conf.host_policy == 1) {
+        if (set_fifo_thread(conf.host_priority)) ++ok_n;
+        else at = append_hint(hints, hints_cap, at, "host.policy=FIFO: set_fifo_thread failed");
+    } else if (conf.host_policy == 2) {
+        if (set_rr_thread(conf.host_priority)) ++ok_n;
+        else at = append_hint(hints, hints_cap, at, "host.policy=RR: set_rr_thread failed");
+    }
+    if (conf.host_set_nice) {
+        if (set_nice(conf.host_nice)) ++ok_n;
+        else at = append_hint(hints, hints_cap, at, "host.nice: set_nice failed");
+    }
+    if (conf.host_hugepages >= 0) {
+        if (hugepage_count_ensure(static_cast<long>(conf.host_hugepages))) ++ok_n;
+        else at = append_hint(hints, hints_cap, at, "host.hugepages: ensure failed");
+    }
+    if (conf.host_thp_disable) {
+        if (thp_disable()) ++ok_n;
+        else at = append_hint(hints, hints_cap, at, "host.thp_disable: failed");
+    }
+    if (conf.host_mlockall) {
+        if (mem_lock_all()) ++ok_n;
+        else at = append_hint(hints, hints_cap, at, "host.mlockall: failed");
+    }
+    (void)conf.host_numa_node;
+    (void)conf.host_irq_list;  // IRQ needs an irq number; list alone is documentary in conf
+    if (conf.host_irq_list[0]) {
+        at = append_hint(hints, hints_cap, at, "host.irq_list: stored; call irq_affinity_list_set with irq id");
+    }
+    return ok_n;
 }
 
 }  // namespace pitlane

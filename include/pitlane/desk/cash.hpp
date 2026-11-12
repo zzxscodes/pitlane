@@ -61,6 +61,11 @@ public:
 
     static uint64_t key_of(uint8_t tier, const char* prod, const char* acct, const char* desk, const char* book) noexcept;
 
+    // Startup soft row limit in [1, physical cap]. Does not shrink the array.
+    bool tune(uint32_t soft) noexcept;
+    uint32_t capacity() const noexcept { return soft_; }
+    uint32_t hard_cap() const noexcept { return cap_; }
+
     void reindex() noexcept;
     CashLine* find(uint64_t key) const noexcept;
     CashLine* upsert(uint8_t tier, const char* prod, const char* acct, const char* desk, const char* book) noexcept;
@@ -75,6 +80,7 @@ private:
 
     CashLine* lines_;
     uint32_t cap_;
+    uint32_t soft_;
     static constexpr uint32_t kMap = 512;
     uint64_t map_key_[kMap]{};
     uint32_t map_at_[kMap]{};
@@ -94,6 +100,10 @@ public:
 
     static uint64_t key_of(uint8_t tier, const char* prod, const char* acct, const char* name) noexcept;
 
+    bool tune(uint32_t soft) noexcept;
+    uint32_t capacity() const noexcept { return soft_; }
+    uint32_t hard_cap() const noexcept { return cap_; }
+
     void reindex() noexcept;
     HoldLine* find(uint64_t key) const noexcept;
     HoldLine* upsert(uint8_t tier, const char* prod, const char* acct, const char* name, bool split_yday) noexcept;
@@ -103,6 +113,7 @@ private:
 
     HoldLine* lines_;
     uint32_t cap_;
+    uint32_t soft_;
     static constexpr uint32_t kMap = 512;
     uint64_t map_key_[kMap]{};
     uint32_t map_at_[kMap]{};

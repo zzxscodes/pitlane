@@ -102,6 +102,74 @@ inline int64_t slice_late(SlicePlan& plan, int64_t qty) noexcept {
     return take;
 }
 
+// Minute-weight volume curve (notes §47). Weights are relative; lag is shared over the remaining curve.
+template <int N>
+struct CurvePlan {
+    static_assert(N >= 1 && N <= 64, "curve minutes");
+    int64_t total{0};
+    int64_t done{0};
+    int64_t weight[N]{};
+    int64_t weight_sum{0};
+    int minutes{0};
+    int64_t lot{1};
+};
+
+template <int N>
+inline bool curve_open(CurvePlan<N>& plan, int64_t total, const int64_t* weights, int minutes, int64_t lot) noexcept {
+    plan = CurvePlan<N>{};
+    if (total <= 0 || !weights || minutes < 1 || minutes > N || lot <= 0) return false;
+    int64_t sum = 0;
+    for (int i = 0; i < minutes; ++i) {
+        if (weights[i] < 0) return false;
+        if (sum > INT64_MAX - weights[i]) return false;
+        sum += weights[i];
+        plan.weight[i] = weights[i];
+    }
+    if (sum <= 0) return false;
+    plan.total = total;
+    plan.weight_sum = sum;
+    plan.minutes = minutes;
+    plan.lot = lot;
+    return true;
+}
+
+// Target cumulative quantity through minute index (0-based, inclusive).
+template <int N>
+inline int64_t curve_target(const CurvePlan<N>& plan, int minute) noexcept {
+    if (minute < 0 || plan.minutes <= 0 || plan.weight_sum <= 0) return 0;
+    if (minute >= plan.minutes) minute = plan.minutes - 1;
+    int64_t w = 0;
+    for (int i = 0; i <= minute; ++i) w += plan.weight[i];
+    return plan.total * w / plan.weight_sum;
+}
+
+// Quantity to send now so lag is shared across the remaining curve from minute onward.
+template <int N>
+inline int64_t lag_share_remaining(const CurvePlan<N>& plan, int minute) noexcept {
+    if (minute < 0) minute = 0;
+    if (minute >= plan.minutes) return 0;
+    const int64_t target = curve_target(plan, minute);
+    int64_t lag = target - plan.done;
+    if (lag <= 0) return 0;
+    int64_t rest_w = 0;
+    for (int i = minute; i < plan.minutes; ++i) rest_w += plan.weight[i];
+    if (rest_w <= 0) return 0;
+    int64_t share = lag * plan.weight[minute] / rest_w;
+    if (share < plan.lot && lag >= plan.lot) share = plan.lot;
+    if (share > lag) share = lag;
+    if (plan.done > plan.total) return 0;
+    const int64_t left = plan.total - plan.done;
+    if (share > left) share = left;
+    return share;
+}
+
+template <int N>
+inline bool curve_fill(CurvePlan<N>& plan, int64_t qty) noexcept {
+    if (qty <= 0 || plan.done > plan.total - qty) return false;
+    plan.done += qty;
+    return true;
+}
+
 enum class BasketOp : uint8_t { Create = 1, Pause = 2, Resume = 3, Stop = 4, Update = 5 };
 
 struct BasketNote {

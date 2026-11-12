@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(pitlane VERSION 2.11.0 LANGUAGES CXX)
+project(pitlane VERSION 2.12.0 LANGUAGES CXX)
 
 set(PITLANE_SOURCES
     src/desk/broker.cpp
@@ -233,3 +233,17 @@ install(FILES
 
 install(FILES LICENSE README.md README_CN.md CHANGELOG.md
     DESTINATION ${CMAKE_INSTALL_DOCDIR})
+install(FILES examples/pitlane.conf
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/pitlane)
+install(DIRECTORY doc/site/
+    DESTINATION ${CMAKE_INSTALL_DOCDIR}/site
+    OPTIONAL)
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/doc/HOST_TUNING.md")
+    install(FILES doc/HOST_TUNING.md doc/HOST_TUNING_CN.md
+        DESTINATION ${CMAKE_INSTALL_DOCDIR}
+        OPTIONAL)
+endif()
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/cmake/pitlane.pc.in
+    ${CMAKE_CURRENT_BINARY_DIR}/pitlane.pc @ONLY)
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/pitlane.pc
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)

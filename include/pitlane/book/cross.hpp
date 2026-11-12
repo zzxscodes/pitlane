@@ -123,4 +123,19 @@ private:
 int64_t auction_clear(const CallIn* in, int n, int64_t ref_px, int tie_higher, CallOut* out, int cap,
                       int64_t* matched);
 
+// After the call deadline, estimate one fill from a cached imbalance (notes §52).
+// gap > 0 means excess buy demand filled as buy; gap < 0 as sell. Returns |filled|.
+inline int64_t auction_estimate_fill(int64_t cached_gap, int64_t max_qty, uint8_t* side_out) noexcept {
+    if (max_qty < 0) max_qty = 0;
+    if (cached_gap == 0 || max_qty == 0) {
+        if (side_out) *side_out = 0;
+        return 0;
+    }
+    const bool buy = cached_gap > 0;
+    int64_t mag = buy ? cached_gap : -cached_gap;
+    if (mag > max_qty) mag = max_qty;
+    if (side_out) *side_out = buy ? 1 : 2;
+    return mag;
+}
+
 }  // namespace pitlane

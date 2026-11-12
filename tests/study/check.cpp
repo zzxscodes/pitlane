@@ -228,6 +228,15 @@ static void check_acb() {
     expect(pitlane::acb_apply(book, 90, -2) && book.pos == -1 && book.suma == -90, "acb flip short");
 }
 
+static void check_fair() {
+    expect(pitlane::fair_from_top(100, 2, 102, 2) == 101, "fair mid");
+    expect(pitlane::book_bias_ppm(1, 3) == 500000, "bias");
+    pitlane::PressureEma p{};
+    expect(pitlane::pressure_open(p, 1000000), "press open");
+    expect(pitlane::pressure_sample(p, 103, 101, 2) && p.value == 1000000, "press sample");
+    expect(pitlane::fair_score(100, 50, 1, 1) == 150, "score");
+}
+
 int main() {
     check_feat_and_mark();
     check_tables();
@@ -239,6 +248,7 @@ int main() {
     check_right();
     check_flow();
     check_acb();
+    check_fair();
     if (g_fails) {
         std::fprintf(stderr, "%d study check(s) failed\n", g_fails);
         return 1;

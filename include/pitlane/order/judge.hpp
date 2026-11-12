@@ -232,4 +232,47 @@ inline Cause wash_cause(const WashRow* rows, int n, uint32_t acct, uint32_t grou
     return wash_hit(rows, n, acct, group, name, side, px) ? Cause::WashRisk : Cause::Ok;
 }
 
+// STP disposition (notes §10). The library only lists resting rows; the caller cancels or rejects.
+enum class WashAct : uint8_t { None = 0, RejectTake = 1, RejectRest = 2, RejectBoth = 3 };
+
+struct WashHit {
+    int row{-1};
+    uint32_t acct{0};
+    uint32_t name{0};
+    int64_t px{0};
+    uint8_t side{0};
+};
+
+inline int wash_plan(const WashRow* rows, int n, uint32_t acct, uint32_t group, uint32_t name, uint8_t side, int64_t px,
+                     WashAct act, WashHit* out, int cap) noexcept {
+    if (!rows || n <= 0 || !out || cap <= 0) return 0;
+    if (act == WashAct::None || act == WashAct::RejectTake) return 0;
+    int wrote = 0;
+    for (int i = 0; i < n && wrote < cap; ++i) {
+        const WashRow& row = rows[i];
+        if (!row.live || row.name != name || row.side == side || row.px <= 0) continue;
+        if (row.side != 1 && row.side != 2) continue;
+        const bool same_acct = row.acct == acct;
+        const bool same_group = group != 0 && row.group == group;
+        if (!same_acct && !same_group) continue;
+        const bool cross = (side == 1 && px >= row.px && row.side == 2) || (side == 2 && px <= row.px && row.side == 1);
+        if (!cross) continue;
+        out[wrote].row = i;
+        out[wrote].acct = row.acct;
+        out[wrote].name = row.name;
+        out[wrote].px = row.px;
+        out[wrote].side = row.side;
+        ++wrote;
+        if (act == WashAct::RejectRest) break;  // one resting counterparty is enough for RRO listing
+    }
+    return wrote;
+}
+
+// Market / unset limit: freeze at opposite touch (notes §33). Limit > 0 wins.
+inline int64_t freeze_px(bool buy, int64_t limit, int64_t bid, int64_t ask) noexcept {
+    if (limit > 0) return limit;
+    if (buy) return ask > 0 ? ask : 0;
+    return bid > 0 ? bid : 0;
+}
+
 }  // namespace pitlane
