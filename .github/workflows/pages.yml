@@ -9,6 +9,7 @@ on:
       - "doc/API_CN.md"
       - "doc/gen_site.py"
       - ".github/workflows/pages.yml"
+  workflow_dispatch:
 
 permissions:
   contents: read
