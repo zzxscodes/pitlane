@@ -10,7 +10,7 @@
 
 所有名字都在命名空间 `pitlane` 里。链接 `libpitlane.a`，或者用 `-lpitlane` 链接动态库。动态库的 soname 是 `libpitlane.so.1`。两种链接方式使用同一套头文件。
 
-发行版本是 `kVersion`，当前是 2.12.0，并拆成 `kVersionMajor`、`kVersionMinor` 和 `kVersionPatch`。`kDeskVersion` 是映射文件的布局版本，当前是 3。库的一次新发行可以保持布局版本不动。
+发行版本是 `kVersion`，当前是 2.13.0，并拆成 `kVersionMajor`、`kVersionMinor` 和 `kVersionPatch`。`kDeskVersion` 是 desk 映射文件的布局版本，当前是 3。`kYardVersion` 是独立的标的/行情池布局版本，当前是 2。库的一次新发行可以保持任一布局版本不动。
 
 带左侧分节导航的静态网页在 `doc/site/`（`python3 doc/gen_site.py` 生成）。打开**本地** `doc/site/index.html` 或 GitHub Pages；在 `github.com/.../blob/...` 里打开只会看到源码。启动期设置见 **启动配置**。
 
@@ -21,6 +21,8 @@
 ## 启动配置
 
 库在进程启动时接受的可调项，都放在可选的 INI 风格文件里（见 `examples/pitlane.conf`）。默认值是 `desk/config.hpp` 里 `PitConf` 的成员初值。省略某个键，或把值留空，就保留该默认值。未知键忽略。硬解析错误（截断行、该写数字却写了别的）时 `conf_load` 返回 false。
+
+`broker` 的 `ack_limit_us` / `life_limit_us` / `pull_limit_us` 默认 `60000000`（60 秒），对齐常见的 `trading center` `HeartBeatIntervalSec`；设为 `0` 关闭该轴。`host` 默认打开 `thp_disable` 与 `mlockall`。Desk FanRing 软容量仍停在编译期上限（`kIntentCap` 等）。十万级标的/行情池在独立的 `[yard]` / `Yard` 映射里（启动期一次建好，热路径不再分配）。`examples/pitlane.conf` 注释列出了与 `config.json` 的字段对照；Mongo / algo route 永不导入。
 
 `conf_normalize` 在加载后只跑一次。它把环容量压到 `[2, 编译期 Cap]` 内的 2 的幂，把仅编译期定长的尺寸（`QueryFold`、`BrokerWatch::kCap`）恢复并写提示，并把每条调整写成一行可读文字放进调用方缓冲。启动时打印这些行。热路径不再打开配置文件。
 
@@ -40,7 +42,7 @@ if (!desk) return 1;
 if (!pitlane::desk_apply_conf(*desk, conf)) return 1;  // FanRing::tune，仅空环
 ```
 
-`conf_map_opt` / `conf_arena_opt` / `conf_risk_caps` 把纠偏后的字段拷进映射、arena 与风控用的选项结构。`desk_apply_conf` 在环仍为空时对每条 desk 环调用 `FanRing::tune`。软容量不会超过编译期槽数组；磁盘上的 `Desk` 布局仍是 `kDeskVersion`。
+`conf_map_opt` / `conf_arena_opt` / `conf_risk_caps` / `conf_yard_plan` / `conf_study_plan` 把纠偏后的字段拷进映射、arena、风控、Yard 与 study 用的选项结构。`desk_apply_conf` 在环仍为空时对每条 desk 环调用 `FanRing::tune`。软容量不会超过编译期槽数组；磁盘上的 `Desk` 布局仍是 `kDeskVersion`。
 
 | 节 | 键（摘要） |
 | --- | --- |
@@ -51,6 +53,8 @@ if (!pitlane::desk_apply_conf(*desk, conf)) return 1;  // FanRing::tune，仅空
 | `[query]` | `engines`、`accounts`、`queue`、`kinds`（仅提示；编译期定长） |
 | `[host]` | `cpu`、`policy`、`priority`、`nice` / `set_nice`、`hugepages`、`thp_disable`、`mlockall`、`numa_node`、`irq_list` |
 | `[shed]` / `[pace]` | StayShed / TokenBook–GCRA 默认值，由调用方构造 |
+| `[yard]` | `sym_slots`、`quote_lanes`、`quote_depth`、`order_*` / `trade_*` / `rebuild_*` / `mix_*`（深度 2 的幂）、`base_info_cap`、`trade_time_cap` |
+| `[study]` | `signal_pools`、`sample_pools`、`factor_pools`、`nonstruct_pools`、`sample_depth`、`factor_depth`、`nonstruct_depth` |
 
 `conf_load_ex` 回报失败行号（从 1 起）。`conf_apply_host` 尽最大努力。`cash_apply_conf` / `hold_apply_conf` 软调行表上限。
 
@@ -70,6 +74,24 @@ if (!desk) return 1;
 其他进程用 `map_attach` 挂上，再把 0 传给 `desk_view`（须与创建时同一逻辑路径，以便解析到同一 hugetlbfs 文件）。`map_release` 解除映射；若曾 `mlock` 则先 `munlock`，再关闭文件。每条环只有一个写入者。读者不要共用一个读取位置。
 
 `desk->clock_us` 是会话时钟，单位是微秒。`DeskLoop::beat` 把当次传入的时间写到这里。
+
+## 标的 / 行情池（Yard）
+
+`Yard` 是独立的启动期映射（魔数 `PITYARD2`，布局 `kYardVersion` 2），对齐 startup pool：稠密标的、行情/委托/成交/重建/混合道，以及 `YardFacts` / `YardHours` 表。默认与 trading center 同量级（标的/行情 15 万×256，order/trade 10×32768，rebuild 10×128，mix 10×32768，facts 35000，hours 500）。`yard_open` 一次定长；claim / bind / publish / latest 热路径不分配。池满失败关闭。命名为 pitlane 自有（`YardTick`、`YardPrint`、`YardFacts`、`YardHours`），不复用 cts 标识符。
+
+```cpp
+pitlane::YardPlan plan = pitlane::conf_yard_plan(conf);  // 测试可用更小 plan
+pitlane::YardView yard{};
+if (pitlane::yard_open("yard.bin", plan, &yard, pitlane::conf_map_opt(conf), 1) != 0) return 1;
+uint32_t id = pitlane::yard_claim_sym(yard, "IF2501");
+if (!id || !pitlane::yard_bind_quote(yard, id) || !pitlane::yard_bind_order(yard, id)) return 1;
+pitlane::YardMark mark{/* bid/ask px qty, ts_us */};
+if (!pitlane::yard_publish(yard, id, mark)) return 1;
+pitlane::YardTick tick{/* px qty side ts_us */};
+if (!pitlane::yard_publish_tick(yard, id, tick)) return 1;
+```
+
+`conf_study_plan` 拷贝 study pool 量级默认，供调用方 `FactorSeries` / `NamedFactorRing` 定深（不是共享 mmap）。
 
 ## 发布和读取
 
@@ -182,7 +204,7 @@ pitlane::VenueOut out = venue.admit(in, in.stamp_us, reps, 4);
 
 `BrokerWatch::screen` 检查数量、方向、名义金额和在途笔数。`remember` 跟踪一笔已发出的委托。`expire` 去掉未及时确认、超过存活时间，或撤单后等待过久的委托。上限小于等于 0 时，这一项检查关闭。
 
-`QueryFold` 最多接受 4 个引擎和 32 个账号，每个引擎 16 条排队请求，查询种类最多 8。`push(engine, acct)` 保持仅按账号合并的旧路径。`push(engine, acct, kind, page)` 可带 page token；引擎、账号、kind 越界或队列满时失败。`fold` 合并队列。`pending` 每个账号列出一次。`pending_kind` 列出互异的 `(acct, kind)` 及最后一次 page；输出缓冲过短返回 -1。库不会在两页之间睡眠。下一次什么时候查，由调用方决定。
+`QueryFold` 最多接受 32 个引擎和 64 个账号，每个引擎 16 条排队请求，查询种类最多 8。`push(engine, acct)` 保持仅按账号合并的旧路径。`push(engine, acct, kind, page)` 可带 page token；引擎、账号、kind 越界或队列满时失败。`fold` 合并队列。`pending` 每个账号列出一次。`pending_kind` 列出互异的 `(acct, kind)` 及最后一次 page；输出缓冲过短返回 -1。库不会在两页之间睡眠。下一次什么时候查，由调用方决定。
 
 `session_date` 把一个时刻归到它所属的交易日。8 点到 18 点不回退。18 点之后，周一回退 3 天，其余日子回退 1 天。凌晨则周一回退 2 天，其余日子回退 1 天。然后再跳过周末和 `ClosedDays` 里的日期。
 
@@ -198,7 +220,7 @@ book.apply(edits, 1);
 
 方向 1 是买盘，方向 2 是卖盘。价格已经存在时，`Add` 失败。`Set` 的数量为 0 时删掉这一档。`Del` 一个不存在的价格仍然成功。
 
-`band_at_hold` 在价格正好等于下一档起点时留在较低的一档。`walk_up` 和 `walk_down` 从这一档开始走 tick。一步落到下一档起点之后，后面的 tick 用新档的步长。`clamp_px` 只在上限高于下限时夹价格。`span_index` 返回包含这一分钟的时段，没有则返回 -1。结束分钟不大于开始分钟的时段跨过午夜。`session_part` 对一个 `SessionRow` 返回开市、午休或休市。
+`band_at_hold` 在价格正好等于下一档起点时留在较低的一档。`walk_up` 和 `walk_down` 从这一档开始走 tick。一步落到下一档起点之后，后面的 tick 用新档的步长。`clamp_px` 只在上限高于下限时夹价格。`TickGrid` 最多十档，带涨跌停，并在热路径缓存当前档下标（对应 `cts::TickSizeHandler`，但只用整数价）。`span_index` 返回包含这一分钟的时段，没有则返回 -1。结束分钟不大于开始分钟的时段跨过午夜。`session_part` 对一个 `SessionRow` 返回开市、午休或休市。
 
 `life_next` 返回下一个 `Phase`。从当前阶段不能接受这个事件时，结果是 `Phase::None`。撤单等待期间的成交仍留在 `PullWait`。`Resume` 和 `ResumePartial` 把被拒绝的撤单退回已报或部分成交。
 
@@ -362,13 +384,15 @@ book.apply(edits, 1);
 | `book/ladder.hpp` | 固定价格窗口和有量的最优价 |
 | `book/own.hpp` | 调用方本地双边最优价 |
 | `book/quote.hpp` | 行情批次、有序 apply、逐笔记录和分钟滚动 |
-| `book/steps.hpp` | 价位档和价格移动 |
+| `book/steps.hpp` | 价位档、价格移动，以及带档位游标缓存的 `TickGrid` |
+| `study/factorcal.hpp` | 定长因子日历序列与按名挂载环（笔记 §22） |
 | `book/venue.hpp` | `PaperVenue` |
 | `desk/acct.hpp` | 交易员→多账户表与 `acct_idle` |
 | `desk/broker.hpp` | `BrokerWatch`、`QueryFold` 与 `QueryWant` |
 | `desk/risk.hpp` | `risk_merge` 与 `AcctRiskTab` |
 | `desk/cash.hpp` | 资金/持仓板与 `cash_enough` |
-| `desk/config.hpp` | 启动期 `PitConf` 加载、纠偏、host 应用、资金/持仓软上限 |
+| `desk/config.hpp` | 启动期 `PitConf` 加载、纠偏、host 应用、资金/持仓软上限、`conf_yard_plan` |
+| `desk/yard.hpp` | 启动期标的/行情池（`YardPlan`、claim/bind/publish/latest） |
 | `order/prelock.hpp` | 两阶段冻结 reserve / commit |
 | `order/credit.hpp` | 负债空头池与 `option_free` |
 | `study/fair.hpp` | 整数公允价、盘口偏置、压力分 |

@@ -287,6 +287,11 @@ void check_walk() {
     expect(pitlane::walk_up(bands, 2, 990, 100, 0, 1000) == 1000, "clamp high");
     expect(pitlane::walk_down(bands, 2, 3, 10, 1, 1000) == 1, "clamp low");
 
+    pitlane::TickGrid grid{};
+    expect(grid.load(bands, 2, 0, 10000), "tick grid load");
+    expect(grid.floor_px(1003) == 1000 && grid.ceil_px(1003) == 1005, "tick grid snap");
+    expect(grid.walk_up(998, 3) == 1005 && grid.cursor == 1, "tick grid cursor");
+
     pitlane::Span spans[4]{};
     const int n = pitlane::future_spans(true, 21 * 60, 23 * 60, spans, 4);
     expect(n == 4, "future spans");

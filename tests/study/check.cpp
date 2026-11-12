@@ -237,6 +237,21 @@ static void check_fair() {
     expect(pitlane::fair_score(100, 50, 1, 1) == 150, "score");
 }
 
+static void check_factorcal() {
+    pitlane::FactorSeries<8> series{};
+    expect(series.write_plain(0, 100, 7, 100, 0) && series.last_write == 0, "factor first");
+    expect(series.write_plain(2, 300, 9, 100, 1), "factor gap");
+    expect(series.at(1) && series.at(1)->filled == 1 && series.at(1)->value == 1, "gap filled");
+    expect(series.at(2) && series.at(2)->filled == 0 && series.at(2)->value == 9, "real sample");
+    expect(!series.write_plain(1, 200, 8, 100, 0), "reject rewind");
+
+    pitlane::NamedFactorRing<4, 8> named{};
+    auto* slot = named.open("rsi");
+    expect(slot && named.find("rsi") == slot, "named open");
+    expect(slot->series.write_plain(0, 100, 42, 100, 0), "named write");
+    expect(!named.open("a_very_long_factor_name_that_exceeds"), "key too long");
+}
+
 int main() {
     check_feat_and_mark();
     check_tables();
@@ -249,6 +264,7 @@ int main() {
     check_flow();
     check_acb();
     check_fair();
+    check_factorcal();
     if (g_fails) {
         std::fprintf(stderr, "%d study check(s) failed\n", g_fails);
         return 1;

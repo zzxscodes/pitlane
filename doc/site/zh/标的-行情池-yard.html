@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>标的 / 行情池（Yard） — pitlane API</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="side">
+    <h1>pitlane API</h1>
+    <div class="lang">
+      <a href="../en/symbol-quote-yard.html">English</a>
+      <a href="#" class="active">中文</a>
+    </div>
+    <nav>
+      <a href="index.html">概述</a><a href="启动配置.html">启动配置</a><a href="打开共享区.html">打开共享区</a><a href="标的-行情池-yard.html" class="active">标的 / 行情池（Yard）</a><a href="发布和读取.html">发布和读取</a><a href="跑会话循环.html">跑会话循环</a><a href="准备一张委托.html">准备一张委托</a><a href="在纸面场所撮合.html">在纸面场所撮合</a><a href="合约-信号和柜台.html">合约、信号和柜台</a><a href="辅助函数.html">辅助函数</a><a href="调用方自己保管的辅助函数.html">调用方自己保管的辅助函数</a><a href="组帧-节奏和快照.html">组帧、节奏和快照</a><a href="周期计数和定长低延迟表.html">周期计数和定长低延迟表</a><a href="一张委托单.html">一张委托单</a><a href="研究-以及调用方自己的决定.html">研究，以及调用方自己的决定</a><a href="价格窗口-槽池和两笔费用.html">价格窗口、槽池和两笔费用</a><a href="调用所在的头文件.html">调用所在的头文件</a>
+    </nav>
+  </aside>
+  <main class="main">
+    <div class="meta">Static API guide · open a section from the left</div>
+    <h1>标的 / 行情池（Yard）</h1>
+<p><code>Yard</code> 是独立的启动期映射（魔数 <code>PITYARD2</code>，布局 <code>kYardVersion</code> 2），对齐 startup pool：稠密标的、行情/委托/成交/重建/混合道，以及 <code>YardFacts</code> / <code>YardHours</code> 表。默认与 trading center 同量级（标的/行情 15 万×256，order/trade 10×32768，rebuild 10×128，mix 10×32768，facts 35000，hours 500）。<code>yard_open</code> 一次定长；claim / bind / publish / latest 热路径不分配。池满失败关闭。命名为 pitlane 自有（<code>YardTick</code>、<code>YardPrint</code>、<code>YardFacts</code>、<code>YardHours</code>），不复用 cts 标识符。</p>
+<pre><code class="language-cpp">
+pitlane::YardPlan plan = pitlane::conf_yard_plan(conf);  // 测试可用更小 plan
+pitlane::YardView yard{};
+if (pitlane::yard_open(&quot;yard.bin&quot;, plan, &amp;yard, pitlane::conf_map_opt(conf), 1) != 0) return 1;
+uint32_t id = pitlane::yard_claim_sym(yard, &quot;IF2501&quot;);
+if (!id || !pitlane::yard_bind_quote(yard, id) || !pitlane::yard_bind_order(yard, id)) return 1;
+pitlane::YardMark mark{/* bid/ask px qty, ts_us */};
+if (!pitlane::yard_publish(yard, id, mark)) return 1;
+pitlane::YardTick tick{/* px qty side ts_us */};
+if (!pitlane::yard_publish_tick(yard, id, tick)) return 1;
+</code></pre>
+<p><code>conf_study_plan</code> 拷贝 study pool 量级默认，供调用方 <code>FactorSeries</code> / <code>NamedFactorRing</code> 定深（不是共享 mmap）。</p>
+  </main>
+</div>
+</body>
+</html>

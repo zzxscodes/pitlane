@@ -1,0 +1,6 @@
+CompileFlags:
+  Add:
+    - -std=c++17
+    - -Iinclude
+    - -D_GNU_SOURCE
+CompilationDatabase: build

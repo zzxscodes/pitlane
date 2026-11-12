@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Symbol / quote yard — pitlane API</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="side">
+    <h1>pitlane API</h1>
+    <div class="lang">
+      <a href="#" class="active">English</a>
+      <a href="../zh/标的-行情池-yard.html">中文</a>
+    </div>
+    <nav>
+      <a href="index.html">Overview</a><a href="startup-configuration.html">Startup configuration</a><a href="open-a-shared-desk.html">Open a shared desk</a><a href="symbol-quote-yard.html" class="active">Symbol / quote yard</a><a href="publish-and-read.html">Publish and read</a><a href="run-the-session-loop.html">Run the session loop</a><a href="prepare-an-order.html">Prepare an order</a><a href="match-on-the-paper-venue.html">Match on the paper venue</a><a href="names-signals-and-the-counter.html">Names, signals, and the counter</a><a href="helpers.html">Helpers</a><a href="caller-owned-helpers.html">Caller-owned helpers</a><a href="frames-pacing-and-snapshots.html">Frames, pacing, and snapshots</a><a href="cycles-and-fixed-low-latency-tables.html">Cycles and fixed low-latency tables</a><a href="one-order-sheet.html">One order sheet</a><a href="research-and-a-caller-decision.html">Research and a caller decision</a><a href="a-price-window-a-slot-pool-and-two-charges.html">A price window, a slot pool, and two charges</a><a href="where-the-calls-live.html">Where the calls live</a>
+    </nav>
+  </aside>
+  <main class="main">
+    <div class="meta">Static API guide · open a section from the left</div>
+    <h1>Symbol / quote yard</h1>
+<p><code>Yard</code> is a separate startup map (magic <code>PITYARD2</code>, layout <code>kYardVersion</code> 2) for startup pool-scale pools: dense symbols, quote / order / trade / rebuild / mix tapes, plus <code>YardFacts</code> and <code>YardHours</code> tables. Defaults match trading center (<code>sym</code>/<code>quote</code> 150000×256, order/trade lanes 10×32768, rebuild 10×128, mix 10×32768, facts 35000, hours 500). <code>yard_open</code> sizes once; claim / bind / publish / latest paths never allocate. Full pools fail closed. Names are pitlane-owned (<code>YardTick</code>, <code>YardPrint</code>, <code>YardFacts</code>, <code>YardHours</code>), not borrowed identifiers.</p>
+<pre><code class="language-cpp">
+pitlane::YardPlan plan = pitlane::conf_yard_plan(conf);  // or a tiny plan in tests
+pitlane::YardView yard{};
+if (pitlane::yard_open(&quot;yard.bin&quot;, plan, &amp;yard, pitlane::conf_map_opt(conf), 1) != 0) return 1;
+uint32_t id = pitlane::yard_claim_sym(yard, &quot;IF2501&quot;);
+if (!id || !pitlane::yard_bind_quote(yard, id) || !pitlane::yard_bind_order(yard, id)) return 1;
+pitlane::YardMark mark{/* bid/ask px qty, ts_us */};
+if (!pitlane::yard_publish(yard, id, mark)) return 1;
+pitlane::YardTick tick{/* px qty side ts_us */};
+if (!pitlane::yard_publish_tick(yard, id, tick)) return 1;
+</code></pre>
+<p><code>conf_study_plan</code> copies study pool-scale defaults for caller-side <code>FactorSeries</code> / <code>NamedFactorRing</code> sizing (not a shared mmap).</p>
+  </main>
+</div>
+</body>
+</html>

@@ -15,13 +15,14 @@
       <a href="#" class="active">中文</a>
     </div>
     <nav>
-      <a href="index.html">概述</a><a href="启动配置.html" class="active">启动配置</a><a href="打开共享区.html">打开共享区</a><a href="发布和读取.html">发布和读取</a><a href="跑会话循环.html">跑会话循环</a><a href="准备一张委托.html">准备一张委托</a><a href="在纸面场所撮合.html">在纸面场所撮合</a><a href="合约-信号和柜台.html">合约、信号和柜台</a><a href="辅助函数.html">辅助函数</a><a href="调用方自己保管的辅助函数.html">调用方自己保管的辅助函数</a><a href="组帧-节奏和快照.html">组帧、节奏和快照</a><a href="周期计数和定长低延迟表.html">周期计数和定长低延迟表</a><a href="一张委托单.html">一张委托单</a><a href="研究-以及调用方自己的决定.html">研究，以及调用方自己的决定</a><a href="价格窗口-槽池和两笔费用.html">价格窗口、槽池和两笔费用</a><a href="调用所在的头文件.html">调用所在的头文件</a>
+      <a href="index.html">概述</a><a href="启动配置.html" class="active">启动配置</a><a href="打开共享区.html">打开共享区</a><a href="标的-行情池-yard.html">标的 / 行情池（Yard）</a><a href="发布和读取.html">发布和读取</a><a href="跑会话循环.html">跑会话循环</a><a href="准备一张委托.html">准备一张委托</a><a href="在纸面场所撮合.html">在纸面场所撮合</a><a href="合约-信号和柜台.html">合约、信号和柜台</a><a href="辅助函数.html">辅助函数</a><a href="调用方自己保管的辅助函数.html">调用方自己保管的辅助函数</a><a href="组帧-节奏和快照.html">组帧、节奏和快照</a><a href="周期计数和定长低延迟表.html">周期计数和定长低延迟表</a><a href="一张委托单.html">一张委托单</a><a href="研究-以及调用方自己的决定.html">研究，以及调用方自己的决定</a><a href="价格窗口-槽池和两笔费用.html">价格窗口、槽池和两笔费用</a><a href="调用所在的头文件.html">调用所在的头文件</a>
     </nav>
   </aside>
   <main class="main">
     <div class="meta">Static API guide · open a section from the left</div>
     <h1>启动配置</h1>
 <p>库在进程启动时接受的可调项，都放在可选的 INI 风格文件里（见 <code>examples/pitlane.conf</code>）。默认值是 <code>desk/config.hpp</code> 里 <code>PitConf</code> 的成员初值。省略某个键，或把值留空，就保留该默认值。未知键忽略。硬解析错误（截断行、该写数字却写了别的）时 <code>conf_load</code> 返回 false。</p>
+<p><code>broker</code> 的 <code>ack_limit_us</code> / <code>life_limit_us</code> / <code>pull_limit_us</code> 默认 <code>60000000</code>（60 秒），对齐常见的 <code>trading center</code> <code>HeartBeatIntervalSec</code>；设为 <code>0</code> 关闭该轴。<code>host</code> 默认打开 <code>thp_disable</code> 与 <code>mlockall</code>。Desk FanRing 软容量仍停在编译期上限（<code>kIntentCap</code> 等）。十万级标的/行情池在独立的 <code>[yard]</code> / <code>Yard</code> 映射里（启动期一次建好，热路径不再分配）。<code>examples/pitlane.conf</code> 注释列出了与 <code>config.json</code> 的字段对照；Mongo / algo route 永不导入。</p>
 <p><code>conf_normalize</code> 在加载后只跑一次。它把环容量压到 <code>[2, 编译期 Cap]</code> 内的 2 的幂，把仅编译期定长的尺寸（<code>QueryFold</code>、<code>BrokerWatch::kCap</code>）恢复并写提示，并把每条调整写成一行可读文字放进调用方缓冲。启动时打印这些行。热路径不再打开配置文件。</p>
 <pre><code class="language-cpp">
 pitlane::PitConf conf{};
@@ -38,7 +39,7 @@ pitlane::Desk* desk = pitlane::desk_view(&amp;map, 1);
 if (!desk) return 1;
 if (!pitlane::desk_apply_conf(*desk, conf)) return 1;  // FanRing::tune，仅空环
 </code></pre>
-<p><code>conf_map_opt</code> / <code>conf_arena_opt</code> / <code>conf_risk_caps</code> 把纠偏后的字段拷进映射、arena 与风控用的选项结构。<code>desk_apply_conf</code> 在环仍为空时对每条 desk 环调用 <code>FanRing::tune</code>。软容量不会超过编译期槽数组；磁盘上的 <code>Desk</code> 布局仍是 <code>kDeskVersion</code>。</p>
+<p><code>conf_map_opt</code> / <code>conf_arena_opt</code> / <code>conf_risk_caps</code> / <code>conf_yard_plan</code> / <code>conf_study_plan</code> 把纠偏后的字段拷进映射、arena、风控、Yard 与 study 用的选项结构。<code>desk_apply_conf</code> 在环仍为空时对每条 desk 环调用 <code>FanRing::tune</code>。软容量不会超过编译期槽数组；磁盘上的 <code>Desk</code> 布局仍是 <code>kDeskVersion</code>。</p>
 <table><thead><tr>
 <th>节</th>
 <th>键（摘要）</th>
@@ -70,6 +71,14 @@ if (!pitlane::desk_apply_conf(*desk, conf)) return 1;  // FanRing::tune，仅空
 <tr>
 <td><code>[shed]</code> / <code>[pace]</code></td>
 <td>StayShed / TokenBook–GCRA 默认值，由调用方构造</td>
+</tr>
+<tr>
+<td><code>[yard]</code></td>
+<td><code>sym_slots</code>、<code>quote_lanes</code>、<code>quote_depth</code>、<code>order_*</code> / <code>trade_*</code> / <code>rebuild_*</code> / <code>mix_*</code>（深度 2 的幂）、<code>base_info_cap</code>、<code>trade_time_cap</code></td>
+</tr>
+<tr>
+<td><code>[study]</code></td>
+<td><code>signal_pools</code>、<code>sample_pools</code>、<code>factor_pools</code>、<code>nonstruct_pools</code>、<code>sample_depth</code>、<code>factor_depth</code>、<code>nonstruct_depth</code></td>
 </tr>
 </tbody></table>
 <p><code>conf_load_ex</code> 回报失败行号（从 1 起）。<code>conf_apply_host</code> 尽最大努力。<code>cash_apply_conf</code> / <code>hold_apply_conf</code> 软调行表上限。</p>

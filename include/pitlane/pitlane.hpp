@@ -20,6 +20,7 @@
 #include "pitlane/desk/store.hpp"
 #include "pitlane/desk/types.hpp"
 #include "pitlane/desk/wire.hpp"
+#include "pitlane/desk/yard.hpp"
 
 #include "pitlane/book/arrive.hpp"
 #include "pitlane/book/bar.hpp"
@@ -81,6 +82,7 @@
 #include "pitlane/study/decide.hpp"
 #include "pitlane/study/extreme.hpp"
 #include "pitlane/study/fair.hpp"
+#include "pitlane/study/factorcal.hpp"
 #include "pitlane/study/flow.hpp"
 #include "pitlane/study/plan.hpp"
 #include "pitlane/study/study.hpp"

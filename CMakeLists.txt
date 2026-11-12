@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
-project(pitlane VERSION 2.12.0 LANGUAGES CXX)
+project(pitlane VERSION 2.13.0 LANGUAGES CXX)
+
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 set(PITLANE_SOURCES
     src/desk/broker.cpp
@@ -13,6 +15,7 @@ set(PITLANE_SOURCES
     src/desk/runtime.cpp
     src/desk/signal.cpp
     src/desk/store.cpp
+    src/desk/yard.cpp
     src/book/calendar.cpp
     src/book/cross.cpp
     src/book/venue.cpp

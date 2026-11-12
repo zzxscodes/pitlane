@@ -15,13 +15,14 @@
       <a href="../zh/启动配置.html">中文</a>
     </div>
     <nav>
-      <a href="index.html">Overview</a><a href="startup-configuration.html" class="active">Startup configuration</a><a href="open-a-shared-desk.html">Open a shared desk</a><a href="publish-and-read.html">Publish and read</a><a href="run-the-session-loop.html">Run the session loop</a><a href="prepare-an-order.html">Prepare an order</a><a href="match-on-the-paper-venue.html">Match on the paper venue</a><a href="names-signals-and-the-counter.html">Names, signals, and the counter</a><a href="helpers.html">Helpers</a><a href="caller-owned-helpers.html">Caller-owned helpers</a><a href="frames-pacing-and-snapshots.html">Frames, pacing, and snapshots</a><a href="cycles-and-fixed-low-latency-tables.html">Cycles and fixed low-latency tables</a><a href="one-order-sheet.html">One order sheet</a><a href="research-and-a-caller-decision.html">Research and a caller decision</a><a href="a-price-window-a-slot-pool-and-two-charges.html">A price window, a slot pool, and two charges</a><a href="where-the-calls-live.html">Where the calls live</a>
+      <a href="index.html">Overview</a><a href="startup-configuration.html" class="active">Startup configuration</a><a href="open-a-shared-desk.html">Open a shared desk</a><a href="symbol-quote-yard.html">Symbol / quote yard</a><a href="publish-and-read.html">Publish and read</a><a href="run-the-session-loop.html">Run the session loop</a><a href="prepare-an-order.html">Prepare an order</a><a href="match-on-the-paper-venue.html">Match on the paper venue</a><a href="names-signals-and-the-counter.html">Names, signals, and the counter</a><a href="helpers.html">Helpers</a><a href="caller-owned-helpers.html">Caller-owned helpers</a><a href="frames-pacing-and-snapshots.html">Frames, pacing, and snapshots</a><a href="cycles-and-fixed-low-latency-tables.html">Cycles and fixed low-latency tables</a><a href="one-order-sheet.html">One order sheet</a><a href="research-and-a-caller-decision.html">Research and a caller decision</a><a href="a-price-window-a-slot-pool-and-two-charges.html">A price window, a slot pool, and two charges</a><a href="where-the-calls-live.html">Where the calls live</a>
     </nav>
   </aside>
   <main class="main">
     <div class="meta">Static API guide · open a section from the left</div>
     <h1>Startup configuration</h1>
 <p>All tunables that the library accepts at process start live in an optional INI-like file (see <code>examples/pitlane.conf</code>). Defaults are the member initializers on <code>PitConf</code> in <code>desk/config.hpp</code>. Omit a key, or leave the value empty, to keep that default. Unknown keys are ignored. Hard parse errors (truncated line, non-numeric where a number is required) make <code>conf_load</code> return false.</p>
+<p>Broker <code>ack_limit_us</code> / <code>life_limit_us</code> / <code>pull_limit_us</code> default to <code>60000000</code> (60s), matching a typical <code>trading center</code> <code>HeartBeatIntervalSec</code>. Set a limit to <code>0</code> to turn that axis off. Host defaults enable <code>thp_disable</code> and <code>mlockall</code>. Desk FanRing soft caps stay at the compile-time maxima (<code>kIntentCap</code> …). startup pool-scale symbol/quote pools live in the separate <code>[yard]</code> / <code>Yard</code> map (sized once at startup; hot path does not allocate). <code>examples/pitlane.conf</code> comments list the trading center field map; Mongo / algo route keys are never imported.</p>
 <p><code>conf_normalize</code> runs once after load. It clamps ring capacities to a power of two in <code>[2, compile-time Cap]</code>, restores compile-time-only sizes (<code>QueryFold</code>, <code>BrokerWatch::kCap</code>) with a hint, and writes one human-readable line per adjustment into a caller buffer. Print those lines at startup. The hot path never opens the file again.</p>
 <pre><code class="language-cpp">
 pitlane::PitConf conf{};
@@ -38,7 +39,7 @@ pitlane::Desk* desk = pitlane::desk_view(&amp;map, 1);
 if (!desk) return 1;
 if (!pitlane::desk_apply_conf(*desk, conf)) return 1;  // FanRing::tune, empty desk only
 </code></pre>
-<p><code>conf_map_opt</code> / <code>conf_arena_opt</code> / <code>conf_risk_caps</code> copy the normalized fields into the option structs used by map, arena, and risk helpers. <code>desk_apply_conf</code> calls <code>FanRing::tune</code> on each desk ring while the ring is still empty. Soft capacity never grows past the compile-time slot array; the on-disk <code>Desk</code> layout stays <code>kDeskVersion</code>.</p>
+<p><code>conf_map_opt</code> / <code>conf_arena_opt</code> / <code>conf_risk_caps</code> / <code>conf_yard_plan</code> / <code>conf_study_plan</code> copy the normalized fields into the option structs used by map, arena, risk, yard, and study helpers. <code>desk_apply_conf</code> calls <code>FanRing::tune</code> on each desk ring while the ring is still empty. Soft capacity never grows past the compile-time slot array; the on-disk <code>Desk</code> layout stays <code>kDeskVersion</code>.</p>
 <table><thead><tr>
 <th>Section</th>
 <th>Keys (summary)</th>
@@ -70,6 +71,14 @@ if (!pitlane::desk_apply_conf(*desk, conf)) return 1;  // FanRing::tune, empty d
 <tr>
 <td><code>[shed]</code> / <code>[pace]</code></td>
 <td>StayShed / TokenBook–GCRA defaults for the caller to construct</td>
+</tr>
+<tr>
+<td><code>[yard]</code></td>
+<td><code>sym_slots</code>, <code>quote_lanes</code>, <code>quote_depth</code>, <code>order_*</code> / <code>trade_*</code> / <code>rebuild_*</code> / <code>mix_*</code> lanes and depths (depths power-of-two), <code>base_info_cap</code>, <code>trade_time_cap</code></td>
+</tr>
+<tr>
+<td><code>[study]</code></td>
+<td><code>signal_pools</code>, <code>sample_pools</code>, <code>factor_pools</code>, <code>nonstruct_pools</code>, <code>sample_depth</code>, <code>factor_depth</code>, <code>nonstruct_depth</code></td>
 </tr>
 </tbody></table>
 <p><code>conf_load_ex</code> reports the failing 1-based line. <code>conf_apply_host</code> is best-effort. <code>cash_apply_conf</code> / <code>hold_apply_conf</code> soft-tune row boards.</p>
