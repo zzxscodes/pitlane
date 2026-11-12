@@ -10,7 +10,7 @@ Include one header:
 
 Everything is in the namespace `pitlane`. Link `libpitlane.a`, or link the shared library with `-lpitlane`. The shared library's soname is `libpitlane.so.1`. The headers are the same for both.
 
-The release is `kVersion`, currently 2.15.0, also split into `kVersionMajor`, `kVersionMinor`, and `kVersionPatch`. `kDeskVersion` is the desk mapping-file layout and is currently 3. `kYardVersion` is the separate symbol/quote yard layout and is currently 2. A new library release can leave either layout number where it is.
+The release is `kVersion`, currently 2.16.0, also split into `kVersionMajor`, `kVersionMinor`, and `kVersionPatch`. `kDeskVersion` is the desk mapping-file layout and is currently 3. `kYardVersion` is the separate symbol/quote yard layout and is currently 2. A new library release can leave either layout number where it is.
 
 A browsable static site with a left-hand section list is generated into `doc/site/` (`python3 doc/gen_site.py`). Open a local `doc/site/index.html` or the GitHub Pages deployment — viewing the file on `github.com/.../blob/...` shows source only. Startup settings are covered under **Startup configuration**.
 
@@ -22,7 +22,7 @@ Prices and quantities are integers. Timestamps are microseconds. A side value of
 
 All tunables that the library accepts at process start live in an optional INI-like file (see `examples/pitlane.conf`). Defaults are the member initializers on `PitConf` in `desk/config.hpp`. Omit a key, or leave the value empty, to keep that default. Unknown keys are ignored. Hard parse errors (truncated line, non-numeric where a number is required) make `conf_load` return false.
 
-Broker `ack_limit_us` / `life_limit_us` / `pull_limit_us` default to `60000000` (60s), matching a typical `trading center` `HeartBeatIntervalSec`. Set a limit to `0` to turn that axis off. Host defaults enable `thp_disable` and `mlockall`. Desk FanRing soft caps stay at the compile-time maxima (`kIntentCap` …). startup pool-scale symbol/quote pools live in the separate `[yard]` / `Yard` map (sized once at startup; hot path does not allocate). `examples/pitlane.conf` comments list the trading center field map; Mongo / algo route keys are never imported.
+Broker `ack_limit_us` / `life_limit_us` / `pull_limit_us` default to `60000000` (60s), matching a typical `trading center` `HeartBeatIntervalSec`. Set a limit to `0` to turn that axis off. Host defaults enable `thp_disable` and `mlockall`. Desk FanRing soft caps stay at the compile-time maxima (`kIntentCap` …). startup pool-scale symbol/quote pools live in the separate `[yard]` / `Yard` map (sized once at startup; hot path does not allocate). Mongo document roles and RabbitMQ topic roles are covered by local APIs (`seed_facts` / `TopicBus` / `RouteBook`), not by importing connection strings from `MongoConf` / broker URIs.
 
 `conf_normalize` runs once after load. It clamps ring capacities to a power of two in `[2, compile-time Cap]`, restores compile-time-only sizes (`QueryFold`, `BrokerWatch::kCap`) with a hint, and writes one human-readable line per adjustment into a caller buffer. Print those lines at startup. The hot path never opens the file again.
 
@@ -188,11 +188,11 @@ pitlane::Report reps[4]{};
 pitlane::VenueOut out = venue.admit(in, in.stamp_us, reps, 4);
 ```
 
-`admit` writes reports into the caller buffer and sets `out.why`. With `VenueCfg::trade_open=0`, new enters fail with `Why::Closed`. `on_clock` promotes staged orders whose delay has elapsed and completes cancels that are due (skipped while `hang` sticky). `on_print` and `on_tape` reduce the quantity ahead of a resting order; `tape_keep` drops same-side aggressor prints when `VenueCfg::rigid` is set. `force_fill` / `force_pull` / `force_deny` / `drill_apply` cover `paper matcher` forced fill-style injects via `DrillCue` (pitlane names; `Warn` is a no-op). `TouchMode` / `resolve_px` resolve opp/own/last/mid/best5 prices. Pass 0 as the aggressor to keep every print. `on_shown` applies a later change in displayed size without counting the same trade twice.
+`admit` writes reports into the caller buffer and sets `out.why`. With `VenueCfg::trade_open=0`, new enters fail with `Why::Closed`. `on_clock` promotes staged orders whose delay has elapsed and completes cancels that are due (skipped while `hang` sticky). `on_print` and `on_tape` reduce the quantity ahead of a resting order; with `VenueCfg::rigid` set, `tape_keep` drops same-side aggressor prints. `force_fill` / `force_pull` / `force_deny` / `drill_apply` cover simulator forced fill-style injects via `DrillCue` (`Closed` = 10, `NotTrading`). `TouchMode` / `resolve_px` pick opp/own/last/mid/best5. Aggressor 0 keeps every print. `on_shown` applies later displayed-size changes without double-counting a trade.
 
-PitConf `[venue]` mirrors `paper matcher` `match.ini`: nine go/pull lags (`go_usN` / `pull_usN`, or fractional-second `delayN` / `cancel_delayN` / `go_secN` / `pull_secN`), `rigid_rule`→`rigid`, `use_ext`→`tape_first`, `rigid_extra`, `trade_open`, `lot`, `rate_cap`, `notional_cap`, `cancel_pow_x1000`. `conf_venue_cfg` copies into `VenueCfg`.
+PitConf `[venue]` mirrors simulator `match.ini`: nine go/pull lags (`go_usN` / `pull_usN`, or fractional-second `delayN` / `cancel_delayN`), `rigid_rule`→`rigid`, `use_ext`→`tape_first`, plus lot/rate/notional/`cancel_pow_x1000`. Use `conf_venue_cfg` to build a `VenueCfg`.
 
-`FeedHub` fans marks/prints/ticks into `Yard` and Desk rings (local MD hub). `TradeLane::lane_beat` drains intents through `PaperVenue` (+ optional `DrillBook`) and publishes reports (local TD lane). `StratHook` / `strat_bind_loop` / `strat_stage_enter` / `strat_stage_pull` bind strategy callbacks onto `DeskLoop` and stage intents. `seed_cash` / `seed_hold` apply startup cash/position rows (simulator account/position seed role). Hot path stays allocation-free; startup may allocate.
+Composition helpers (still allocation-free on the hot path): `FeedHub` into Yard/Desk; `TradeLane::lane_beat` for paper TD; `StratHook` onto `DeskLoop`; `seed_cash` / `seed_hold` for account rows; `seed_facts` / `seed_hours` / `seed_holidays` for local basic-data tables; `TopicBus` for same-machine topic pub/sub; `RouteBook` for strategy→algo binding.
 
 `Style::Day` fills the whole remainder at its limit, even past the size shown there. `Style::Passive` expires if it would cross. `Style::Immediate` keeps only the shown size. `Style::All` expires the whole order when the shown size is short. A self-trade against the same account stops the order.
 
@@ -400,6 +400,9 @@ These calls do not open a socket, do not send an order, and do not start a threa
 | `desk/config.hpp` | Startup `PitConf` load, normalize, host apply, cash/hold soft tune, `conf_yard_plan` / `conf_venue_cfg` |
 | `desk/feedhub.hpp` | Local MD `FeedHub` / `feed_push_*` |
 | `desk/seed.hpp` | Startup `CashSeed` / `HoldSeed` |
+| `desk/shelf.hpp` | Local basic-data seeds (`seed_facts` / hours / holidays) |
+| `desk/bus.hpp` | Local topic bus (`TopicBus`) |
+| `desk/routebook.hpp` | Local algo route table (`RouteBook`) |
 | `desk/yard.hpp` | Startup symbol/quote yard (`YardPlan`, claim/bind/publish/latest) |
 | `order/prelock.hpp` | Two-phase freeze reserve / commit |
 | `order/credit.hpp` | Liability short pools and `option_free` |

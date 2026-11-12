@@ -34,13 +34,9 @@ PITLANE_HOT inline int lane_beat(TradeLane& lane, Desk& desk, int64_t now_us) no
     while (desk.intents.at(lane.intent_cur, lane.intent_reader, in, &fresh)) {
         if (!fresh) break;
         const DrillRow* drill = lane.drills ? lane.drills->find(in.tag) : nullptr;
-        if (drill && (drill->cue == DrillCue::Closed || drill->cue == DrillCue::Warn)) {
-            const int dn = v.drill_apply(*drill, now_us, lane.scratch, 32);
-            for (int i = 0; i < dn; ++i) {
-                if (!desk.reports.publish(lane.scratch[i], lane.report_mask)) break;
-                ++events;
-            }
-            if (drill->cue == DrillCue::Closed && in.act == static_cast<uint8_t>(Act::Enter)) {
+        if (drill && drill->cue == DrillCue::Closed) {
+            (void)v.drill_apply(*drill, now_us, lane.scratch, 32);
+            if (in.act == static_cast<uint8_t>(Act::Enter)) {
                 desk.intents.ack(lane.intent_cur, lane.intent_reader);
                 ++lane.intent_cur;
                 continue;
@@ -51,7 +47,7 @@ PITLANE_HOT inline int lane_beat(TradeLane& lane, Desk& desk, int64_t now_us) no
             if (!desk.reports.publish(lane.scratch[i], lane.report_mask)) break;
             ++events;
         }
-        if (drill && drill->cue != DrillCue::Closed && drill->cue != DrillCue::Warn) {
+        if (drill && drill->cue != DrillCue::Closed) {
             const int dn = v.drill_apply(*drill, now_us, lane.scratch, 32);
             for (int i = 0; i < dn; ++i) {
                 if (!desk.reports.publish(lane.scratch[i], lane.report_mask)) break;

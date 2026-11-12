@@ -1,29 +1,29 @@
 # pitlane
 
-The Chinese introduction is in `README_CN.md`. API usage is in `doc/API.md` and `doc/API_CN.md`. A browsable static site (sidebar by section, English / 中文) is generated into `doc/site/`; open a **local** `doc/site/index.html`, an installed `share/doc/pitlane/site/`, or the repo **GitHub Pages** site. Opening the file under `github.com/.../blob/...` only shows source — GitHub does not render HTML there. Rebuild with `python3 doc/gen_site.py`. When the library changes, update each language pair together and regenerate the site.
+中文说明见 `README_CN.md`。调用约定见 `doc/API.md` / `doc/API_CN.md`。带侧栏的静态文档在 `doc/site/`：请打开本地 `doc/site/index.html`、安装后的 `share/doc/pitlane/site/`，或仓库的 GitHub Pages。在 `github.com/.../blob/...` 里点开 HTML 只会看到源码。改库时请成对更新中英文并执行 `python3 doc/gen_site.py`。
 
-Consume the package with CMake:
+用 CMake 接入：
 
 ```cmake
 find_package(pitlane REQUIRED)
 target_link_libraries(your_target PRIVATE pitlane::pitlane)
 ```
 
-pitlane is a C++17 library for trading processes on the same machine. It gives those processes one shared workspace, and on that workspace it handles orders, positions, trading days, and paper matching. Prices are integers. Times are microseconds.
+pitlane is a C++17 helper for trading processes that already share a machine. It owns a fixed-size shared workspace for orders, positions, session calendars, and paper matching. Prices are integers; timestamps are microseconds. The library does not open sockets to an exchange or a broker API.
 
-The name comes from the pit lane beside a racetrack. Orders and market data enter this lane, where they are checked, queued, and matched, and then handed to an outside counter or strategy. The library itself does not connect to an exchange.
+The name is the pit lane next to a track: traffic comes in, gets checked and queued, then goes back out to your counter or strategy.
 
 ## What it does
 
-Strategy, market data, and order entry often run in different processes. pitlane lets them exchange orders, reports, quotes, signals, and queries through one file mapping. Message size is fixed, and capacity is fixed at compile time. When a ring is full, the next write fails. The library does not grow the ring, and it does not overwrite a message that has not been acknowledged.
+Market data, strategy, and order entry often live in different processes. They meet here through one memory-mapped desk: fixed-size messages on FanRings that fail closed when full (no grow, no silent overwrite of an unacked slot). Slots, ledgers, and working orders sit in compile-time arrays; cash and inventory update in place under a short gate.
 
-Order slots, ledger rows, and live orders sit in fixed arrays. Cash and positions are updated in place, and the critical section is short.
+Include `pitlane/pitlane.hpp` and link `libpitlane.a` (or `libpitlane.so`). Everything is in namespace `pitlane`. This is a same-machine helper with its own types — not a drop-in replace for another live stack.
 
-Include `include/pitlane/pitlane.hpp` and link `libpitlane.a`. Types and functions live in the `pitlane` namespace. The interface is designed on its own and cannot replace another trading library that is already running.
+Release **2.16.0** (`pitlane::kVersion`). Shared-object soname stays `libpitlane.so.1`. Desk file layout is `kDeskVersion` 3. The symbol/quote yard (`Yard`, magic `PITYARD2`, `kYardVersion` 2) is a second map sized like startup pool pools.
 
-The library release is 2.15.0. `pitlane::kVersion` in `version.hpp` holds the same text. The shared library file carries this number, and its soname stays `libpitlane.so.1`. The desk layout version stays `kDeskVersion`, currently 3. The symbol/quote yard (`Yard`, magic `PITYARD2`, `kYardVersion` 2) is a separate startup map for startup pool-scale pools. Local MD/TD/strategy hubs (`FeedHub`, `TradeLane`, `StratHook`) and paper `[venue]` config sit on the same fixed-capacity workspace; only external DB, middleware sockets, and broker APIs stay out of scope.
+Roles that other systems put on Mongo or RabbitMQ are covered **locally**: `seed_facts` / `seed_hours` / `seed_holidays` for basic contract and calendar rows; `TopicBus` + `RouteBook` for same-machine topic routing and algo binding. Broker/CTP adapters stay outside the library. Startup may allocate or mmap; the helper hot path does not allocate or tear down resources.
 
-Startup configuration is an optional INI-like file (`examples/pitlane.conf`). `conf_load` overlays keys onto code defaults; empty values keep the default. `conf_normalize` clamps unsafe values (for example ring sizes to a power of two within the compile-time maximum) and writes hint lines for the caller to print. `conf_map_opt` / `conf_arena_opt` / `desk_apply_conf` apply the result at map/desk creation only. The hot path never opens the file again.
+Optional startup INI: `examples/pitlane.conf`. `conf_load` overlays defaults; empty values keep them. `conf_normalize` clamps unsafe values (for example ring depths to a power of two ≤ the compile-time cap) and writes hint lines for you to print. Apply with `conf_map_opt` / `conf_arena_opt` / `desk_apply_conf` / `conf_venue_cfg` once at bring-up — the hot path never reopens the file.
 
 Headers and sources sit one directory deeper, by area. `desk` holds the shared region and the records on it. `book` holds quotes, the trading day, and paper matching. `order` holds order life, checks, and positions. `time` holds clocks and latency tapes. `study` holds features, markouts, and the caller decision. `util` holds numbers, text, frames, and fixed buffers. `host` holds process-side `sched_setaffinity`, scheduling policy, IRQ affinity, explicit huge-page pool control, `mlockall`, and NUMA membind. Sources for an area live under the same name in `src` when the area has compiled files. Tests for an area live under the same name in `tests`. The latency program is `tests/time/perf.cpp`. A direct include names the area, as in `pitlane/order/sheet.hpp`. `version.hpp` stays next to `pitlane.hpp`.
 

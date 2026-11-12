@@ -22,7 +22,7 @@
     <div class="meta">Static API guide · open a section from the left</div>
     <h1>启动配置</h1>
 <p>库在进程启动时接受的可调项，都放在可选的 INI 风格文件里（见 <code>examples/pitlane.conf</code>）。默认值是 <code>desk/config.hpp</code> 里 <code>PitConf</code> 的成员初值。省略某个键，或把值留空，就保留该默认值。未知键忽略。硬解析错误（截断行、该写数字却写了别的）时 <code>conf_load</code> 返回 false。</p>
-<p><code>broker</code> 的 <code>ack_limit_us</code> / <code>life_limit_us</code> / <code>pull_limit_us</code> 默认 <code>60000000</code>（60 秒），对齐常见的 <code>trading center</code> <code>HeartBeatIntervalSec</code>；设为 <code>0</code> 关闭该轴。<code>host</code> 默认打开 <code>thp_disable</code> 与 <code>mlockall</code>。Desk FanRing 软容量仍停在编译期上限（<code>kIntentCap</code> 等）。十万级标的/行情池在独立的 <code>[yard]</code> / <code>Yard</code> 映射里（启动期一次建好，热路径不再分配）。<code>examples/pitlane.conf</code> 注释列出了与 <code>config.json</code> 的字段对照；Mongo / algo route 永不导入。</p>
+<p><code>broker</code> 的 <code>ack_limit_us</code> / <code>life_limit_us</code> / <code>pull_limit_us</code> 默认 <code>60000000</code>（60 秒），对齐常见的 <code>trading center</code> <code>HeartBeatIntervalSec</code>；设为 <code>0</code> 关闭该轴。<code>host</code> 默认打开 <code>thp_disable</code> 与 <code>mlockall</code>。Desk FanRing 软容量仍停在编译期上限（<code>kIntentCap</code> 等）。十万级标的/行情池在独立的 <code>[yard]</code> / <code>Yard</code> 映射里（启动期一次建好，热路径不再分配）。Mongo 文档与 RabbitMQ topic 的职责由本地 API 承担（<code>seed_facts</code> / <code>TopicBus</code> / <code>RouteBook</code>），不会把连接串或券商 URI 写进库里。</p>
 <p><code>conf_normalize</code> 在加载后只跑一次。它把环容量压到 <code>[2, 编译期 Cap]</code> 内的 2 的幂，把仅编译期定长的尺寸（<code>QueryFold</code>、<code>BrokerWatch::kCap</code>）恢复并写提示，并把每条调整写成一行可读文字放进调用方缓冲。启动时打印这些行。热路径不再打开配置文件。</p>
 <pre><code class="language-cpp">
 pitlane::PitConf conf{};

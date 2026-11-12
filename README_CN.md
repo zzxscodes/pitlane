@@ -1,29 +1,29 @@
 # pitlane
 
-英文介绍是 `README.md`。API 用法见 `doc/API.md` 和 `doc/API_CN.md`。可浏览的静态网页在 `doc/site/`：请打开**本地** `doc/site/index.html`、安装树里的 `share/doc/pitlane/site/`，或本仓库的 **GitHub Pages**。在 `github.com/.../blob/...` 里点开 HTML 只会看到源码，GitHub 不会在那里渲染页面。用 `python3 doc/gen_site.py` 重新生成。库有变动时，成对文档一起改并重新生成站点。
+English overview: `README.md`. Call guide: `doc/API.md` / `doc/API_CN.md`. Static docs with a sidebar live in `doc/site/` — open a local `doc/site/index.html`, an installed `share/doc/pitlane/site/`, or GitHub Pages. Viewing HTML under `github.com/.../blob/...` only shows source. After API changes, update both languages and run `python3 doc/gen_site.py`.
 
-用 CMake 消费：
+CMake:
 
 ```cmake
 find_package(pitlane REQUIRED)
 target_link_libraries(your_target PRIVATE pitlane::pitlane)
 ```
 
-pitlane 是一个 C++17 静态库。它给同一台机器上的交易进程准备一块共享工作区，并在这块工作区上处理委托、持仓、交易日和纸面撮合。价格用整数，时间用微秒。
+pitlane 是给**同一台机器**上多个交易进程用的 C++17 辅助库：一块定容共享工作区，负责委托、持仓、交易日和纸面撮合。价格用整数，时间用微秒。库本身不连交易所，也不接券商柜台 API。
 
-名字来自赛车场的维修通道。委托和行情先进入这条通道，完成检查、排队和撮合，再交给外面的柜台或策略。库本身不连接交易所。
+名字取自赛道边的维修通道：单子和行情从这里进来，检查、排队、撮合后再交回你的柜台或策略。
 
 ## 它做什么
 
-策略、行情和报单常常分属不同进程。pitlane 让这些进程通过同一个文件映射交换委托、回报、行情、信号和查询。消息长度固定，容量在编译时确定。一条环写满时，新的写入直接失败，不会扩容，也不会盖掉还没有被确认的消息。
+行情、策略、报单经常分属不同进程。它们在这里通过同一份内存映射 desk 交换委托、回报、行情、信号和查询：消息定长，容量编译期固定；环满则写入失败（不扩容、不覆盖未确认槽）。委托槽、账本和在途单都在定长数组里；资金与持仓原地改，临界区很短。
 
-委托槽、账本行和未完成订单都放在固定数组里。资金和持仓在原位置修改，临界区很短。
+包含 `pitlane/pitlane.hpp`，链接 `libpitlane.a`（或 `libpitlane.so`）。类型都在命名空间 `pitlane`。这是本机辅助接口，不是拿来热替换另一套在跑系统的兼容层。
 
-使用时包含 `include/pitlane/pitlane.hpp`，链接 `libpitlane.a`。类型和函数都在命名空间 `pitlane` 中。这套接口是单独设计的，不能用来替换已经在运行的其他交易库。
+发行版 **2.16.0**（`pitlane::kVersion`）。动态库 soname 仍是 `libpitlane.so.1`。desk 布局版本 `kDeskVersion` 为 3。标的/行情池 `Yard`（魔数 `PITYARD2`，`kYardVersion` 2）是另一块启动期映射，体量对齐 startup pool。
 
-库的发行版本是 2.15.0。`version.hpp` 里的 `pitlane::kVersion` 是同一串文字。动态库文件名带这个版本，soname 保持 `libpitlane.so.1`。工作区布局版本是 `kDeskVersion`，当前是 3。标的/行情池（`Yard`，魔数 `PITYARD2`，`kYardVersion` 2）是独立的启动期映射，对齐 startup pool 量级池。本地行情/交易/策略组合层（`FeedHub`、`TradeLane`、`StratHook`）与纸面 `[venue]` 配置同属这块定容工作区；不做对齐的只有外部数据库、外部中间件套接字和外部券商 API。
+别处用 Mongo / RabbitMQ 承担的职责，在这里用**本地实现**对齐：`seed_facts` / `seed_hours` / `seed_holidays` 写入合约与日历；`TopicBus` + `RouteBook` 做本机 topic 分发与算法路由。真正留在库外的是券商/CTP 等外部柜台接入。启动期可以分配或 mmap；辅助热路径不分配、不销毁资源。
 
-启动配置是可选的 INI 风格文件（见 `examples/pitlane.conf`）。`conf_load` 把键叠到代码默认值上；值为空则保留默认。`conf_normalize` 把不安全的取值压到合法范围（例如环容量取不超过编译期上限的 2 的幂），并把提示行写入调用方缓冲。`conf_map_opt` / `conf_arena_opt` / `desk_apply_conf` 只在建映射 / 初始化 desk 时生效；热路径不再打开配置文件。
+启动配置是可选 INI（`examples/pitlane.conf`）。`conf_load` 叠到默认值上，空值保留默认；`conf_normalize` 把不安全取值压进合法范围（例如环深取不超过编译期上限的 2 的幂），并写出提示行。用 `conf_map_opt` / `conf_arena_opt` / `desk_apply_conf` / `conf_venue_cfg` 在建图时应用一次即可，热路径不再读文件。
 
 头文件和源文件按区域再分一层目录。`desk` 放共享区和上面的记录。`book` 放行情、交易日和纸面撮合。`order` 放委托生命周期、检查和持仓。`time` 放时钟和延迟记录。`study` 放特征、事后偏移和调用方决策辅助。`util` 放数值、文本、组帧和定长缓冲。`host` 放进程侧的 `sched_setaffinity`、调度策略、IRQ 亲和性、显式大页池、`mlockall` 与 NUMA membind。某个区域若有编译单元，源文件在 `src` 下的同名目录里。某个区域的测试在 `tests` 下的同名目录里。延迟程序是 `tests/time/perf.cpp`。单独包含某个头文件时写上区域，例如 `pitlane/order/sheet.hpp`。`version.hpp` 和 `pitlane.hpp` 放在同一层。
 
