@@ -1,14 +1,21 @@
 #pragma once
 
+#include "pitlane/util/hint.hpp"
+
 #include <atomic>
 #include <cstdint>
 #include <cstring>
+
+#if defined(__SSE2__)
+#include <emmintrin.h>
+#endif
 
 namespace pitlane {
 
 // Eight slots in a bucket. The 16-bit signature is compared before the key.
 // Signature 0 means empty. A computed 0 is stored as 1.
 // One writer. A failed insert leaves the previous keys in place.
+// SSE2 compares all eight signatures in one vector step when available.
 
 template <int Buckets, int Keys>
 class SigBook {
@@ -18,14 +25,37 @@ public:
 
     int live() const noexcept { return live_; }
 
-    int find(const uint8_t* key) const noexcept {
-        if (!key) return 0;
+    PITLANE_HOT int find(const uint8_t* key) const noexcept {
+        if (unlikely(!key)) return 0;
         const uint32_t h1 = mix(key, 2166136261u);
         const uint32_t h2 = mix(key, 2166136261u ^ 0x9e3779b9u);
         const uint16_t sig = sig16(h1);
         const int a = match(h1 & mask(), sig, key);
         if (a > 0) return a;
         return match(h2 & mask(), sig, key);
+    }
+
+    // Looks up four keys. Prefetches both buckets for each key before matching.
+    PITLANE_HOT void find4(const uint8_t* const keys[4], int out[4]) const noexcept {
+        if (unlikely(!keys || !out)) return;
+        uint32_t b1[4]{};
+        uint32_t b2[4]{};
+        uint16_t sg[4]{};
+        for (int i = 0; i < 4; ++i) {
+            out[i] = 0;
+            if (unlikely(!keys[i])) continue;
+            const uint32_t h1 = mix(keys[i], 2166136261u);
+            sg[i] = sig16(h1);
+            b1[i] = h1 & mask();
+            b2[i] = mix(keys[i], 2166136261u ^ 0x9e3779b9u) & mask();
+            prefetch_r(&tab_[b1[i]]);
+            prefetch_r(&tab_[b2[i]]);
+        }
+        for (int i = 0; i < 4; ++i) {
+            if (unlikely(!keys[i])) continue;
+            const int id = match(b1[i], sg[i], keys[i]);
+            out[i] = id > 0 ? id : match(b2[i], sg[i], keys[i]);
+        }
     }
 
     bool put(const uint8_t* key) noexcept {
@@ -58,8 +88,8 @@ public:
 private:
     static constexpr uint32_t mask() noexcept { return static_cast<uint32_t>(Buckets - 1); }
 
-    struct Bucket {
-        std::atomic<uint16_t> sig[8]{};
+    struct alignas(kCacheLine) Bucket {
+        alignas(16) std::atomic<uint16_t> sig[8]{};
         std::atomic<uint32_t> ix[8]{};
     };
 
@@ -84,14 +114,29 @@ private:
         return s == 0 ? 1 : s;
     }
 
-    int match(uint32_t bucket, uint16_t sig, const uint8_t* key) const noexcept {
+    PITLANE_HOT int match(uint32_t bucket, uint16_t sig, const uint8_t* key) const noexcept {
         const Bucket& bk = tab_[bucket];
+#if defined(__SSE2__)
+        alignas(16) uint16_t snap[8];
+        for (int i = 0; i < 8; ++i) snap[i] = bk.sig[i].load(std::memory_order_relaxed);
+        const __m128i want = _mm_set1_epi16(static_cast<short>(sig));
+        const __m128i got = _mm_load_si128(reinterpret_cast<const __m128i*>(snap));
+        const int bits = _mm_movemask_epi8(_mm_cmpeq_epi16(want, got));
+        for (int lane = 0; lane < 8; ++lane) {
+            if ((bits & (1 << (2 * lane))) == 0) continue;
+            std::atomic_thread_fence(std::memory_order_acquire);
+            const uint32_t ix = bk.ix[lane].load(std::memory_order_relaxed);
+            if (ix == 0 || ix > static_cast<uint32_t>(Keys)) continue;
+            if (std::memcmp(key_[ix - 1], key, 16) == 0) return static_cast<int>(ix);
+        }
+#else
         for (int i = 0; i < 8; ++i) {
             if (bk.sig[i].load(std::memory_order_acquire) != sig) continue;
             const uint32_t ix = bk.ix[i].load(std::memory_order_acquire);
             if (ix == 0 || ix > static_cast<uint32_t>(Keys)) continue;
             if (std::memcmp(key_[ix - 1], key, 16) == 0) return static_cast<int>(ix);
         }
+#endif
         return 0;
     }
 

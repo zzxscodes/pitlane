@@ -52,6 +52,18 @@ PITLANE_INLINE bool pin_thread_mask(const int* cpus, int n) noexcept {
     return ::pthread_setaffinity_np(::pthread_self(), sizeof set, &set) == 0;
 }
 
+PITLANE_INLINE bool pin_process_mask(const int* cpus, int n) noexcept {
+    if (unlikely(!cpus || n <= 0)) return false;
+    const int total = cpu_count();
+    cpu_set_t set;
+    CPU_ZERO(&set);
+    for (int i = 0; i < n; ++i) {
+        if (cpus[i] < 0 || cpus[i] >= total) return false;
+        CPU_SET(static_cast<size_t>(cpus[i]), &set);
+    }
+    return ::sched_setaffinity(0, sizeof set, &set) == 0;
+}
+
 // Reads /sys/devices/system/cpu/isolated into out as CPU ids. Returns the count, or -1.
 inline int isolated_cpus(int* out, int cap) noexcept {
     if (unlikely(!out || cap <= 0)) return -1;

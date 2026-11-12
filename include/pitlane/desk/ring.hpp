@@ -40,7 +40,7 @@ public:
 
     // Publishes the outstanding claim. Fails when no claim is open.
     PITLANE_HOT bool publish_claimed() noexcept {
-        if (unlikely(claimed_ < 0)) return false;
+        if (PITLANE_UNLIKELY(claimed_ < 0)) return false;
         const uint64_t pos = static_cast<uint64_t>(claimed_);
         Slot& s = slots_[pos & kMask];
         s.state.store(1, std::memory_order_release);

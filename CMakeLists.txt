@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(pitlane VERSION 2.6.0 LANGUAGES CXX)
+project(pitlane VERSION 2.7.0 LANGUAGES CXX)
 
 set(PITLANE_SOURCES
     src/desk/broker.cpp
@@ -42,6 +42,10 @@ set(PITLANE_WARN_FLAGS -Wall -Wextra -Wpedantic -Werror)
 set(PITLANE_OPT_FLAGS -O3 -fno-exceptions -fno-rtti -D_GNU_SOURCE)
 if(PITLANE_NATIVE)
     list(APPEND PITLANE_OPT_FLAGS -march=native)
+    # Cap auto-vectorization at 256 bits: notes warn AVX-512 can drop core frequency.
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|i[3-6]86)$")
+        list(APPEND PITLANE_OPT_FLAGS -mprefer-vector-width=256 -mno-avx512f)
+    endif()
 endif()
 if(PITLANE_PGO STREQUAL "GENERATE")
     list(APPEND PITLANE_OPT_FLAGS -fprofile-generate)

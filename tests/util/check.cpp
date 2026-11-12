@@ -295,6 +295,10 @@ void check_sig_grace() {
     expect(!book.put(key[16]) && book.live() == 16, "seventeenth fails");
     for (int i = 0; i < 16; ++i) expect(book.find(key[i]) > 0, "old key remains");
     expect(book.put(key[0]) && book.live() == 16, "duplicate");
+    const uint8_t* batch[4] = {key[0], key[1], key[2], key[3]};
+    int found[4] = {};
+    book.find4(batch, found);
+    expect(found[0] > 0 && found[1] > 0 && found[2] > 0 && found[3] > 0, "find4");
 
     pitlane::Grace<2> grace;
     grace.online(0);
@@ -320,6 +324,19 @@ void check_sig_grace() {
     one.quiesce(0);
     expect(retired.reap(one, user, 0) == -1 && retired.size() == 1, "short output");
     expect(retired.reap(one, user, 2) == 1 && user[0] == 7 && retired.size() == 0, "reaped");
+}
+
+void check_send_join() {
+    pitlane::SendJoinRing<uint64_t, 4> ring;
+    expect(ring.try_push(10) && ring.try_push(20) && ring.try_push(30), "push");
+    expect(!ring.try_push(40), "full");
+    uint64_t out = 0;
+    expect(ring.try_pop(out) && out == 10, "pop first");
+    expect(ring.try_push(40), "after pop");
+    expect(ring.try_pop(out) && out == 20, "pop second");
+    expect(ring.try_pop(out) && out == 30, "pop third");
+    expect(ring.try_pop(out) && out == 40, "pop fourth");
+    expect(!ring.try_pop(out), "empty");
 }
 
 void check_stage_seq_fill() {
@@ -600,6 +617,7 @@ int main() {
     check_gate_pace();
     check_snap();
     check_sig_grace();
+    check_send_join();
     check_stage_seq_fill();
     check_readers();
     check_seqpub();

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "pitlane/host/hugepage.hpp"
+#include "pitlane/host/numa.hpp"
 #include "pitlane/util/hint.hpp"
 #include "pitlane/util/page.hpp"
 #include "pitlane/util/simd.hpp"
@@ -8,9 +10,7 @@
 #include <cstddef>
 #include <cstdint>
 
-#include <linux/mempolicy.h>
 #include <sys/mman.h>
-#include <sys/syscall.h>
 #include <unistd.h>
 
 namespace pitlane {
@@ -18,13 +18,13 @@ namespace pitlane {
 // Fixed-capacity anonymous bump arena. Default open uses explicit MAP_HUGETLB
 // (length rounded to Hugepagesize). No THP / MADV_HUGEPAGE. Falls back to
 // ordinary anonymous pages when the kernel has no reserved huge pages.
-// Optional mlock and NUMA bind apply after a successful map.
+// Default opt locks with mlock, prefaults every page, and may MPOL_BIND.
 
 struct ArenaOpt {
     uint8_t hugepage{1};   // MAP_HUGETLB first, then ordinary pages
     uint8_t lock{1};       // try mlock when permitted
     uint8_t prefault{1};   // touch every page after map
-    int8_t numa_node{-1};  // >=0: MPOL_BIND after map
+    int8_t numa_node{-1};  // >=0: MPOL_BIND after map; use numa_local_node() for local
 };
 
 class ByteArena {
@@ -48,6 +48,8 @@ public:
             const std::size_t huge_u = hugepage_size_bytes();
             const std::size_t huge_need = round_up_bytes(bytes, huge_u);
             if (huge_need >= bytes) {
+                const long want_pages = static_cast<long>((huge_need + huge_u - 1) / huge_u);
+                (void)hugepage_count_ensure(want_pages);
                 void* p = ::mmap(nullptr, huge_need, PROT_READ | PROT_WRITE, flags | MAP_HUGETLB, -1, 0);
                 if (p != MAP_FAILED) {
                     base_ = static_cast<unsigned char*>(p);
@@ -68,11 +70,7 @@ public:
         fallback_ = (!huge && opt.hugepage) ? 1 : 0;
         numa_node_ = -1;
         if (opt.numa_node >= 0) {
-            unsigned long mask = 1ul << static_cast<unsigned>(opt.numa_node);
-            const unsigned long maxnode = static_cast<unsigned long>(opt.numa_node) + 2ul;
-            if (::syscall(__NR_mbind, base_, cap_, MPOL_BIND, &mask, maxnode, MPOL_MF_MOVE) == 0) {
-                numa_node_ = opt.numa_node;
-            }
+            if (numa_bind_range(base_, cap_, opt.numa_node)) numa_node_ = opt.numa_node;
         }
         if (opt.lock) {
             if (::mlock(base_, cap_) == 0) locked_ = 1;

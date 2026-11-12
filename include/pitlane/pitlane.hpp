@@ -99,6 +99,7 @@
 #include "pitlane/util/rankbits.hpp"
 #include "pitlane/util/readwin.hpp"
 #include "pitlane/util/seqgate.hpp"
+#include "pitlane/util/sendjoin.hpp"
 #include "pitlane/util/seqpub.hpp"
 #include "pitlane/util/seqwin.hpp"
 #include "pitlane/util/sig.hpp"

@@ -10,7 +10,7 @@
 
 所有名字都在命名空间 `pitlane` 里。链接 `libpitlane.a`，或者用 `-lpitlane` 链接动态库。动态库的 soname 是 `libpitlane.so.1`。两种链接方式使用同一套头文件。
 
-发行版本是 `kVersion`，当前是 2.6.0，并拆成 `kVersionMajor`、`kVersionMinor` 和 `kVersionPatch`。`kDeskVersion` 是映射文件的布局版本，当前是 3。库的一次新发行可以保持布局版本不动。
+发行版本是 `kVersion`，当前是 2.7.0，并拆成 `kVersionMajor`、`kVersionMinor` 和 `kVersionPatch`。`kDeskVersion` 是映射文件的布局版本，当前是 3。库的一次新发行可以保持布局版本不动。
 
 头文件分在 `pitlane/desk/`、`pitlane/book/`、`pitlane/order/`、`pitlane/time/`、`pitlane/study/`、`pitlane/util/` 和 `pitlane/host/` 下面。`version.hpp` 与 `pitlane.hpp` 同一层。下面的表在路径里写了区域。
 
@@ -218,7 +218,7 @@ book.apply(edits, 1);
 
 `SnapPub<T, Slots>` 在对象里放 2 个或 3 个槽。一个写者调用 `begin_write`，填完后用 `publish` 让它可见。`pin` 让一个读者占住当前发布的槽。在 `unpin` 之前，第二次 `pin` 失败。只有 2 个槽时，读者还占着一个、另一个已经发布，再次写入就失败。有 3 个槽时，写者可以换掉一份已经发布、随后又被跳过的槽。库不启动线程。
 
-`SigBook<Buckets, Keys>` 的桶数是 2 到 256 的 2 的幂，键是 1 到 1024 个。每个桶 8 个槽。签名 0 表示空槽，算出来是 0 就存成 1。签名写在键下标之后。`find` 返回从 1 开始的下标，没有则返回 0。键已经存在时，`put` 返回真。两个桶都满时，一次插入最多把旧键往它的另一个桶挪 8 次。挪不完就失败，原来的键还在。插入侧一个写者。
+`SigBook<Buckets, Keys>` 的桶数是 2 到 256 的 2 的幂，键是 1 到 1024 个。每个桶 8 个槽。签名 0 表示空槽，算出来是 0 就存成 1。签名写在键下标之后。`find` 返回从 1 开始的下标，没有则返回 0。`find4` 一次查四个键，比对前预取两侧桶。有 SSE2 时，一个桶的八个签名用一条向量比较。键已经存在时，`put` 返回真。两个桶都满时，一次插入最多把旧键往它的另一个桶挪 8 次。挪不完就失败，原来的键还在。插入侧一个写者。
 
 `Grace<Readers>` 跟踪 1 到 64 个读者。`online` 记下当前代。`offline` 写成 0，这个读者不再挡住回收。调用方放下共享指针之后，用 `quiesce` 记下这一代。`bump` 把代加一，并返回新值。还有在线读者停在更老的代上时，`elapsed` 返回假，它不等待。调用方自己也在读者名单里时，要先 `quiesce` 再问 `elapsed`，否则自己仍算停在旧代。`RetireList<Cap>` 按放入顺序保存 2 到 64 个令牌。`reap` 从最老的开始放出已经过去的令牌，遇到第一个还没过去的就停。输出缓冲太短时，列表保持原样。列表不释放调用方的内存。
 
@@ -255,6 +255,8 @@ book.apply(edits, 1);
 `TraceGate` 独占一条缓存行。`arm` 保存一个 16 位事件号和一个开关。`CoreTape<Cap>` 只在开关打开时写入。记录序号单独占一行。容量是 16 到 4096，并且是 2 的幂。写满以后覆盖最旧的一条。还没写过，或者已经被覆盖的记录，`at` 失败。`SegTape<Seg, N>` 有 2 到 16 段，每段 4 到 1024 条。下一段已经用 `give` 交回时，写满的这一段才封存。否则写者从当前段开头重写，覆盖次数加一，这次 `push` 返回假。`SpikeRing<Cap>` 只记录严格超过阈值的间隔。没有超过阈值时返回假，不算丢失。环满时，写者一侧的丢失计数加一，并返回假。读者序号单独占一行。
 
 `FillRing<T, Cap>` 一个生产者、一个消费者，槽数是 2 到 1024。`claim` 返回下一个槽。已经有一次还没发布的领取，或者环已满，就返回空。`publish` 让这个槽可见。`cancel` 放弃这次领取，不发布。`take` 拷出下一个已经发布的槽。`take_span` 一次拷出多条，读取序号只向前推进一次。每个槽独占一条缓存行。
+
+`SendJoinRing<T, Cap>` 多个生产者、一个消费者，槽数是 2 到 65536 的 2 的幂。下一格追上 head 时 `try_push` 失败。尾字高位是世代号、低 16 位是下标，环绕后旧值不会与 compare-exchange 匹配。占槽后再写载荷，`ready` 用 release 发布。`try_pop` 在 acquire 看到 ready 后才搬走，再推进 head。
 
 `hex_encode` 写出小写十六进制，并在末尾放一个空字符。缓冲要同时容得下这两部分。缓冲太短时返回 -1，原来的文本不动。`hex_decode` 先检查每一位，再写入。长度是奇数，或者有一位不是十六进制，返回 -1，并且不写。`bytes_diff` 返回第一处不同的下标，两段相同返回 -1，指针或长度不能用时返回 -2。
 
@@ -304,7 +306,7 @@ book.apply(edits, 1);
 
 `touch_lines` 对每一条缓存行做预取和加载，也处理最后一个字节。在 SSE2 上这次加载是 16 字节的打包读。空指针或长度是 0 时什么都不做。
 
-`util/hint.hpp` 提供 `likely` / `unlikely`、冷热段布局、缓存行长度与预取。`util/simd.hpp` 提供打包的 `zero_i64`、`zero_i64_stream`、`copy_bytes`、`bytes_eq`，以及买入和卖出的 cover 辅助。构建定义了 AVX2 时，一次清零或比较四个 int64。缺少对应指令集时都走标量实现。`ByteArena` 为固定容量匿名字节竞技场（bump 分配）；默认以 `MAP_HUGETLB` 映射并将长度对齐到 Hugepagesize，不用 THP；内核未预留时回退普通匿名页并置 `fallback`，默认可再 `mlock` 与 NUMA bind；满容量时拒绝分配。`batch_size_for` 按积压给出自适应微批大小。`RankBits` 用字前缀加 popcount 得到稠密下标；`QuadTab` 把静态键装进每行至多四个键的缓存行表。`SpinLock` 是独占缓存行的 TTAS 自旋锁。`bound.hpp` 提供单次比较的下标检查与行走预算。`DagPlan` 以灰/黑染色求拓扑序。类型态票据以编译期标签使非法成交在类型上不可调用。`OwnPair` 保存调用方本地双边最优价。`pick_cut` 与 `tandem_lat` 根据调用方已测得的间隔给出路径切分判定。`SeqPublishRing` 为无背压序号发布环，写端在读者未消费时可覆写槽位。`global_scale_set` 写入进程内共享的整数 TSC 周期换算系数。`DecideScratch` 暂存调用方装载的带评分候选意图。`host/` 提供 `sched_setaffinity`、调度策略与 nice、IRQ `smp_affinity_list`、`nr_hugepages` / `thp_disable`、`mlockall` 与 NUMA `mbind`；无权限时返回失败。
+`util/hint.hpp` 提供 `likely` / `unlikely`、冷热段布局、`assume_aligned`、缓存行长度与预取。在 x86_64 上打开 `PITLANE_NATIVE` 时增加 `-mprefer-vector-width=256 -mno-avx512f`。`util/simd.hpp` 提供打包的 `zero_i64`、`zero_i64_stream`、`copy_bytes`、`bytes_eq`，以及买入和卖出的 cover 辅助。构建定义了 AVX2 时，一次清零或比较四个 int64。缺少对应指令集时都走标量实现。`ByteArena` 为固定容量匿名字节竞技场（bump 分配）；默认以 `MAP_HUGETLB` 映射并将长度对齐到 Hugepagesize，不用 THP；内核未预留时回退普通匿名页并置 `fallback`，默认可再 `mlock` 与 NUMA bind；满容量时拒绝分配。`batch_size_for` 按积压给出自适应微批大小。`RankBits` 用字前缀加 popcount 得到稠密下标；`QuadTab` 把静态键装进每行至多四个键的缓存行表。`SpinLock` 是独占缓存行的 TTAS 自旋锁。`bound.hpp` 提供单次比较的下标检查与行走预算。`DagPlan` 以灰/黑染色求拓扑序。类型态票据以编译期标签使非法成交在类型上不可调用。`OwnPair` 保存调用方本地双边最优价。`SlotGate` 在 `on_drop` 之后忽略行情，直到 `seeded` 清掉 `need_seed`。`pick_cut` 与 `tandem_lat` 根据调用方已测得的间隔给出路径切分判定。`SeqPublishRing` 为无背压序号发布环，写端在读者未消费时可覆写槽位。`global_scale_set` 写入进程内共享的整数 TSC 周期换算系数。`DecideScratch` 暂存调用方装载的带评分候选意图。`host/` 提供 `sched_setaffinity`、调度策略与 nice、IRQ `smp_affinity_list`、`nr_hugepages` / `thp_disable`、`mlockall` 与 NUMA `mbind`；无权限时返回失败。
 
 ## 调用所在的头文件
 

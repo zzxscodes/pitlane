@@ -409,6 +409,18 @@ static void check_own() {
     pair.feed(a);
     pair.feed(b);
     expect(pair.ready() && pair.cross_ticks() == 4, "own cross");
+    pair.clear();
+    expect(!pair.ready(), "cleared");
+
+    pitlane::SlotGate gate;
+    gate.pair.want_a = 1;
+    gate.pair.want_b = 2;
+    expect(!gate.on_quote(a), "one side");
+    expect(gate.on_quote(b), "both sides");
+    gate.on_drop();
+    expect(!gate.on_quote(a) && !gate.on_quote(b), "needs seed");
+    gate.seeded(a, b);
+    expect(gate.pair.ready() && gate.pair.cross_ticks() == 4, "seeded");
 }
 
 int main() {
