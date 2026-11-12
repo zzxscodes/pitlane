@@ -423,6 +423,27 @@ static void check_own() {
     expect(gate.pair.ready() && gate.pair.cross_ticks() == 4, "seeded");
 }
 
+static void check_cumtick() {
+    pitlane::CumSnap prev{};
+    prev.vol = 10;
+    prev.turn = 1000;
+    prev.last = 100;
+    prev.bid1 = 99;
+    prev.ask1 = 101;
+    pitlane::CumSnap cur = prev;
+    cur.vol = 11;
+    cur.turn = 1100;
+    cur.last = 100;
+    int64_t px[4]{};
+    int64_t lots[4]{};
+    expect(pitlane::infer_lots(prev, cur, 1, 1, true, px, lots, 4) == 1 && px[0] == 100 && lots[0] == 1,
+           "flat one lot");
+    cur.vol = 12;
+    cur.turn = 1200;
+    expect(pitlane::infer_lots(prev, cur, 1, 1, false, px, lots, 4) >= 1, "split lots");
+    expect(pitlane::infer_lots(prev, cur, 0, 1, false, px, lots, 4) == -1, "bad tick");
+}
+
 int main() {
     check_steps();
     check_books();
@@ -437,6 +458,7 @@ int main() {
     check_target();
     check_session_book();
     check_own();
+    check_cumtick();
     if (g_fails) {
         std::fprintf(stderr, "%d book check(s) failed\n", g_fails);
         return 1;

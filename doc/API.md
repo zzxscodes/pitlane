@@ -10,7 +10,7 @@ Include one header:
 
 Everything is in the namespace `pitlane`. Link `libpitlane.a`, or link the shared library with `-lpitlane`. The shared library's soname is `libpitlane.so.1`. The headers are the same for both.
 
-The release is `kVersion`, currently 2.8.0, also split into `kVersionMajor`, `kVersionMinor`, and `kVersionPatch`. `kDeskVersion` is the mapping-file layout and is currently 3. A new library release can leave the layout number where it is.
+The release is `kVersion`, currently 2.9.0, also split into `kVersionMajor`, `kVersionMinor`, and `kVersionPatch`. `kDeskVersion` is the mapping-file layout and is currently 3. A new library release can leave the layout number where it is.
 
 Headers live under `pitlane/desk/`, `pitlane/book/`, `pitlane/order/`, `pitlane/time/`, `pitlane/study/`, `pitlane/util/`, and `pitlane/host/`. `version.hpp` stays beside `pitlane.hpp`. The table below names the area in the path.
 
@@ -316,6 +316,7 @@ These calls do not open a socket, do not send an order, and do not start a threa
 | `book/bar.hpp` | Bars from ticks the caller marks tradable |
 | `book/calendar.hpp` | Trading days and session times |
 | `book/cover.hpp` | Visible quantity that meets a limit |
+| `book/cumtick.hpp` | Infer per-price lots from two cumulative volume/turnover snaps |
 | `book/cross.hpp` | The limit book and the call auction |
 | `book/lags.hpp` | Session bands and sampled delay |
 | `book/ladder.hpp` | A fixed price window and the best occupied tick |
@@ -344,6 +345,7 @@ These calls do not open a socket, do not send an order, and do not start a threa
 | `host/priority.hpp` | `SCHED_FIFO` / `SCHED_RR` / `SCHED_OTHER` and nice |
 | `order/ack.hpp` | Place and cancel acknowledgement timers |
 | `order/bind.hpp` | Counter ids and out-of-order reports |
+| `order/idclaim.hpp` | Fixed-capacity id state table (Wait / Live / Final) |
 | `order/inbound.hpp` | Commands waiting for their due time |
 | `order/judge.hpp` | List, flow, ratio, deviation, and self-trade checks |
 | `order/lane.hpp` | Channel rules and `Cause` |
@@ -360,6 +362,7 @@ These calls do not open a socket, do not send an order, and do not start a threa
 | `order/sign.hpp` | Check counts and opening quota |
 | `order/ticket.hpp` | Command snapshot and revision |
 | `order/typed.hpp` | Compile-time ticket tags |
+| `study/acb.hpp` | FIFO lot queue and average-cost position book |
 | `study/corp.hpp` | Corporate-action price factors |
 | `study/decide.hpp` | Scored candidate intents: store and compare |
 | `study/extreme.hpp` | High and low over the last fixed run of prices |
@@ -395,6 +398,8 @@ These calls do not open a socket, do not send an order, and do not start a threa
 | `util/numeric.hpp` | Wide products used by the checks |
 | `util/page.hpp` | Ordinary and huge page sizes; byte round-up |
 | `util/pace.hpp` | Token buckets and theoretical arrival times |
+| `util/phase.hpp` | Signed-ticket PhaseGate; non-blocking flip_ready; ActiveSum counter rotate |
+| `util/pinbank.hpp` | PrioSnap priority triple buffer; PinBank multi-reader snapshots with per-slot refcounts |
 | `util/readwin.hpp` | The slowest reader plus a window |
 | `util/seqgate.hpp` | Sequence gap recovery |
 | `util/seqpub.hpp` | No-backpressure sequence ring; may overwrite unread slots |
@@ -406,7 +411,7 @@ These calls do not open a socket, do not send an order, and do not start a threa
 | `util/spin.hpp` | A TTAS spin lock on its own line |
 | `util/stage.hpp` | A ring finished in claim order |
 | `util/stream.hpp` | Frame checksums and byte-stream reassembly |
-| `util/sticky.hpp` | Wait-free sticky counter |
+| `util/sticky.hpp` | Wait-free StickyCounter (final value visible to readers) |
 | `util/stride.hpp` | The address of one core's slot |
 | `util/textbuf.hpp` | A fixed text buffer |
 | `util/touch.hpp` | Prefetch and load by cache line |

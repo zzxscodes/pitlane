@@ -10,7 +10,7 @@
 
 所有名字都在命名空间 `pitlane` 里。链接 `libpitlane.a`，或者用 `-lpitlane` 链接动态库。动态库的 soname 是 `libpitlane.so.1`。两种链接方式使用同一套头文件。
 
-发行版本是 `kVersion`，当前是 2.8.0，并拆成 `kVersionMajor`、`kVersionMinor` 和 `kVersionPatch`。`kDeskVersion` 是映射文件的布局版本，当前是 3。库的一次新发行可以保持布局版本不动。
+发行版本是 `kVersion`，当前是 2.9.0，并拆成 `kVersionMajor`、`kVersionMinor` 和 `kVersionPatch`。`kDeskVersion` 是映射文件的布局版本，当前是 3。库的一次新发行可以保持布局版本不动。
 
 头文件分在 `pitlane/desk/`、`pitlane/book/`、`pitlane/order/`、`pitlane/time/`、`pitlane/study/`、`pitlane/util/` 和 `pitlane/host/` 下面。`version.hpp` 与 `pitlane.hpp` 同一层。下面的表在路径里写了区域。
 
@@ -296,7 +296,7 @@ book.apply(edits, 1);
 
 `margin_both` 返回 `价格 * 数量 * 乘数 * 金额分子 / 金额分母` 和 `每手 * 数量` 里较大的一笔。参数不合法时返回 0。溢出时返回有符号最大值。`right_value` 里方向 1 是认购，2 是认沽。方向不认识，或者价格为负，返回 -1。
 
-`FillRing` 是一个写入者和一个读取者。`claim` 返回一个可以就地填写的槽。`publish` 让这个槽可见。`cancel` 丢掉还没有发布的占用。`take` 抄出最早发布的槽。`take_span` 按调用方给的条数抄出若干槽，读取序号只存一次。每个槽独占一条缓存行。写入者记住上次看到的读取序号，读取者记住上次看到的发布序号。只有本端的副本显示环已满或已空时，才再次读取共享序号。环满，或者已经占着一个槽，再次占用就失败，已有内容不被盖掉。
+`FillRing` 是一个写入者和一个读取者。`claim` 返回一个可以原地填写的槽。`publish` 让这个槽可见。`cancel` 丢掉还没有发布的占用。`take` 抄出最早发布的槽。`take_span` 按调用方给的条数抄出若干槽，读取序号只存一次。每个槽独占一条缓存行。写入者记住上次看到的读取序号，读取者记住上次看到的发布序号。只有本端的副本显示环已满或已空时，才再次读取共享序号。环满，或者已经占着一个槽，再次占用就失败，已有内容不被盖掉。
 
 `ExtremeWindow<Cap>` 保留最近 `Cap` 个正价格里的最高价和最低价。`Cap` 是 4 到 256 之间的 2 的幂。非正价格被拒绝，窗口保持原样。`clear` 丢掉全部价格。这个窗口不决定成交。
 
@@ -306,7 +306,7 @@ book.apply(edits, 1);
 
 `touch_lines` 对每一条缓存行做预取和加载，也处理最后一个字节。在 SSE2 上这次加载是 16 字节的打包读。空指针或长度是 0 时什么都不做。
 
-`util/hint.hpp` 提供 `likely` / `unlikely`、冷热段布局、`assume_aligned`、缓存行长度与预取。在 x86_64 上打开 `PITLANE_NATIVE` 时增加 `-mprefer-vector-width=256 -mno-avx512f`。`util/simd.hpp` 提供打包的 `zero_i64`、`zero_i64_stream`、`copy_bytes`、`bytes_eq`，以及买入和卖出的 cover 辅助。构建定义了 AVX2 时，一次清零或比较四个 int64。缺少对应指令集时都走标量实现。`ByteArena` 为固定容量匿名字节竞技场（bump 分配）；默认以 `MAP_HUGETLB` 映射并将长度对齐到 Hugepagesize，不用 THP；内核未预留时回退普通匿名页并置 `fallback`，默认可再 `mlock` 与 NUMA bind；满容量时拒绝分配。`batch_size_for` 按积压给出自适应微批大小。`RankBits` 用字前缀加 popcount 得到稠密下标；`QuadTab` 把静态键装进每行至多四个键的缓存行表。`SpinLock` 是独占缓存行的 TTAS 自旋锁。`bound.hpp` 提供单次比较的下标检查与行走预算。`DagPlan` 以灰/黑染色求拓扑序。类型态票据以编译期标签使非法成交在类型上不可调用。`OwnPair` 保存调用方本地双边最优价。`SlotGate` 在 `on_drop` 之后忽略行情，直到 `seeded` 清掉 `need_seed`。`pick_cut` 与 `tandem_lat` 根据调用方已测得的间隔给出路径切分判定。`SeqPublishRing` 为无背压序号发布环，写端在读者未消费时可覆写槽位。`global_scale_set` 写入进程内共享的整数 TSC 周期换算系数。`DecideScratch` 暂存调用方装载的带评分候选意图。`host/` 提供 `sched_setaffinity`、调度策略与 nice、IRQ `smp_affinity_list`、`nr_hugepages` / `thp_disable`、`mlockall` 与 NUMA `mbind`；无权限时返回失败。
+`util/hint.hpp` 提供 `likely` / `unlikely`、冷热段布局、`assume_aligned`、缓存行长度与预取。在 x86_64 上打开 `PITLANE_NATIVE` 时增加 `-mprefer-vector-width=256 -mno-avx512f`。`util/simd.hpp` 提供打包的 `zero_i64`、`zero_i64_stream`、`copy_bytes`、`bytes_eq`，以及买入和卖出的 cover 辅助。构建定义了 AVX2 时，一次清零或比较四个 int64。缺少对应指令集时都走标量实现。`ByteArena` 为定容匿名 bump 字节 arena；默认以 `MAP_HUGETLB` 映射并将长度对齐到 Hugepagesize，不用 THP；内核未预留时回退普通匿名页并置 `fallback`，默认可再 `mlock` 与 NUMA bind；满容量时拒绝分配。`batch_size_for` 按积压给出自适应微批大小。`RankBits` 用字前缀加 popcount 得到稠密下标；`QuadTab` 把静态键装进每行至多四个键的缓存行表。`SpinLock` 是独占缓存行的 TTAS 自旋锁。`bound.hpp` 提供单次比较的下标检查与行走预算。`DagPlan` 以灰/黑染色求拓扑序。类型态票据以编译期标签使非法成交在类型上不可调用。`OwnPair` 保存调用方本地双边最优价。`SlotGate` 在 `on_drop` 之后忽略行情，直到 `seeded` 清掉 `need_seed`。`pick_cut` 与 `tandem_lat` 根据调用方已测得的间隔给出路径切分判定。`SeqPublishRing` 为无背压序号发布环，写端在读者未消费时可覆写槽位。`global_scale_set` 写入进程内共享的整数 TSC 周期换算系数。`DecideScratch` 暂存调用方装载的带评分候选意图。`host/` 提供 `sched_setaffinity`、调度策略与 nice、IRQ `smp_affinity_list`、`nr_hugepages` / `thp_disable`、`mlockall` 与 NUMA `mbind`；无权限时返回失败。
 
 ## 调用所在的头文件
 
@@ -316,6 +316,7 @@ book.apply(edits, 1);
 | `book/bar.hpp` | 由调用方标成可交易的 tick 生成的 K 线 |
 | `book/calendar.hpp` | 交易日和交易时段 |
 | `book/cover.hpp` | 满足限价的可见数量 |
+| `book/cumtick.hpp` | 由两帧累计成交量与成交额推算分价位手数 |
 | `book/cross.hpp` | 限价簿和集合竞价 |
 | `book/lags.hpp` | 时段时延和采样时延 |
 | `book/ladder.hpp` | 固定价格窗口和有量的最优价 |
@@ -344,6 +345,7 @@ book.apply(edits, 1);
 | `host/priority.hpp` | `SCHED_FIFO` / `SCHED_RR` / `SCHED_OTHER` 与 nice |
 | `order/ack.hpp` | 下单确认和撤单确认计时 |
 | `order/bind.hpp` | 柜台单号和乱序回报 |
+| `order/idclaim.hpp` | 定容 id 状态表（Wait / Live / Final） |
 | `order/inbound.hpp` | 等到到期时刻再放出的命令 |
 | `order/judge.hpp` | 名单、流速、比例、偏离和自成交 |
 | `order/lane.hpp` | 通道规则和 `Cause` |
@@ -360,6 +362,7 @@ book.apply(edits, 1);
 | `order/sign.hpp` | 检查计数和开仓额度 |
 | `order/ticket.hpp` | 命令快照和版本 |
 | `order/typed.hpp` | 带编译期标签的票据类型 |
+| `study/acb.hpp` | FIFO 手数队列与平均成本持仓账本 |
 | `study/corp.hpp` | 公司行为的价格因子 |
 | `study/decide.hpp` | 带评分候选意图的暂存与比较 |
 | `study/extreme.hpp` | 最近一段固定价格里的最高价和最低价 |
@@ -378,13 +381,13 @@ book.apply(edits, 1);
 | `time/trace.hpp` | 耗时样本、时钟差和分桶 |
 | `time/urgent.hpp` | 不进队列的一个标签 |
 | `time/wheel.hpp` | 时间轮 |
-| `util/arena.hpp` | 默认显式大页的固定容量字节竞技场 |
+| `util/arena.hpp` | 默认显式大页的定容 bump 字节 arena |
 | `util/batch.hpp` | 按积压自适应的微批大小 |
 | `util/bound.hpp` | 单次比较的边界检查和行走预算 |
 | `util/corebank.hpp` | 调用方自持的每核固定步长银行 |
 | `util/chunk.hpp` | 稀疏价位块和撤单句柄 |
 | `util/drill.hpp` | 测试用的时钟、预算、档位和普通记录 |
-| `util/fillring.hpp` | 就地填入的槽 |
+| `util/fillring.hpp` | 原地填写的槽 |
 | `util/frame.hpp` | 组帧、序号缺口和重排 |
 | `util/grace.hpp` | 读者代和回收列表 |
 | `util/hex.hpp` | 十六进制和逐字节比较 |
@@ -395,6 +398,8 @@ book.apply(edits, 1);
 | `util/numeric.hpp` | 检查用的宽乘积 |
 | `util/page.hpp` | 普通页与 Hugepagesize、按字节向上对齐 |
 | `util/pace.hpp` | 令牌桶和理论到达时间 |
+| `util/phase.hpp` | 有符号票号 PhaseGate；`flip_ready` 非阻塞等待上一轮排空；ActiveSum 轮换计数器 |
+| `util/pinbank.hpp` | PrioSnap 优先级三槽缓冲；PinBank 按槽引用计数的多读者快照 |
 | `util/readwin.hpp` | 最慢读者再加上一段窗口 |
 | `util/seqgate.hpp` | 序号缺口恢复 |
 | `util/seqpub.hpp` | 无背压、可覆写未消费槽的序号发布环 |
@@ -406,7 +411,7 @@ book.apply(edits, 1);
 | `util/spin.hpp` | 独占缓存行的 TTAS 自旋锁 |
 | `util/stage.hpp` | 按占槽顺序完成的环 |
 | `util/stream.hpp` | 帧校验和字节流重组 |
-| `util/sticky.hpp` | wait-free 粘性计数器 |
+| `util/sticky.hpp` | wait-free `StickyCounter`（写入后读侧可见最终值） |
 | `util/stride.hpp` | 某一个核那一槽的地址 |
 | `util/textbuf.hpp` | 定长文本 |
 | `util/touch.hpp` | 按缓存行预取并加载 |

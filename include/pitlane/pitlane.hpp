@@ -23,6 +23,7 @@
 #include "pitlane/book/calendar.hpp"
 #include "pitlane/book/cover.hpp"
 #include "pitlane/book/cross.hpp"
+#include "pitlane/book/cumtick.hpp"
 #include "pitlane/book/depth.hpp"
 #include "pitlane/book/gap.hpp"
 #include "pitlane/book/lags.hpp"
@@ -34,6 +35,7 @@
 
 #include "pitlane/order/ack.hpp"
 #include "pitlane/order/bind.hpp"
+#include "pitlane/order/idclaim.hpp"
 #include "pitlane/order/inbound.hpp"
 #include "pitlane/order/judge.hpp"
 #include "pitlane/order/lane.hpp"
@@ -67,6 +69,7 @@
 #include "pitlane/time/urgent.hpp"
 #include "pitlane/time/wheel.hpp"
 
+#include "pitlane/study/acb.hpp"
 #include "pitlane/study/corp.hpp"
 #include "pitlane/study/decide.hpp"
 #include "pitlane/study/extreme.hpp"
@@ -101,6 +104,8 @@
 #include "pitlane/util/numeric.hpp"
 #include "pitlane/util/objpool.hpp"
 #include "pitlane/util/pace.hpp"
+#include "pitlane/util/phase.hpp"
+#include "pitlane/util/pinbank.hpp"
 #include "pitlane/util/rankbits.hpp"
 #include "pitlane/util/readwin.hpp"
 #include "pitlane/util/seqgate.hpp"

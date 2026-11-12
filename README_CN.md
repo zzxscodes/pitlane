@@ -14,13 +14,13 @@ pitlane 是一个 C++17 静态库。它给同一台机器上的交易进程准�
 
 使用时包含 `include/pitlane/pitlane.hpp`，链接 `libpitlane.a`。类型和函数都在命名空间 `pitlane` 中。这套接口是单独设计的，不能用来替换已经在运行的其他交易库。
 
-库的发行版本是 2.8.0。`version.hpp` 里的 `pitlane::kVersion` 是同一串文字。动态库文件名带这个版本，soname 保持 `libpitlane.so.1`。工作区布局版本是 `kDeskVersion`，当前是 3。
+库的发行版本是 2.9.0。`version.hpp` 里的 `pitlane::kVersion` 是同一串文字。动态库文件名带这个版本，soname 保持 `libpitlane.so.1`。工作区布局版本是 `kDeskVersion`，当前是 3。
 
 头文件和源文件按区域再分一层目录。`desk` 放共享区和上面的记录。`book` 放行情、交易日和纸面撮合。`order` 放委托生命周期、检查和持仓。`time` 放时钟和延迟记录。`study` 放特征、事后偏移和调用方决策辅助。`util` 放数值、文本、组帧和定长缓冲。`host` 放进程侧的 `sched_setaffinity`、调度策略、IRQ 亲和性、显式大页池、`mlockall` 与 NUMA membind。某个区域若有编译单元，源文件在 `src` 下的同名目录里。某个区域的测试在 `tests` 下的同名目录里。延迟程序是 `tests/time/perf.cpp`。单独包含某个头文件时写上区域，例如 `pitlane/order/sheet.hpp`。`version.hpp` 和 `pitlane.hpp` 放在同一层。
 
 `PriceWindow` 在固定的价格步长上存放数量。最优价沿着占用位往前找，空档按字跳过。`publish_batch` 一次写入多条环槽，尾指针只推进一次。其中一条还忙着，整批都不写入。`SlotPool` 用固定槽保存调用方的记录，并按编号查找。`margin_both` 取按金额和按手数两笔保证金里较大的一笔。`right_value` 给出认购或认沽处于实值的幅度。这些调用都不发单。
 
-`FillRing` 在本端缓存对端序号；仅当本地副本表明环满或环空时，才重新加载共享序号。每个槽独占一条缓存行。`take_span` 一次复制多条已发布槽，消费者序号只持久化一次。`ack_span` 连续确认一段环下标，遇本读者无法确认的位置即停。`shown_before` 对价格窗内严格优于给定价格的数量求和。`ExtremeWindow` 在固定容量的单调双端队列上维护最近推入价格的极值。`TimeLine` 按到达顺序保存同一价格上的编号。`cover_qty` 对满足限价的可见数量累加，达到目标数量即停；买入与卖出分属两条循环。AVX2 一次比较四个价格，SSE4.2 比较两个，其余用四级展开的标量收尾。`touch_lines` 按缓存行预取并加载。`map_create` / `map_attach` 默认按内核 Hugepagesize 对齐映射长度，优先在 hugetlbfs（默认 `/dev/hugepages`）上建立显式大页文件映射；不可用时回退普通页并置 `fallback`。不用 THP / `MADV_HUGEPAGE`。默认还会对映射 `mlock` 并预触碰每一页；`numa_node >= 0` 时做 `MPOL_BIND`。`ByteArena` 默认同样走大页 / `mlock` / 预触碰。进程级 `mem_lock_all` 仍是先抬高 `RLIMIT_MEMLOCK` 的 host 辅助。`SpinLock` 为独占缓存行的 TTAS 自旋锁。`DagPlan` 以灰/黑染色求拓扑序。类型态票据以编译期标签禁止非法成交调用。`OwnPair` 保存调用方本地双边最优价；`SlotGate` 在丢包后强制重新播种。`SendJoinRing` 为多生产者满环失败的发送环。`SigBook::find4` 在比对前预取两侧桶。`SeqPublishRing` 为无背压序号发布环，读者落后时允许覆写未消费槽；`FanRing` 与 `FillRing` 满环仍失败并保持原内容。原生构建将自动向量宽度限制在 256 位（`-mno-avx512f`）。`global_scale_set` 写入进程内共享的整数 TSC 周期换算系数。`DecideScratch` 仅暂存并比较调用方给出的候选评分。`FanRing::claim` 就地填槽。`SeqField`、`LatestKeep`、`DualLane`、`PaceLatch`、study 的 `OfiWin`/`SecMove`、mold 存在位与 `IntEma` 构成 2.8.0 拓展。`ObjectPool` / `StickyCounter` / `CoreBank` / `WirePx` 是更早的辅助。 `batch_size_for` 按积压自适应微批大小。`RankBits` / `QuadTab` 提供有界编号稠密下标与四键缓存行静态表。`host/` 提供 `sched_setaffinity`、实时调度、IRQ 亲和、`nr_hugepages` / `thp_disable`、`mlockall` 与 NUMA `mbind`。`util/hint.hpp` 与 `util/simd.hpp` 提供分支提示、冷热布局、预取、打包清零、非时间性存储与打包拷贝。这些调用都不撮合成交。
+`FillRing` 在本端缓存对端序号；仅当本地副本表明环满或环空时，才重新加载共享序号。每个槽独占一条缓存行。`take_span` 一次复制多条已发布槽，消费者序号只持久化一次。`ack_span` 连续确认一段环下标，遇本读者无法确认的位置即停。`shown_before` 对价格窗内严格优于给定价格的数量求和。`ExtremeWindow` 在固定容量的单调双端队列上维护最近推入价格的极值。`TimeLine` 按到达顺序保存同一价格上的编号。`cover_qty` 对满足限价的可见数量累加，达到目标数量即停；买入与卖出分属两条循环。AVX2 一次比较四个价格，SSE4.2 比较两个，其余用四级展开的标量收尾。`touch_lines` 按缓存行预取并加载。`map_create` / `map_attach` 默认按内核 Hugepagesize 对齐映射长度，优先在 hugetlbfs（默认 `/dev/hugepages`）上建立显式大页文件映射；不可用时回退普通页并置 `fallback`。不用 THP / `MADV_HUGEPAGE`。默认还会对映射 `mlock` 并预触碰每一页；`numa_node >= 0` 时做 `MPOL_BIND`。`ByteArena` 默认同样走大页 / `mlock` / 预触碰。进程级 `mem_lock_all` 仍是先抬高 `RLIMIT_MEMLOCK` 的 host 辅助。`SpinLock` 为独占缓存行的 TTAS 自旋锁。`DagPlan` 以灰/黑染色求拓扑序。类型态票据以编译期标签禁止非法成交调用。`OwnPair` 保存调用方本地双边最优价；`SlotGate` 在丢包后置 `need_seed`，须 `seeded` 后才再接受行情。`SendJoinRing` 为多生产者满环失败的发送环。`SigBook::find4` 在比对前预取两侧桶。`SeqPublishRing` 为无背压序号发布环，读者落后时允许覆写未消费槽；`FanRing` 与 `FillRing` 满环仍失败并保持原内容。原生构建将自动向量宽度限制在 256 位（`-mno-avx512f`）。`global_scale_set` 写入进程内共享的整数 TSC 周期换算系数。`DecideScratch` 仅暂存并比较调用方给出的候选评分。`FanRing::claim` 原地填槽。`SeqField`、`LatestKeep`、`DualLane`、`PaceLatch`、study 的 `OfiWin`/`SecMove`、mold 存在位与 `IntEma` 构成 2.8.0 拓展。`PrioSnap` / `PinBank`（按槽引用计数的多读者快照）、`PhaseGate` / `ActiveSum`、`IdClaim`、`infer_lots`、`FifoLot` / `AcbBook` 与 `IntEmaDev` 构成 2.9.0 拓展。`ObjectPool` / `StickyCounter` / `CoreBank` / `WirePx` 是更早的辅助。 `batch_size_for` 按积压自适应微批大小。`RankBits` / `QuadTab` 提供有界编号稠密下标与四键缓存行静态表。`host/` 提供 `sched_setaffinity`、实时调度、IRQ 亲和、`nr_hugepages` / `thp_disable`、`mlockall` 与 NUMA `mbind`。`util/hint.hpp` 与 `util/simd.hpp` 提供分支提示、冷热布局、预取、打包清零、非时间性存储与打包拷贝。这些调用都不撮合成交。
 
 ## 共享区
 
@@ -105,7 +105,7 @@ pitlane 是一个 C++17 静态库。它给同一台机器上的交易进程准�
 
 `study_step` 是写策略的入口。它先更新行情簿，填好价差、中间价、不平衡和微价格，再调用调用方自己给的函数。这个函数返回一笔委托，或者放弃。返回的委托可以先检查，再记到一张委托单上。库不决定方向，也不决定价格，这次调用也不发单。旁边还有一张关联表、一块固定的因子板、一个回放游标，以及四个时间上的价格偏移，给研究用。这些调用都不读文件。
 
-还有一组调用测量周期，并保存调用方在自己的线程上推进的定长表。`cycles_read` 和 `cycles_ordered` 读取处理器周期计数。调用方自己写入独占一行的微秒槽，并给出把周期换成纳秒的整数比例。按数量级分桶的直方图给出中位数和尾部。时间轮、分阶段环、序号窗口、读者窗口、就地填充环和每核轨迹都是定长表。库不启动线程，不打开套接字，也不发单。
+还有一组调用测量周期，并保存调用方在自己的线程上推进的定长表。`cycles_read` 和 `cycles_ordered` 读取处理器周期计数。调用方自己写入独占一行的微秒槽，并给出把周期换成纳秒的整数比例。按数量级分桶的直方图给出中位数和尾部。时间轮、分阶段环、序号窗口、读者窗口、原地填充环和每核轨迹都是定长表。库不启动线程，不打开套接字，也不发单。
 
 ## 构建和安装
 

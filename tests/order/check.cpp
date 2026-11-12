@@ -557,6 +557,16 @@ static void check_latch() {
     expect(pitlane::window_back(1000000, 30000, 100000) == 100000, "window");
 }
 
+static void check_idclaim() {
+    pitlane::IdClaim<4> ids;
+    expect(ids.claim(10, 1) && ids.arm_live(10), "claim live");
+    pitlane::IdKind st = pitlane::IdKind::Empty;
+    expect(ids.resubmit(10, st) == 0 && st == pitlane::IdKind::Live, "live dup");
+    expect(ids.seal(10) && ids.resubmit(10, st) == 1 && st == pitlane::IdKind::Final, "final");
+    expect(ids.claim(11, 1) && ids.drop_wait(11) && ids.find(11) < 0, "drop wait");
+    expect(!ids.claim(0, 1), "zero id");
+}
+
 int main() {
     check_lots();
     check_ledger();
@@ -577,6 +587,7 @@ int main() {
     check_sign_rest();
     check_typed();
     check_latch();
+    check_idclaim();
     if (g_fails) {
         std::fprintf(stderr, "%d order check(s) failed\n", g_fails);
         return 1;

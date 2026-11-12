@@ -214,6 +214,20 @@ static void check_flow() {
     expect(gaps.mean(mean) && mean == 0, "gap mean");
 }
 
+static void check_acb() {
+    pitlane::FifoLot<4> fifo;
+    expect(fifo.buy(100, 2) == pitlane::LotPnL::Ok && fifo.lots() == 2, "fifo buy");
+    int64_t part = 0;
+    expect(fifo.sell(110, 1, &part) == pitlane::LotPnL::Ok && part == 10 && fifo.realized() == 10, "fifo sell");
+    expect(fifo.sell(90, 2) == pitlane::LotPnL::Short, "fifo short");
+
+    pitlane::AcbBook book{};
+    expect(pitlane::acb_apply(book, 100, 2) && book.pos == 2 && book.suma == 200, "acb open");
+    expect(pitlane::acb_apply(book, 110, -1) && book.pos == 1 && book.rpnl == 10, "acb sell");
+    expect(pitlane::acb_upnl(book, 120) == 20, "acb upnl");
+    expect(pitlane::acb_apply(book, 90, -2) && book.pos == -1 && book.suma == -90, "acb flip short");
+}
+
 int main() {
     check_feat_and_mark();
     check_tables();
@@ -224,6 +238,7 @@ int main() {
     check_extreme();
     check_right();
     check_flow();
+    check_acb();
     if (g_fails) {
         std::fprintf(stderr, "%d study check(s) failed\n", g_fails);
         return 1;
