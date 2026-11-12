@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>合约、信号和柜台 — pitlane API</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="side">
+    <h1>pitlane API</h1>
+    <div class="lang">
+      <a href="../en/names-signals-and-the-counter.html">English</a>
+      <a href="#" class="active">中文</a>
+    </div>
+    <nav>
+      <a href="index.html">概述</a><a href="启动配置.html">启动配置</a><a href="打开共享区.html">打开共享区</a><a href="发布和读取.html">发布和读取</a><a href="跑会话循环.html">跑会话循环</a><a href="准备一张委托.html">准备一张委托</a><a href="在纸面场所撮合.html">在纸面场所撮合</a><a href="合约-信号和柜台.html" class="active">合约、信号和柜台</a><a href="辅助函数.html">辅助函数</a><a href="调用方自己保管的辅助函数.html">调用方自己保管的辅助函数</a><a href="组帧-节奏和快照.html">组帧、节奏和快照</a><a href="周期计数和定长低延迟表.html">周期计数和定长低延迟表</a><a href="一张委托单.html">一张委托单</a><a href="研究-以及调用方自己的决定.html">研究，以及调用方自己的决定</a><a href="价格窗口-槽池和两笔费用.html">价格窗口、槽池和两笔费用</a><a href="调用所在的头文件.html">调用所在的头文件</a>
+    </nav>
+  </aside>
+  <main class="main">
+    <div class="meta">Static API guide · open a section from the left</div>
+    <h1>合约、信号和柜台</h1>
+<p><code>NameBook</code> 最多保存 256 个合约。<code>insert</code> 写出从 1 开始的编号。符号已经存在或目录已满时返回 false。<code>link</code> 记录关系：0 相关，1 标的，2 衍生，3 跟踪标的，4 跟踪衍生。<code>set_session</code> 允许开市分钟晚于收市分钟，用来表示跨过午夜的时段。</p>
+<p><code>PulseBoard</code> 有 128 路订阅和 256 条队列。<code>watch</code> 建立一路订阅。没有匹配或队列已满时，<code>offer</code> 失败。<code>drain</code> 把队列里的信号复制出去。</p>
+<p><code>BrokerWatch::screen</code> 检查数量、方向、名义金额和在途笔数。<code>remember</code> 跟踪一笔已发出的委托。<code>expire</code> 去掉未及时确认、超过存活时间，或撤单后等待过久的委托。上限小于等于 0 时，这一项检查关闭。</p>
+<p><code>QueryFold</code> 最多接受 4 个引擎和 32 个账号，每个引擎 16 条排队请求，查询种类最多 8。<code>push(engine, acct)</code> 保持仅按账号合并的旧路径。<code>push(engine, acct, kind, page)</code> 可带 page token；引擎、账号、kind 越界或队列满时失败。<code>fold</code> 合并队列。<code>pending</code> 每个账号列出一次。<code>pending_kind</code> 列出互异的 <code>(acct, kind)</code> 及最后一次 page；输出缓冲过短返回 -1。库不会在两页之间睡眠。下一次什么时候查，由调用方决定。</p>
+<p><code>session_date</code> 把一个时刻归到它所属的交易日。8 点到 18 点不回退。18 点之后，周一回退 3 天，其余日子回退 1 天。凌晨则周一回退 2 天，其余日子回退 1 天。然后再跳过周末和 <code>ClosedDays</code> 里的日期。</p>
+  </main>
+</div>
+</body>
+</html>

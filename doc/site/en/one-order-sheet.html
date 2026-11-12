@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>One order sheet — pitlane API</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="side">
+    <h1>pitlane API</h1>
+    <div class="lang">
+      <a href="#" class="active">English</a>
+      <a href="../zh/一张委托单.html">中文</a>
+    </div>
+    <nav>
+      <a href="index.html">Overview</a><a href="startup-configuration.html">Startup configuration</a><a href="open-a-shared-desk.html">Open a shared desk</a><a href="publish-and-read.html">Publish and read</a><a href="run-the-session-loop.html">Run the session loop</a><a href="prepare-an-order.html">Prepare an order</a><a href="match-on-the-paper-venue.html">Match on the paper venue</a><a href="names-signals-and-the-counter.html">Names, signals, and the counter</a><a href="helpers.html">Helpers</a><a href="caller-owned-helpers.html">Caller-owned helpers</a><a href="frames-pacing-and-snapshots.html">Frames, pacing, and snapshots</a><a href="cycles-and-fixed-low-latency-tables.html">Cycles and fixed low-latency tables</a><a href="one-order-sheet.html" class="active">One order sheet</a><a href="research-and-a-caller-decision.html">Research and a caller decision</a><a href="a-price-window-a-slot-pool-and-two-charges.html">A price window, a slot pool, and two charges</a><a href="where-the-calls-live.html">Where the calls live</a>
+    </nav>
+  </aside>
+  <main class="main">
+    <div class="meta">Static API guide · open a section from the left</div>
+    <h1>One order sheet</h1>
+<p><code>phase_text</code> names a phase. <code>sheet_open</code> stores a local id, a side, a price, and a quantity on a sheet the caller owns. A zero id, an unknown side, or a non-positive price or quantity is refused, and the previous sheet stays. <code>sheet_bind</code> stores a counter id once. A second, different id is refused.</p>
+<p><code>sheet_apply</code> moves the sheet through the life table. An event the table refuses leaves every field unchanged. A fill larger than the quantity still open is refused the same way. A fill that takes the whole remainder lands on partial, with nothing left. Finish is a separate event. Reject stores the cause the caller passes. The first non-negative stamp is kept for send, accept, and the finishing events. A negative stamp does not write. <code>sheet_ack_ns</code> and <code>sheet_done_ns</code> subtract those stamps. <code>sheet_line</code> replaces a text buffer with one line of id, side, phase, cause, quantity, filled, and left. A local id that does not fit a signed 64-bit value is refused, and the previous line stays.</p>
+<p><code>gate_ask</code> runs the checks for one enter or one pull and returns the first cause. A null list, rule, wash table, cash row, lot book, risk caps, watch, or flow window is skipped. An enter with a limit price requires a positive price and quantity. A symbol on the list is blocked. A channel that refuses a pull returns the pull-cap cause. A channel that refuses the price mode returns the price cause. Any other channel refusal is blocked. Deviation runs for a limit enter when the cap is zero or positive. Wash runs for an enter when the table is present. When <code>cash</code> and <code>cash_need</code> are set, <code>cash_enough</code> must hold. When <code>lots</code> and <code>lock_qty</code> are set, inventory is checked read-only (<code>lock_future_ok</code> or <code>lock_cash_sell_ok</code>). When <code>risk</code> is set, qty / notional / live caps are applied (via <code>BrokerWatch::screen</code> when <code>watch</code> is set). The flow window is updated only after those checks pass; any earlier failure leaves the flow window and inflight side state unchanged. A window that is already at the limit returns the order-flow cause, or the pull-flow cause for a pull, and is left unchanged. The call does not send the order.</p>
+<p><code>risk_merge</code> takes the stricter positive limit on each axis (zero means that axis is off). <code>AcctRiskTab</code> stores per-account caps; a miss is fail-closed. <code>sign_begin(need)</code> resets a slip and sets how many modules must <code>sign_pass</code> before <code>sign_ready</code> (typical need=3 for global / account / lane). A reject sticks until reset.</p>
+  </main>
+</div>
+</body>
+</html>

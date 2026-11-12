@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>组帧、节奏和快照 — pitlane API</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="side">
+    <h1>pitlane API</h1>
+    <div class="lang">
+      <a href="../en/frames-pacing-and-snapshots.html">English</a>
+      <a href="#" class="active">中文</a>
+    </div>
+    <nav>
+      <a href="index.html">概述</a><a href="启动配置.html">启动配置</a><a href="打开共享区.html">打开共享区</a><a href="发布和读取.html">发布和读取</a><a href="跑会话循环.html">跑会话循环</a><a href="准备一张委托.html">准备一张委托</a><a href="在纸面场所撮合.html">在纸面场所撮合</a><a href="合约-信号和柜台.html">合约、信号和柜台</a><a href="辅助函数.html">辅助函数</a><a href="调用方自己保管的辅助函数.html">调用方自己保管的辅助函数</a><a href="组帧-节奏和快照.html" class="active">组帧、节奏和快照</a><a href="周期计数和定长低延迟表.html">周期计数和定长低延迟表</a><a href="一张委托单.html">一张委托单</a><a href="研究-以及调用方自己的决定.html">研究，以及调用方自己的决定</a><a href="价格窗口-槽池和两笔费用.html">价格窗口、槽池和两笔费用</a><a href="调用所在的头文件.html">调用所在的头文件</a>
+    </nav>
+  </aside>
+  <main class="main">
+    <div class="meta">Static API guide · open a section from the left</div>
+    <h1>组帧、节奏和快照</h1>
+<p>这些调用不打开套接字，也不发单。字节、时钟和决定都留在调用方。</p>
+<p><code>digest_of</code> 只覆盖传给它的字节。<code>Sum8</code> 是求和的低 8 位。<code>Crc16</code> 是 CRC-16/CCITT-FALSE。<code>Crc32</code> 是 ISO-HDLC 的 CRC-32。<code>digest_write</code> 把这个值按小端写出去。<code>StreamAsm&lt;Cap&gt;</code> 把字节追加进自己的缓冲，<code>Cap</code> 从 16 到 65536。<code>FrameSpec</code> 在 4 到 32 字节的头里，用 <code>len_off</code> 处的小端长度读取正文。头、正文和校验都到齐，<code>pull</code> 才给出一帧。正文超过 <code>max_body</code>，或者整帧放不进缓冲，返回 <code>BadLen</code>，缓冲保持原样。校验不对时返回 <code>BadDig</code>，丢掉这一帧，后面的字节留下。好帧留在缓冲开头，直到 <code>commit</code>。帧还没取走时，<code>append</code> 失败。</p>
+<p><code>SeqGate&lt;Cap&gt;</code> 在旁边保留 2 到 64 个更晚的序号。<code>start</code> 设定下一个期望序号，0 会被拒绝。<code>live</code> 只在序号正好接上时放行。出现空洞时记下缺失区间，并把更晚的序号停进旁路。落在当前空洞里的实时序号被忽略。<code>replay</code> 只接受缺口里的下一个序号。缺口补齐后，连续的旁路序号一并放出。旁路里还有更后面的空洞时，再开一个新缺口。旁路已满，或者输出缓冲太短，门的状态不变。这个门不发送重传请求。</p>
+<p><code>token_open</code> 把桶装到 <code>burst</code>。每过 <code>per</code> 个时间单位，<code>token_take</code> 补充 <code>rate</code> 个令牌，存量不超过突发上限。时间往回走不补充。一次取用超过突发上限就失败。<code>gcra_open</code> 保存间隔和容忍量。<code>now</code> 加上容忍量达到理论到达时间时，<code>gcra_allow</code> 才通过，并把这个时间向前推一个间隔。<code>TokenBook</code> 和 <code>GcraBook</code> 保存 1 到 64 个键。键 0 被拒绝。每个槽都还在闲置时间以内时，新键被拒绝。闲置时间为 0 时不复用旧槽。第一次取用失败时，新键不会留下来。</p>
+<p><code>sign_ready</code> 在拒绝数为 0、并且通过数达到 <code>need</code> 时为真。已经拒绝之后，再通过也不能清掉拒绝。<code>sign_reset</code> 清掉两个计数，<code>need</code> 保持不变。开仓的 <code>hold_reserve</code> 扣掉数量，并占住一次撤单次数。平仓两样都不占。<code>hold_cancel</code> 只用于开仓记录，并退回未成交数量。只有 <code>rejected_here</code> 置上时才退回撤单次数。开仓全部成交，并且这次成交不是账户外来的，<code>hold_done</code> 才退回撤单次数。开仓超时的 <code>hold_late</code> 退回未成交数量和撤单次数。平仓超时只结束这条记录，不改额度。<code>hold_cancel_late</code> 退回撤单次数，持仓记录仍然留着，后面的全部成交不会再退一次。</p>
+<p><code>key_num</code> 和 <code>key_text</code> 把接口名和柜台键放在一起。数值键和文本键不相同。文本超过 23 个字符，或者接口名超过 15 个字符，写入失败，原来的键保持不变。<code>AckBook&lt;Cap&gt;</code> 保存 2 到 64 行。表满或者键已经存在时，<code>put</code> 失败。<code>link</code> 把等待下单确认的一行改成已关联。<code>arm_cancel</code> 从已关联状态开始撤单计时。<code>sweep</code> 只列出到期的本地编号，不改这些行。年龄大于自己的上限才算到期。距上次巡检还在 <code>gap</code> 以内时，这次不列出。输出缓冲太短时，巡检时钟不动。</p>
+<p><code>lat_mark</code> 只在打开打点、并且时刻不是负数时写入。任一节点还没有时刻，<code>lat_span</code> 就失败。<code>skew_sample</code> 保存柜台时间与本地时间之差的一半，整数除法向 0 截断。<code>skew_apply</code> 加上这个整数。<code>LatHist&lt;Buckets&gt;</code> 使用 4 到 32 个桶。0 和 1 落在 0 号桶。更大的值用不超过它的最高二次幂，超出最后一档的都留在最后一桶。<code>cum</code> 从 0 号桶累加到给出的桶。</p>
+<p><code>SnapPub&lt;T, Slots&gt;</code> 在对象里放 2 个或 3 个槽。一个写者调用 <code>begin_write</code>，填完后用 <code>publish</code> 让它可见。<code>pin</code> 让一个读者占住当前发布的槽。在 <code>unpin</code> 之前，第二次 <code>pin</code> 失败。只有 2 个槽时，读者还占着一个、另一个已经发布，再次写入就失败。有 3 个槽时，写者可以换掉一份已经发布、随后又被跳过的槽。库不启动线程。</p>
+<p><code>SigBook&lt;Buckets, Keys&gt;</code> 的桶数是 2 到 256 的 2 的幂，键是 1 到 1024 个。每个桶 8 个槽。签名 0 表示空槽，算出来是 0 就存成 1。签名写在键下标之后。<code>find</code> 返回从 1 开始的下标，没有则返回 0。<code>find4</code> 一次查四个键，比对前预取两侧桶。有 SSE2 时，一个桶的八个签名用一条向量比较。键已经存在时，<code>put</code> 返回真。两个桶都满时，一次插入最多把旧键往它的另一个桶挪 8 次。挪不完就失败，原来的键还在。插入侧一个写者。</p>
+<p><code>Grace&lt;Readers&gt;</code> 跟踪 1 到 64 个读者。<code>online</code> 记下当前代。<code>offline</code> 写成 0，这个读者不再挡住回收。调用方放下共享指针之后，用 <code>quiesce</code> 记下这一代。<code>bump</code> 把代加一，并返回新值。还有在线读者停在更老的代上时，<code>elapsed</code> 返回假，它不等待。调用方自己也在读者名单里时，要先 <code>quiesce</code> 再问 <code>elapsed</code>，否则自己仍算停在旧代。<code>RetireList&lt;Cap&gt;</code> 按放入顺序保存 2 到 64 个令牌。<code>reap</code> 从最老的开始放出已经过去的令牌，遇到第一个还没过去的就停。输出缓冲太短时，列表保持原样。列表不释放调用方的内存。</p>
+  </main>
+</div>
+</body>
+</html>

@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Where the calls live — pitlane API</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="side">
+    <h1>pitlane API</h1>
+    <div class="lang">
+      <a href="#" class="active">English</a>
+      <a href="../zh/调用所在的头文件.html">中文</a>
+    </div>
+    <nav>
+      <a href="index.html">Overview</a><a href="startup-configuration.html">Startup configuration</a><a href="open-a-shared-desk.html">Open a shared desk</a><a href="publish-and-read.html">Publish and read</a><a href="run-the-session-loop.html">Run the session loop</a><a href="prepare-an-order.html">Prepare an order</a><a href="match-on-the-paper-venue.html">Match on the paper venue</a><a href="names-signals-and-the-counter.html">Names, signals, and the counter</a><a href="helpers.html">Helpers</a><a href="caller-owned-helpers.html">Caller-owned helpers</a><a href="frames-pacing-and-snapshots.html">Frames, pacing, and snapshots</a><a href="cycles-and-fixed-low-latency-tables.html">Cycles and fixed low-latency tables</a><a href="one-order-sheet.html">One order sheet</a><a href="research-and-a-caller-decision.html">Research and a caller decision</a><a href="a-price-window-a-slot-pool-and-two-charges.html">A price window, a slot pool, and two charges</a><a href="where-the-calls-live.html" class="active">Where the calls live</a>
+    </nav>
+  </aside>
+  <main class="main">
+    <div class="meta">Static API guide · open a section from the left</div>
+    <h1>Where the calls live</h1>
+<table><thead><tr>
+<th>Header</th>
+<th>What it covers</th>
+</tr></thead><tbody>
+<tr>
+<td><code>version.hpp</code></td>
+<td>The library release <code>kVersion</code></td>
+</tr>
+<tr>
+<td><code>book/bar.hpp</code></td>
+<td>Bars from ticks the caller marks tradable</td>
+</tr>
+<tr>
+<td><code>book/calendar.hpp</code></td>
+<td>Trading days and session times</td>
+</tr>
+<tr>
+<td><code>book/cover.hpp</code></td>
+<td>Visible quantity that meets a limit</td>
+</tr>
+<tr>
+<td><code>book/cumtick.hpp</code></td>
+<td>Infer per-price lots from two cumulative volume/turnover snaps</td>
+</tr>
+<tr>
+<td><code>book/cross.hpp</code></td>
+<td>The limit book and the call auction</td>
+</tr>
+<tr>
+<td><code>book/lags.hpp</code></td>
+<td>Session bands and sampled delay</td>
+</tr>
+<tr>
+<td><code>book/ladder.hpp</code></td>
+<td>A fixed price window and the best occupied tick</td>
+</tr>
+<tr>
+<td><code>book/own.hpp</code></td>
+<td>Local tops of book the caller feeds</td>
+</tr>
+<tr>
+<td><code>book/quote.hpp</code></td>
+<td>Quote batches, ordered apply, the print log, and minute rolls</td>
+</tr>
+<tr>
+<td><code>book/steps.hpp</code></td>
+<td>Tick bands and price walks</td>
+</tr>
+<tr>
+<td><code>book/venue.hpp</code></td>
+<td><code>PaperVenue</code></td>
+</tr>
+<tr>
+<td><code>desk/acct.hpp</code></td>
+<td>Trader→accounts table and <code>acct_idle</code></td>
+</tr>
+<tr>
+<td><code>desk/broker.hpp</code></td>
+<td><code>BrokerWatch</code>, <code>QueryFold</code>, and <code>QueryWant</code></td>
+</tr>
+<tr>
+<td><code>desk/risk.hpp</code></td>
+<td><code>risk_merge</code> and <code>AcctRiskTab</code></td>
+</tr>
+<tr>
+<td><code>desk/cash.hpp</code></td>
+<td>Cash/hold boards and <code>cash_enough</code></td>
+</tr>
+<tr>
+<td><code>desk/config.hpp</code></td>
+<td>Startup <code>PitConf</code> load, normalize, and apply</td>
+</tr>
+<tr>
+<td><code>desk/codec.hpp</code></td>
+<td>Symbol class, offset, and direction</td>
+</tr>
+<tr>
+<td><code>desk/feed.hpp</code></td>
+<td>Subscription mask, price scale, and raw ticks</td>
+</tr>
+<tr>
+<td><code>desk/ids.hpp</code></td>
+<td><code>IdMint</code></td>
+</tr>
+<tr>
+<td><code>desk/logline.hpp</code></td>
+<td><code>Log</code></td>
+</tr>
+<tr>
+<td><code>desk/names.hpp</code></td>
+<td><code>NameBook</code></td>
+</tr>
+<tr>
+<td><code>desk/region.hpp</code></td>
+<td>The desk, <code>MapOpt</code> file mapping, and ring capacities</td>
+</tr>
+<tr>
+<td><code>desk/ring.hpp</code></td>
+<td><code>FanRing</code></td>
+</tr>
+<tr>
+<td><code>desk/runtime.hpp</code></td>
+<td><code>DeskLoop</code></td>
+</tr>
+<tr>
+<td><code>desk/signal.hpp</code></td>
+<td><code>PulseBoard</code></td>
+</tr>
+<tr>
+<td><code>desk/types.hpp</code></td>
+<td><code>Intent</code>, <code>Report</code>, <code>Quote</code>, sides, styles, phases, and <code>Why</code></td>
+</tr>
+<tr>
+<td><code>desk/wire.hpp</code></td>
+<td>Algo, control, pulse, print, query, and parcel slots</td>
+</tr>
+<tr>
+<td><code>host/affinity.hpp</code></td>
+<td>Set CPU affinity for the calling thread or process</td>
+</tr>
+<tr>
+<td><code>host/hugepage.hpp</code></td>
+<td><code>nr_hugepages</code>, Hugepagesize, <code>thp_disable</code></td>
+</tr>
+<tr>
+<td><code>host/memlock.hpp</code></td>
+<td>Process-wide <code>mlockall</code> / <code>munlockall</code></td>
+</tr>
+<tr>
+<td><code>host/irq.hpp</code></td>
+<td>Read and write IRQ <code>smp_affinity_list</code></td>
+</tr>
+<tr>
+<td><code>host/numa.hpp</code></td>
+<td>NUMA node query and range <code>mbind</code></td>
+</tr>
+<tr>
+<td><code>host/priority.hpp</code></td>
+<td><code>SCHED_FIFO</code> / <code>SCHED_RR</code> / <code>SCHED_OTHER</code> and nice</td>
+</tr>
+<tr>
+<td><code>order/ack.hpp</code></td>
+<td>Place and cancel acknowledgement timers</td>
+</tr>
+<tr>
+<td><code>order/bind.hpp</code></td>
+<td>Counter ids and out-of-order reports</td>
+</tr>
+<tr>
+<td><code>order/idclaim.hpp</code></td>
+<td>Fixed-capacity id state table (Wait / Live / Final)</td>
+</tr>
+<tr>
+<td><code>order/inbound.hpp</code></td>
+<td>Commands waiting for their due time</td>
+</tr>
+<tr>
+<td><code>order/judge.hpp</code></td>
+<td>List, flow, ratio, deviation, and self-trade checks</td>
+</tr>
+<tr>
+<td><code>order/inflight.hpp</code></td>
+<td>List-only inflight timeout scan</td>
+</tr>
+<tr>
+<td><code>order/lane.hpp</code></td>
+<td>Channel rules, <code>LaneBook</code>, and <code>Cause</code></td>
+</tr>
+<tr>
+<td><code>order/basket.hpp</code></td>
+<td>Per-name basket target ledger</td>
+</tr>
+<tr>
+<td><code>order/ledger.hpp</code></td>
+<td>Freezes, margin, fees, fills, login ids, and the working slot</td>
+</tr>
+<tr>
+<td><code>order/life.hpp</code></td>
+<td>Order transitions and phase names</td>
+</tr>
+<tr>
+<td><code>order/line.hpp</code></td>
+<td>Arrival order of ids at one price</td>
+</tr>
+<tr>
+<td><code>order/lots.hpp</code></td>
+<td>Lot split, board-lot, and margin quantity helpers</td>
+</tr>
+<tr>
+<td><code>order/parent.hpp</code></td>
+<td>Parent time slices and a basket control header</td>
+</tr>
+<tr>
+<td><code>order/plan.hpp</code></td>
+<td>The next order, resting room, slices, and chase prices</td>
+</tr>
+<tr>
+<td><code>order/pool.hpp</code></td>
+<td>Fixed slots found by id</td>
+</tr>
+<tr>
+<td><code>order/recon.hpp</code></td>
+<td>Local and counter fill alignment</td>
+</tr>
+<tr>
+<td><code>order/shed.hpp</code></td>
+<td>Sojourn drop</td>
+</tr>
+<tr>
+<td><code>order/sheet.hpp</code></td>
+<td>Order sheet, partial cancel, and <code>gate_ask</code></td>
+</tr>
+<tr>
+<td><code>order/sign.hpp</code></td>
+<td>Sign composition and opening quota</td>
+</tr>
+<tr>
+<td><code>order/ticket.hpp</code></td>
+<td>Command snapshot and revision</td>
+</tr>
+<tr>
+<td><code>order/typed.hpp</code></td>
+<td>Compile-time ticket tags</td>
+</tr>
+<tr>
+<td><code>study/acb.hpp</code></td>
+<td>FIFO lot queue and average-cost position book</td>
+</tr>
+<tr>
+<td><code>study/corp.hpp</code></td>
+<td>Corporate-action price factors</td>
+</tr>
+<tr>
+<td><code>study/decide.hpp</code></td>
+<td>Scored candidate intents: store and compare</td>
+</tr>
+<tr>
+<td><code>study/extreme.hpp</code></td>
+<td>High and low over the last fixed run of prices</td>
+</tr>
+<tr>
+<td><code>study/plan.hpp</code></td>
+<td>A grey-black factor order and a fixed act list</td>
+</tr>
+<tr>
+<td><code>study/study.hpp</code></td>
+<td>Book features, markouts, relations, factors, replay, and one research step</td>
+</tr>
+<tr>
+<td><code>time/clock.hpp</code></td>
+<td>A published cycle scale and wall time</td>
+</tr>
+<tr>
+<td><code>time/cut.hpp</code></td>
+<td>Solo versus split path choice from measured gaps</td>
+</tr>
+<tr>
+<td><code>time/cycle.hpp</code></td>
+<td>Cycle reads, an integer scale, and a cached microsecond</td>
+</tr>
+<tr>
+<td><code>time/global.hpp</code></td>
+<td>Process-wide integer TSC cycle scale</td>
+</tr>
+<tr>
+<td><code>time/lap.hpp</code></td>
+<td>Differences of timestamps the caller stored</td>
+</tr>
+<tr>
+<td><code>time/mag.hpp</code></td>
+<td>Magnitude buckets and paced notes</td>
+</tr>
+<tr>
+<td><code>time/sample.hpp</code></td>
+<td>A fixed list of samples</td>
+</tr>
+<tr>
+<td><code>time/simclock.hpp</code></td>
+<td><code>SimClock</code></td>
+</tr>
+<tr>
+<td><code>time/span.hpp</code></td>
+<td>Timestamps beside a message</td>
+</tr>
+<tr>
+<td><code>time/tape.hpp</code></td>
+<td>A gate, a per-core tape, sealed segments, and spikes</td>
+</tr>
+<tr>
+<td><code>time/trace.hpp</code></td>
+<td>Latency samples, clock offset, and buckets</td>
+</tr>
+<tr>
+<td><code>time/urgent.hpp</code></td>
+<td>One tag that does not wait in a queue</td>
+</tr>
+<tr>
+<td><code>time/wheel.hpp</code></td>
+<td>A tick wheel</td>
+</tr>
+<tr>
+<td><code>util/arena.hpp</code></td>
+<td>Fixed-capacity arena with default explicit huge pages</td>
+</tr>
+<tr>
+<td><code>util/batch.hpp</code></td>
+<td>Adaptive micro-batch size from backlog</td>
+</tr>
+<tr>
+<td><code>util/bound.hpp</code></td>
+<td>One-compare bounds and a walk budget</td>
+</tr>
+<tr>
+<td><code>util/corebank.hpp</code></td>
+<td>Caller-owned per-core fixed-stride bank</td>
+</tr>
+<tr>
+<td><code>util/chunk.hpp</code></td>
+<td>Sparse price blocks and cancel handles</td>
+</tr>
+<tr>
+<td><code>util/drill.hpp</code></td>
+<td>Clocks, budgets, ladders, and plain records for tests</td>
+</tr>
+<tr>
+<td><code>util/fillring.hpp</code></td>
+<td>A slot filled in place</td>
+</tr>
+<tr>
+<td><code>util/authbits.hpp</code></td>
+<td>MAC whitelist (≤3) and role bit tests</td>
+</tr>
+<tr>
+<td><code>util/frame.hpp</code></td>
+<td>Frames, sequence gaps, and reordering</td>
+</tr>
+<tr>
+<td><code>util/grace.hpp</code></td>
+<td>Reader epochs and a retire list</td>
+</tr>
+<tr>
+<td><code>util/hex.hpp</code></td>
+<td>Hex and a byte compare</td>
+</tr>
+<tr>
+<td><code>util/hint.hpp</code></td>
+<td>Branch tips, hot and cold placement, and prefetch</td>
+</tr>
+<tr>
+<td><code>util/mix64.hpp</code></td>
+<td>A split mix</td>
+</tr>
+<tr>
+<td><code>util/mold.hpp</code></td>
+<td>Prepared frames, block length, and an id that can be returned</td>
+</tr>
+<tr>
+<td><code>util/objpool.hpp</code></td>
+<td>Thread-private fixed freelist pool</td>
+</tr>
+<tr>
+<td><code>util/numeric.hpp</code></td>
+<td>Wide products used by the checks</td>
+</tr>
+<tr>
+<td><code>util/page.hpp</code></td>
+<td>Ordinary and huge page sizes; byte round-up</td>
+</tr>
+<tr>
+<td><code>util/pace.hpp</code></td>
+<td>Token buckets and theoretical arrival times</td>
+</tr>
+<tr>
+<td><code>util/phase.hpp</code></td>
+<td>Signed-ticket PhaseGate; non-blocking flip_ready; ActiveSum counter rotate</td>
+</tr>
+<tr>
+<td><code>util/pinbank.hpp</code></td>
+<td>PrioSnap priority triple buffer; PinBank multi-reader snapshots with per-slot refcounts</td>
+</tr>
+<tr>
+<td><code>util/readwin.hpp</code></td>
+<td>The slowest reader plus a window</td>
+</tr>
+<tr>
+<td><code>util/seqgate.hpp</code></td>
+<td>Sequence gap recovery, <code>gap_width</code>, and <code>reset</code></td>
+</tr>
+<tr>
+<td><code>util/seqpub.hpp</code></td>
+<td>No-backpressure sequence ring; may overwrite unread slots</td>
+</tr>
+<tr>
+<td><code>util/seqwin.hpp</code></td>
+<td>A sequence window that stops at a hole</td>
+</tr>
+<tr>
+<td><code>util/rankbits.hpp</code></td>
+<td><code>RankBits</code> dense ranks and <code>QuadTab</code> four-key lines</td>
+</tr>
+<tr>
+<td><code>util/sig.hpp</code></td>
+<td>Signature buckets</td>
+</tr>
+<tr>
+<td><code>util/simd.hpp</code></td>
+<td>Packed clear, packed copy, and cover helpers</td>
+</tr>
+<tr>
+<td><code>util/snap.hpp</code></td>
+<td>Snapshot slots published as a whole</td>
+</tr>
+<tr>
+<td><code>util/spin.hpp</code></td>
+<td>A TTAS spin lock on its own line</td>
+</tr>
+<tr>
+<td><code>util/stage.hpp</code></td>
+<td>A ring finished in claim order</td>
+</tr>
+<tr>
+<td><code>util/stream.hpp</code></td>
+<td>Frame checksums and byte-stream reassembly</td>
+</tr>
+<tr>
+<td><code>util/sticky.hpp</code></td>
+<td>Wait-free StickyCounter (final value visible to readers)</td>
+</tr>
+<tr>
+<td><code>util/stride.hpp</code></td>
+<td>The address of one core&#x27;s slot</td>
+</tr>
+<tr>
+<td><code>util/textbuf.hpp</code></td>
+<td>A fixed text buffer</td>
+</tr>
+<tr>
+<td><code>util/touch.hpp</code></td>
+<td>Prefetch and load by cache line</td>
+</tr>
+<tr>
+<td><code>util/wirepx.hpp</code></td>
+<td>Mantissa/exponent wire price helpers</td>
+</tr>
+</tbody></table>
+  </main>
+</div>
+</body>
+</html>

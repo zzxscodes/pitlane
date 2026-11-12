@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>调用方自己保管的辅助函数 — pitlane API</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="side">
+    <h1>pitlane API</h1>
+    <div class="lang">
+      <a href="../en/caller-owned-helpers.html">English</a>
+      <a href="#" class="active">中文</a>
+    </div>
+    <nav>
+      <a href="index.html">概述</a><a href="启动配置.html">启动配置</a><a href="打开共享区.html">打开共享区</a><a href="发布和读取.html">发布和读取</a><a href="跑会话循环.html">跑会话循环</a><a href="准备一张委托.html">准备一张委托</a><a href="在纸面场所撮合.html">在纸面场所撮合</a><a href="合约-信号和柜台.html">合约、信号和柜台</a><a href="辅助函数.html">辅助函数</a><a href="调用方自己保管的辅助函数.html" class="active">调用方自己保管的辅助函数</a><a href="组帧-节奏和快照.html">组帧、节奏和快照</a><a href="周期计数和定长低延迟表.html">周期计数和定长低延迟表</a><a href="一张委托单.html">一张委托单</a><a href="研究-以及调用方自己的决定.html">研究，以及调用方自己的决定</a><a href="价格窗口-槽池和两笔费用.html">价格窗口、槽池和两笔费用</a><a href="调用所在的头文件.html">调用所在的头文件</a>
+    </nav>
+  </aside>
+  <main class="main">
+    <div class="meta">Static API guide · open a section from the left</div>
+    <h1>调用方自己保管的辅助函数</h1>
+<p>这些调用不挂到共享工作区上。存储由调用方保留，数字由调用方传入，结果怎么用也由调用方决定。</p>
+<p><code>IdSlip::issue</code> 给出下一个编号。这个编号仍是最新的一个，并且还没有调用 <code>keep</code> 时，<code>undo</code> 才能把它退回。<code>WireMold::seal</code> 把前缀抄进调用方的缓冲区。<code>put_u64</code> 和 <code>put_i64</code> 在这段前缀里的偏移上写入小端字节。<code>read_block</code> 接受长度至少为 <code>know</code> 的块，更短的块会被拒绝。<code>block_end</code> 跳过声明的块，包括这一版不读取的字节。</p>
+<p><code>StayShed::drop</code> 使用调用方自己的时间单位。停留短于目标时退出丢弃状态。第一次达到或超过目标时开始计窗口，这一条保留。窗口过去之后，仍然偏晚的条目被丢掉。停留再次短于目标时退出丢弃状态。</p>
+<p><code>floor_chunk</code> 把负数 tick 向远离 0 的方向对齐到块起点。<code>ChunkMap&lt;Ticks,Blocks&gt;</code> 按每块 <code>Ticks</code> 个价格保存数量，最多 <code>Blocks</code> 块。<code>Ticks</code> 取 8 到 256，并且是 64 的倍数。<code>Blocks</code> 取 1 到 64。数量 0 清掉这个 tick。只有正数量才会占用新块。目录已满时写入失败，原有数量保持不变。<code>chain_link</code> 把调用方自己的节点接到链尾，并返回槽位和复用计数。复用计数不一致时，<code>chain_unlink</code> 失败。<code>chain_zero</code> 让节点留在链上，数量为 0。<code>chain_take</code> 减少这个数量。</p>
+<p><code>ticket_pull</code> 和 <code>ticket_amend</code> 只从 <code>Working</code> 或 <code>Partial</code> 出发。每次都先留下原来的票据，再把版本加一。<code>ticket_rewind</code> 只在版本仍是这条命令写下的那个值时恢复快照。<code>ticket_fill</code> 也会把版本加一，所以成交会挡住尚未退回的命令。<code>PullWait</code> 期间的成交仍留在 <code>PullWait</code>。</p>
+<p><code>slice_open</code> 用时间跨度里的间隔数拆分母单数量，切段最多一百万。一段低于手数、而总量仍够一手时，整笔收成一段。最后一段带上余数。<code>slice_poll</code> 等到到期时刻才给出下一段。<code>slice_restore</code> 把没做完的子单退回池子。<code>slice_late</code> 先记入成交，能从池子里扣的先扣，返回值是从已经再次排出去的子单上收回的数量。<code>basket_make</code> 接受 <code>Create</code>、<code>Pause</code>、<code>Resume</code>、<code>Stop</code> 和 <code>Update</code>。种类最多 15 个字符。字节数大于 <code>max_bytes</code> 时失败。载荷本身不保存。</p>
+<p><code>recon_fill</code> 对同一个柜台成交编号只应用一次。本地还没有这张单时，用 <code>size</code> 建出来，先给出确认，再给成交。超过委托数量的部分记入 <code>over</code>，不加进 <code>filled</code>。重复编号给出 <code>Dup</code>，不改变订单。<code>recon_cancel</code> 把一张已知且未结束的订单标成已撤。</p>
+<p><code>FlightQueue&lt;Cap&gt;</code> 保存 2 到 64 条命令，按到期时刻排序。队列已满，或者编号、合约为 0 时，<code>push</code> 失败。<code>take</code> 只取出这个合约上已经到期的命令。</p>
+<p><code>BarFold</code> 忽略调用方标成不可交易的 tick，也忽略非正价格、负数量和负时间戳。桶起点是时间戳减去它对周期的余数。更晚的桶会收掉当前这根。更早的 tick 被拒绝，当前这根保持不变。空的周期不会被补出来。<code>seal</code> 交出还开着的那一根。</p>
+<p><code>act_mul</code> 用 <code>jump_den / jump_num</code> 作为价格乘数。现金分红只在 <code>income</code> 置上、并且前收高于分红时才改变这个乘数。<code>mul_fold</code> 只乘上 <code>ymd</code> 不晚于指定日期的公司行为。<code>scale_px</code> 向 0 截断。<code>traded_move</code> 返回去掉原始跳变之后的价格变化。1 股拆成 2 股时，跳变用 <code>1/2</code>。除权价正好是前收的一半时，交易变动是 0。</p>
+  </main>
+</div>
+</body>
+</html>

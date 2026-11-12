@@ -16,3 +16,7 @@ CMakeCache.txt
 CMakeFiles/
 compile_commands.json
 .cache/
+.tools/
+Testing/
+CTestTestfile.cmake
+DartConfiguration.tcl

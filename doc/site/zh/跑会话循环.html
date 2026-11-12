@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>跑会话循环 — pitlane API</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="side">
+    <h1>pitlane API</h1>
+    <div class="lang">
+      <a href="../en/run-the-session-loop.html">English</a>
+      <a href="#" class="active">中文</a>
+    </div>
+    <nav>
+      <a href="index.html">概述</a><a href="启动配置.html">启动配置</a><a href="打开共享区.html">打开共享区</a><a href="发布和读取.html">发布和读取</a><a href="跑会话循环.html" class="active">跑会话循环</a><a href="准备一张委托.html">准备一张委托</a><a href="在纸面场所撮合.html">在纸面场所撮合</a><a href="合约-信号和柜台.html">合约、信号和柜台</a><a href="辅助函数.html">辅助函数</a><a href="调用方自己保管的辅助函数.html">调用方自己保管的辅助函数</a><a href="组帧-节奏和快照.html">组帧、节奏和快照</a><a href="周期计数和定长低延迟表.html">周期计数和定长低延迟表</a><a href="一张委托单.html">一张委托单</a><a href="研究-以及调用方自己的决定.html">研究，以及调用方自己的决定</a><a href="价格窗口-槽池和两笔费用.html">价格窗口、槽池和两笔费用</a><a href="调用所在的头文件.html">调用所在的头文件</a>
+    </nav>
+  </aside>
+  <main class="main">
+    <div class="meta">Static API guide · open a section from the left</div>
+    <h1>跑会话循环</h1>
+<p><code>DeskLoop</code> 以读者 7 读取各条环，触发定时器，并在看到 <code>kind</code> 为 1 的控制消息后停止。循环已经停止时，<code>beat</code> 直接返回。定时器编号 0 会被拒绝。<code>every_us</code> 为 0 的定时器只触发一次。定时器一共 32 个。</p>
+<pre><code class="language-cpp">
+void on_quote(void*, const pitlane::Quote&amp;) {}
+
+pitlane::DeskLoop loop;
+loop.add_timer(1, /*when_us=*/1000, /*every_us=*/0);
+pitlane::LoopHooks hooks{};
+hooks.on_quote = on_quote;
+loop.beat(*desk, /*now_us=*/1000, hooks);
+</code></pre>
+<p>钩子是函数指针：<code>on_quote</code>、<code>on_report</code>、<code>on_pulse</code>、<code>on_print</code>、<code>on_algo</code>、<code>on_query</code>、<code>on_control</code> 和 <code>on_timer</code>。只有你设置了的钩子会被调用。要让这个循环看到的消息，发布时必须带上读者位 7，或者使用掩码 0。</p>
+  </main>
+</div>
+</body>
+</html>

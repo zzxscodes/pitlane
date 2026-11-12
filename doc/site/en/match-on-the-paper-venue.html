@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Match on the paper venue — pitlane API</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="side">
+    <h1>pitlane API</h1>
+    <div class="lang">
+      <a href="#" class="active">English</a>
+      <a href="../zh/在纸面场所撮合.html">中文</a>
+    </div>
+    <nav>
+      <a href="index.html">Overview</a><a href="startup-configuration.html">Startup configuration</a><a href="open-a-shared-desk.html">Open a shared desk</a><a href="publish-and-read.html">Publish and read</a><a href="run-the-session-loop.html">Run the session loop</a><a href="prepare-an-order.html">Prepare an order</a><a href="match-on-the-paper-venue.html" class="active">Match on the paper venue</a><a href="names-signals-and-the-counter.html">Names, signals, and the counter</a><a href="helpers.html">Helpers</a><a href="caller-owned-helpers.html">Caller-owned helpers</a><a href="frames-pacing-and-snapshots.html">Frames, pacing, and snapshots</a><a href="cycles-and-fixed-low-latency-tables.html">Cycles and fixed low-latency tables</a><a href="one-order-sheet.html">One order sheet</a><a href="research-and-a-caller-decision.html">Research and a caller decision</a><a href="a-price-window-a-slot-pool-and-two-charges.html">A price window, a slot pool, and two charges</a><a href="where-the-calls-live.html">Where the calls live</a>
+    </nav>
+  </aside>
+  <main class="main">
+    <div class="meta">Static API guide · open a section from the left</div>
+    <h1>Match on the paper venue</h1>
+<p><code>PaperVenue</code> handles 48 names, <code>kNames</code>, and 192 live orders, <code>kTickets</code>. A name must be less than 48. An order is judged only after its send delay has elapsed, against the book at that moment. A cancel waits for its cancel delay.</p>
+<pre><code class="language-cpp">
+pitlane::VenueCfg cfg{};
+cfg.lot = 1;
+pitlane::PaperVenue venue(cfg);
+const pitlane::Rung asks[] = {{100, 5}};
+venue.set_levels(1, nullptr, 0, asks, 1);
+
+pitlane::Report reps[4]{};
+pitlane::VenueOut out = venue.admit(in, in.stamp_us, reps, 4);
+</code></pre>
+<p><code>admit</code> writes reports into the caller buffer and sets <code>out.why</code>. <code>on_clock</code> promotes staged orders whose delay has elapsed and completes cancels that are due. <code>on_print</code> and <code>on_tape</code> reduce the quantity ahead of a resting order. A print whose aggressive side equals the resting order&#x27;s side does not fill it. Pass 0 as the aggressor to keep every print. <code>on_shown</code> applies a later change in displayed size without counting the same trade twice.</p>
+<p><code>Style::Day</code> fills the whole remainder at its limit, even past the size shown there. <code>Style::Passive</code> expires if it would cross. <code>Style::Immediate</code> keeps only the shown size. <code>Style::All</code> expires the whole order when the shown size is short. A self-trade against the same account stops the order.</p>
+<p>Before 09:30 the delay tables are zero. After that, <code>session_band</code> splits the day at 10:00, 10:30, 11:00, 11:30, 13:30, 14:00, 14:30, and 15:00. <code>SimClock</code> uses those nine bands unless sample points are loaded. A negative result from <code>SimClock::go</code> means the order did not reach the book. The caller applies that result. <code>admit</code> does not read the clock itself.</p>
+<p><code>auction_clear</code> picks the price with the largest matched quantity. <code>tie_higher</code> selects the higher price on a tie. Otherwise the price closer to the reference is used.</p>
+  </main>
+</div>
+</body>
+</html>

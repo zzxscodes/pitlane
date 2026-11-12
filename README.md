@@ -1,6 +1,6 @@
 # pitlane
 
-The Chinese introduction is in `README_CN.md`. API usage is in `doc/API.md` and `doc/API_CN.md`. When the library changes, update each language pair together.
+The Chinese introduction is in `README_CN.md`. API usage is in `doc/API.md` and `doc/API_CN.md`. A browsable static site (sidebar by section, English / 中文) is generated into `doc/site/`; open `doc/site/index.html` or rebuild with `python3 doc/gen_site.py`. When the library changes, update each language pair together and regenerate the site.
 
 pitlane is a C++17 library for trading processes on the same machine. It gives those processes one shared workspace, and on that workspace it handles orders, positions, trading days, and paper matching. Prices are integers. Times are microseconds.
 
@@ -14,7 +14,9 @@ Order slots, ledger rows, and live orders sit in fixed arrays. Cash and position
 
 Include `include/pitlane/pitlane.hpp` and link `libpitlane.a`. Types and functions live in the `pitlane` namespace. The interface is designed on its own and cannot replace another trading library that is already running.
 
-The library release is 2.10.0. `pitlane::kVersion` in `version.hpp` holds the same text. The shared library file carries this number, and its soname stays `libpitlane.so.1`. The desk layout version stays `kDeskVersion`, currently 3.
+The library release is 2.11.0. `pitlane::kVersion` in `version.hpp` holds the same text. The shared library file carries this number, and its soname stays `libpitlane.so.1`. The desk layout version stays `kDeskVersion`, currently 3.
+
+Startup configuration is an optional INI-like file (`examples/pitlane.conf`). `conf_load` overlays keys onto code defaults; empty values keep the default. `conf_normalize` clamps unsafe values (for example ring sizes to a power of two within the compile-time maximum) and writes hint lines for the caller to print. `conf_map_opt` / `conf_arena_opt` / `desk_apply_conf` apply the result at map/desk creation only. The hot path never opens the file again.
 
 Headers and sources sit one directory deeper, by area. `desk` holds the shared region and the records on it. `book` holds quotes, the trading day, and paper matching. `order` holds order life, checks, and positions. `time` holds clocks and latency tapes. `study` holds features, markouts, and the caller decision. `util` holds numbers, text, frames, and fixed buffers. `host` holds process-side `sched_setaffinity`, scheduling policy, IRQ affinity, explicit huge-page pool control, `mlockall`, and NUMA membind. Sources for an area live under the same name in `src` when the area has compiled files. Tests for an area live under the same name in `tests`. The latency program is `tests/time/perf.cpp`. A direct include names the area, as in `pitlane/order/sheet.hpp`. `version.hpp` stays next to `pitlane.hpp`.
 

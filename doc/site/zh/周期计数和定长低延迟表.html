@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>周期计数和定长低延迟表 — pitlane API</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="side">
+    <h1>pitlane API</h1>
+    <div class="lang">
+      <a href="../en/cycles-and-fixed-low-latency-tables.html">English</a>
+      <a href="#" class="active">中文</a>
+    </div>
+    <nav>
+      <a href="index.html">概述</a><a href="启动配置.html">启动配置</a><a href="打开共享区.html">打开共享区</a><a href="发布和读取.html">发布和读取</a><a href="跑会话循环.html">跑会话循环</a><a href="准备一张委托.html">准备一张委托</a><a href="在纸面场所撮合.html">在纸面场所撮合</a><a href="合约-信号和柜台.html">合约、信号和柜台</a><a href="辅助函数.html">辅助函数</a><a href="调用方自己保管的辅助函数.html">调用方自己保管的辅助函数</a><a href="组帧-节奏和快照.html">组帧、节奏和快照</a><a href="周期计数和定长低延迟表.html" class="active">周期计数和定长低延迟表</a><a href="一张委托单.html">一张委托单</a><a href="研究-以及调用方自己的决定.html">研究，以及调用方自己的决定</a><a href="价格窗口-槽池和两笔费用.html">价格窗口、槽池和两笔费用</a><a href="调用所在的头文件.html">调用所在的头文件</a>
+    </nav>
+  </aside>
+  <main class="main">
+    <div class="meta">Static API guide · open a section from the left</div>
+    <h1>周期计数和定长低延迟表</h1>
+<p>这些调用不打开套接字，不发单，也不启动线程。存储和推进它的线程都由调用方持有。</p>
+<p><code>cycles_read</code> 读取周期计数。<code>cycles_ordered</code> 等前面的指令完成后再读。终点早于起点时，<code>cycle_gap</code> 失败。<code>load_fence</code>、<code>compiler_fence</code>、<code>cpu_relax</code> 和 <code>keep</code> 放在一次测量的两侧。<code>CycleProbe::arm</code> 指定要丢掉的预热次数。<code>begin</code> 先加栅栏再读。<code>end</code> 返回 1 表示留下这个样本，返回 0 表示仍在预热，返回 -1 表示读取失败或者计数往回走。</p>
+<p><code>UsSlot</code> 独占一条缓存行。<code>us_store</code> 用 release 写下微秒数。<code>us_load</code> 用 acquire 读取。这个槽由调用方写。探针打开期间，库不去取时钟。</p>
+<p><code>scale_set</code> 用调用方量到的周期数和纳秒数保存乘子和移位。两个数都必须是正数，周期数还要放得进宽除法。<code>scale_ns</code> 计算 <code>(cycles * mult + half) &gt;&gt; shift</code>，四舍五入到纳秒。<code>scale_span</code> 换算一段向前的周期差，终点更早则失败。</p>
+<p><code>DutyPace::open</code> 保存快档间隔、慢档间隔，以及一毫秒对应多少周期。<code>step</code> 返回跳过、快档、慢档或超时。它不去轮询描述符。<code>deadline_at</code> 把偏移加到起点上，加出会溢出就失败。期限还在前面时，<code>before_deadline</code> 为真。</p>
+<p><code>lap_ns</code> 把两个时刻相减。负数时刻表示还没写入，终点早于起点则失败。<code>hop_ns</code> 用记录写好的时刻减去触发它的时刻。<code>order_to_ack</code>、<code>tick_to_trade</code> 和 <code>tick_to_cancel</code> 对调用方已经记下的时刻用同一条规则。</p>
+<p><code>MagHist</code> 按数量级给每个桶记一个计数。值落在表外时，加入失败，原来的计数不动。0 分位是最小样本，100 分位是最大样本。中间的分位取跨过这个名次的那一格的下沿，名次向上取整。<code>mag_report</code> 填上个数、最小、最大、中位数、99 分位和 999 分位。<code>note_paced</code> 先记下这段耗时。耗时盖过不止一个间隔时，再把仍然不小于一个间隔的剩余逐段记下。最多记 64 笔。更长的停顿在这 64 笔之后返回 -1。回调返回假时，这一串就停。</p>
+<p><code>clock_publish</code> 把周期比例写到一页上。代先写成奇数，写完字段，再写成偶数。代是 0 表示这页还没发布过。周期数为 0，或者放不进宽除法，发布失败，页保持原样。<code>ClockView::refresh</code> 复制一份稳定的偶数代，并保存整数乘子和移位。页还没发布、这份比例组不起来，或者连续读到的代一直是奇数，就返回假。<code>to_wall</code> 用这份乘子和移位把周期戳换成墙钟，换算本身不再做除法，然后再把纳秒折进秒。</p>
+<p><code>TickWheel&lt;Cap&gt;</code> 保存 8 到 4096 个定时器。空闲链表和待挂栈各自独占一条缓存行。标签 0 被拒绝。<code>arm</code> 在调用它的线程上插入。<code>post</code> 可以在别的线程上调用，下一次 <code>take</code> 再把它们挂进轮子。不严格晚于当前拍的定时器会被改到下一拍。<code>take</code> 推进到给出的界限，并写出到期标签。缓冲不够就停下，剩下的定时器留在原地。<code>cancel</code> 去掉一个已经挂上的标签。<code>next_deadline</code> 是下一个有定时器的近桶，或者下一次把更远的桶收进来的拍。</p>
+<p><code>StageRing&lt;T, Cap&gt;</code> 使用 4 到 1024 个槽，容量是 2 的幂。每个槽都还被占着时，<code>acquire</code> 失败。阶段 0 的 <code>finish</code> 写入内容。<code>take</code> 只交出这一阶段的下一个序号。后占的序号先写完，也要等前面的序号。阶段 1 才发布已经释放的计数。只接受阶段 0 和 1。</p>
+<p><code>SeqWin&lt;Cap&gt;</code> 的窗口是 8 到 1024，并且是 2 的幂。令牌 0 被拒绝。<code>push</code> 返回 <code>In</code>、<code>Dup</code>、<code>Busy</code> 或 <code>Far</code>。重复的序号留下先到的令牌。离窗口远过两倍的序号是 <code>Far</code>，不会放进去。<code>pull</code> 先交出已经准备好的前缀，再交连续的窗口头，遇到空洞就停。滑动时旁边的队列放不下，<code>push</code> 返回 <code>Busy</code>，新令牌不保存。</p>
+<p><code>ReadWin</code> 跟踪 8 个读者。窗口小于 4 时，<code>open</code> 失败。<code>limit</code> 是已经加入的读者里最慢的位置再加上窗口。不是常驻的读者，落后超过窗口的四分之一，并且安静时间达到保持时长，就离开集合。一个读者都不剩时，<code>limit</code> 失败。这次调用不写调用方的字节。</p>
+<p><code>core_slot</code> 返回调用方自己的一块内存里某个核的地址。步长至少 64 字节，并且是 64 的倍数。核号超出个数则失败。</p>
+<p><code>Urgent</code> 独占一条缓存行，只放一个非 0 标签。槽里还有标签时，<code>post</code> 失败。<code>take</code> 返回这个标签，槽空时返回 0。</p>
+<p><code>TraceGate</code> 独占一条缓存行。<code>arm</code> 保存一个 16 位事件号和一个开关。<code>CoreTape&lt;Cap&gt;</code> 只在开关打开时写入。记录序号单独占一行。容量是 16 到 4096，并且是 2 的幂。写满以后覆盖最旧的一条。还没写过，或者已经被覆盖的记录，<code>at</code> 失败。<code>SegTape&lt;Seg, N&gt;</code> 有 2 到 16 段，每段 4 到 1024 条。下一段已经用 <code>give</code> 交回时，写满的这一段才封存。否则写者从当前段开头重写，覆盖次数加一，这次 <code>push</code> 返回假。<code>SpikeRing&lt;Cap&gt;</code> 只记录严格超过阈值的间隔。没有超过阈值时返回假，不算丢失。环满时，写者一侧的丢失计数加一，并返回假。读者序号单独占一行。</p>
+<p><code>FillRing&lt;T, Cap&gt;</code> 一个生产者、一个消费者，槽数是 2 到 1024。<code>claim</code> 返回下一个槽。已经有一次还没发布的领取，或者环已满，就返回空。<code>publish</code> 让这个槽可见。<code>cancel</code> 放弃这次领取，不发布。<code>take</code> 拷出下一个已经发布的槽。<code>take_span</code> 一次拷出多条，读取序号只向前推进一次。每个槽独占一条缓存行。</p>
+<p><code>SendJoinRing&lt;T, Cap&gt;</code> 多个生产者、一个消费者，槽数是 2 到 65536 的 2 的幂。下一格追上 head 时 <code>try_push</code> 失败。尾字高位是世代号、低 16 位是下标，环绕后旧值不会与 compare-exchange 匹配。占槽后再写载荷，<code>ready</code> 用 release 发布。<code>try_pop</code> 在 acquire 看到 ready 后才搬走，再推进 head。</p>
+<p><code>hex_encode</code> 写出小写十六进制，并在末尾放一个空字符。缓冲要同时容得下这两部分。缓冲太短时返回 -1，原来的文本不动。<code>hex_decode</code> 先检查每一位，再写入。长度是奇数，或者有一位不是十六进制，返回 -1，并且不写。<code>bytes_diff</code> 返回第一处不同的下标，两段相同返回 -1，指针或长度不能用时返回 -2。</p>
+<p><code>Mix64</code> 从调用方保存的种子往下取。<code>below</code> 会消耗一次取值。上界小于等于 1 时返回 0。更大的上界返回严格小于它的值。<code>span</code> 返回从下界到上界、包含两端的值，上界低于下界则失败。这个混合不是密码学生成器。</p>
+<p><code>TextBuf&lt;Cap&gt;</code> 保存 8 到 4096 字节，含末尾的空字符。<code>put</code>、<code>put_i64</code> 或 <code>put_hex</code> 失败时，原来的文本留下。<code>put_char</code> 拒绝值为 0 的字节。<code>put_hex</code> 的宽度是 1 到 16，值需要的位数更多就拒绝。</p>
+<p><code>SampleBox&lt;Cap&gt;</code> 保存 2 到 256 个样本。均值向 0 截断。百分位用向上取整的最近名次。0 分位是最小样本，100 分位是最大样本。盒子已满，或者总和会溢出，加入失败，新样本不写入。</p>
+<p><code>StepClock::step</code> 只向前走，负的步长或者会溢出的步长被拒绝。<code>jump</code> 可以跳到任意时刻。<code>FailBudget::arm</code> 允许那么多次成功，之后 <code>allow</code> 返回假。<code>StepList&lt;Cap&gt;</code> 要求标签非 0，时间不能早于上一次放入。<code>take</code> 拷出已到期标签的一个前缀。缓冲太短时，剩下的留下。<code>ladder_check</code> 接受空档。买档必须严格递减，卖档必须严格递增。价格或数量不是正数就失败。<code>intent_make</code>、<code>report_make</code> 和 <code>quote_make</code> 在拒绝时把输出清零。买价高于卖价的行情被拒绝。买价等于卖价可以留下。</p>
+  </main>
+</div>
+</body>
+</html>

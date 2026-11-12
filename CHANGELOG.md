@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.11.0] - 2026-11-12
+
+### Added
+
+- Static web API docs under `doc/site/` (sidebar by section, EN/ZH); rebuild with `python3 doc/gen_site.py`
+- Startup `PitConf` / `conf_load` / `conf_normalize` / `desk_apply_conf` (INI-like file, defaults in code, hints on clamp)
+- `FanRing::tune` soft capacity at desk init (power-of-two ≤ compile-time Cap); hot path uses tuned mask only
+
+### Changed
+
+- Library release version is 2.11.0
+
 ## [2.10.0] - 2026-11-12
 
 ### Added

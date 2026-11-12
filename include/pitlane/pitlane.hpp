@@ -6,6 +6,7 @@
 #include "pitlane/desk/broker.hpp"
 #include "pitlane/desk/cash.hpp"
 #include "pitlane/desk/codec.hpp"
+#include "pitlane/desk/config.hpp"
 #include "pitlane/desk/risk.hpp"
 #include "pitlane/desk/feed.hpp"
 #include "pitlane/desk/ids.hpp"

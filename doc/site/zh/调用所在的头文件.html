@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>调用所在的头文件 — pitlane API</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="side">
+    <h1>pitlane API</h1>
+    <div class="lang">
+      <a href="../en/where-the-calls-live.html">English</a>
+      <a href="#" class="active">中文</a>
+    </div>
+    <nav>
+      <a href="index.html">概述</a><a href="启动配置.html">启动配置</a><a href="打开共享区.html">打开共享区</a><a href="发布和读取.html">发布和读取</a><a href="跑会话循环.html">跑会话循环</a><a href="准备一张委托.html">准备一张委托</a><a href="在纸面场所撮合.html">在纸面场所撮合</a><a href="合约-信号和柜台.html">合约、信号和柜台</a><a href="辅助函数.html">辅助函数</a><a href="调用方自己保管的辅助函数.html">调用方自己保管的辅助函数</a><a href="组帧-节奏和快照.html">组帧、节奏和快照</a><a href="周期计数和定长低延迟表.html">周期计数和定长低延迟表</a><a href="一张委托单.html">一张委托单</a><a href="研究-以及调用方自己的决定.html">研究，以及调用方自己的决定</a><a href="价格窗口-槽池和两笔费用.html">价格窗口、槽池和两笔费用</a><a href="调用所在的头文件.html" class="active">调用所在的头文件</a>
+    </nav>
+  </aside>
+  <main class="main">
+    <div class="meta">Static API guide · open a section from the left</div>
+    <h1>调用所在的头文件</h1>
+<table><thead><tr>
+<th>头文件</th>
+<th>内容</th>
+</tr></thead><tbody>
+<tr>
+<td><code>version.hpp</code></td>
+<td>库的发行版本 <code>kVersion</code></td>
+</tr>
+<tr>
+<td><code>book/bar.hpp</code></td>
+<td>由调用方标成可交易的 tick 生成的 K 线</td>
+</tr>
+<tr>
+<td><code>book/calendar.hpp</code></td>
+<td>交易日和交易时段</td>
+</tr>
+<tr>
+<td><code>book/cover.hpp</code></td>
+<td>满足限价的可见数量</td>
+</tr>
+<tr>
+<td><code>book/cumtick.hpp</code></td>
+<td>由两帧累计成交量与成交额推算分价位手数</td>
+</tr>
+<tr>
+<td><code>book/cross.hpp</code></td>
+<td>限价簿和集合竞价</td>
+</tr>
+<tr>
+<td><code>book/lags.hpp</code></td>
+<td>时段时延和采样时延</td>
+</tr>
+<tr>
+<td><code>book/ladder.hpp</code></td>
+<td>固定价格窗口和有量的最优价</td>
+</tr>
+<tr>
+<td><code>book/own.hpp</code></td>
+<td>调用方本地双边最优价</td>
+</tr>
+<tr>
+<td><code>book/quote.hpp</code></td>
+<td>行情批次、有序 apply、逐笔记录和分钟滚动</td>
+</tr>
+<tr>
+<td><code>book/steps.hpp</code></td>
+<td>价位档和价格移动</td>
+</tr>
+<tr>
+<td><code>book/venue.hpp</code></td>
+<td><code>PaperVenue</code></td>
+</tr>
+<tr>
+<td><code>desk/acct.hpp</code></td>
+<td>交易员→多账户表与 <code>acct_idle</code></td>
+</tr>
+<tr>
+<td><code>desk/broker.hpp</code></td>
+<td><code>BrokerWatch</code>、<code>QueryFold</code> 与 <code>QueryWant</code></td>
+</tr>
+<tr>
+<td><code>desk/risk.hpp</code></td>
+<td><code>risk_merge</code> 与 <code>AcctRiskTab</code></td>
+</tr>
+<tr>
+<td><code>desk/cash.hpp</code></td>
+<td>资金/持仓板与 <code>cash_enough</code></td>
+</tr>
+<tr>
+<td><code>desk/config.hpp</code></td>
+<td>启动期 <code>PitConf</code> 加载、纠偏与应用</td>
+</tr>
+<tr>
+<td><code>desk/codec.hpp</code></td>
+<td>品种、开平和方向</td>
+</tr>
+<tr>
+<td><code>desk/feed.hpp</code></td>
+<td>订阅掩码、价格缩放和原始行情</td>
+</tr>
+<tr>
+<td><code>desk/ids.hpp</code></td>
+<td><code>IdMint</code></td>
+</tr>
+<tr>
+<td><code>desk/logline.hpp</code></td>
+<td><code>Log</code></td>
+</tr>
+<tr>
+<td><code>desk/names.hpp</code></td>
+<td><code>NameBook</code></td>
+</tr>
+<tr>
+<td><code>desk/region.hpp</code></td>
+<td>工作区、<code>MapOpt</code> 文件映射和环容量</td>
+</tr>
+<tr>
+<td><code>desk/ring.hpp</code></td>
+<td><code>FanRing</code></td>
+</tr>
+<tr>
+<td><code>desk/runtime.hpp</code></td>
+<td><code>DeskLoop</code></td>
+</tr>
+<tr>
+<td><code>desk/signal.hpp</code></td>
+<td><code>PulseBoard</code></td>
+</tr>
+<tr>
+<td><code>desk/types.hpp</code></td>
+<td><code>Intent</code>、<code>Report</code>、<code>Quote</code>，以及方向、方式、阶段和 <code>Why</code></td>
+</tr>
+<tr>
+<td><code>desk/wire.hpp</code></td>
+<td>算法单、控制、信号、逐笔、查询和包裹槽</td>
+</tr>
+<tr>
+<td><code>host/affinity.hpp</code></td>
+<td>设置调用线程或进程的 CPU 亲和性掩码</td>
+</tr>
+<tr>
+<td><code>host/hugepage.hpp</code></td>
+<td><code>nr_hugepages</code>、Hugepagesize、<code>thp_disable</code></td>
+</tr>
+<tr>
+<td><code>host/memlock.hpp</code></td>
+<td>进程级 <code>mlockall</code> / <code>munlockall</code></td>
+</tr>
+<tr>
+<td><code>host/irq.hpp</code></td>
+<td>读写 IRQ <code>smp_affinity_list</code></td>
+</tr>
+<tr>
+<td><code>host/numa.hpp</code></td>
+<td>NUMA 节点查询与区间 <code>mbind</code></td>
+</tr>
+<tr>
+<td><code>host/priority.hpp</code></td>
+<td><code>SCHED_FIFO</code> / <code>SCHED_RR</code> / <code>SCHED_OTHER</code> 与 nice</td>
+</tr>
+<tr>
+<td><code>order/ack.hpp</code></td>
+<td>下单确认和撤单确认计时</td>
+</tr>
+<tr>
+<td><code>order/bind.hpp</code></td>
+<td>柜台单号和乱序回报</td>
+</tr>
+<tr>
+<td><code>order/idclaim.hpp</code></td>
+<td>定容 id 状态表（Wait / Live / Final）</td>
+</tr>
+<tr>
+<td><code>order/inbound.hpp</code></td>
+<td>等到到期时刻再放出的命令</td>
+</tr>
+<tr>
+<td><code>order/judge.hpp</code></td>
+<td>名单、流速、比例、偏离和自成交</td>
+</tr>
+<tr>
+<td><code>order/inflight.hpp</code></td>
+<td>只列出超时在途标签的扫描</td>
+</tr>
+<tr>
+<td><code>order/lane.hpp</code></td>
+<td>通道规则、<code>LaneBook</code> 和 <code>Cause</code></td>
+</tr>
+<tr>
+<td><code>order/basket.hpp</code></td>
+<td>按合约的篮子目标账本</td>
+</tr>
+<tr>
+<td><code>order/ledger.hpp</code></td>
+<td>冻结、保证金、费用、成交回写、登录编号和在途槽</td>
+</tr>
+<tr>
+<td><code>order/life.hpp</code></td>
+<td>委托状态迁移和状态名字</td>
+</tr>
+<tr>
+<td><code>order/line.hpp</code></td>
+<td>同一个价格上编号的到达顺序</td>
+</tr>
+<tr>
+<td><code>order/lots.hpp</code></td>
+<td>手数拆分、整手校验与两融数量辅助</td>
+</tr>
+<tr>
+<td><code>order/parent.hpp</code></td>
+<td>母单时间切片和篮子控制头</td>
+</tr>
+<tr>
+<td><code>order/plan.hpp</code></td>
+<td>下一张单、可挂数量、切片和追价</td>
+</tr>
+<tr>
+<td><code>order/pool.hpp</code></td>
+<td>按编号查找的固定槽</td>
+</tr>
+<tr>
+<td><code>order/recon.hpp</code></td>
+<td>本地成交和柜台成交对齐</td>
+</tr>
+<tr>
+<td><code>order/shed.hpp</code></td>
+<td>按停留时长丢弃</td>
+</tr>
+<tr>
+<td><code>order/sheet.hpp</code></td>
+<td>委托单、部分撤与 <code>gate_ask</code></td>
+</tr>
+<tr>
+<td><code>order/sign.hpp</code></td>
+<td>多模块签字组合与开仓额度</td>
+</tr>
+<tr>
+<td><code>order/ticket.hpp</code></td>
+<td>命令快照和版本</td>
+</tr>
+<tr>
+<td><code>order/typed.hpp</code></td>
+<td>带编译期标签的票据类型</td>
+</tr>
+<tr>
+<td><code>study/acb.hpp</code></td>
+<td>FIFO 手数队列与平均成本持仓账本</td>
+</tr>
+<tr>
+<td><code>study/corp.hpp</code></td>
+<td>公司行为的价格因子</td>
+</tr>
+<tr>
+<td><code>study/decide.hpp</code></td>
+<td>带评分候选意图的暂存与比较</td>
+</tr>
+<tr>
+<td><code>study/extreme.hpp</code></td>
+<td>最近一段固定价格里的最高价和最低价</td>
+</tr>
+<tr>
+<td><code>study/plan.hpp</code></td>
+<td>灰/黑染色因子拓扑序与固定动作表</td>
+</tr>
+<tr>
+<td><code>study/study.hpp</code></td>
+<td>盘口特征、事后偏移、关联、因子、回放，以及一次研究步骤</td>
+</tr>
+<tr>
+<td><code>time/clock.hpp</code></td>
+<td>发布出去的周期比例和墙钟</td>
+</tr>
+<tr>
+<td><code>time/cut.hpp</code></td>
+<td>依已测间隔判定是否切分路径</td>
+</tr>
+<tr>
+<td><code>time/cycle.hpp</code></td>
+<td>周期读取、整数比例和缓存的微秒</td>
+</tr>
+<tr>
+<td><code>time/global.hpp</code></td>
+<td>进程内共享的整数 TSC 周期换算系数</td>
+</tr>
+<tr>
+<td><code>time/lap.hpp</code></td>
+<td>调用方已经记下的时刻之差</td>
+</tr>
+<tr>
+<td><code>time/mag.hpp</code></td>
+<td>按数量级分桶和按间隔补记</td>
+</tr>
+<tr>
+<td><code>time/sample.hpp</code></td>
+<td>定长样本</td>
+</tr>
+<tr>
+<td><code>time/simclock.hpp</code></td>
+<td><code>SimClock</code></td>
+</tr>
+<tr>
+<td><code>time/span.hpp</code></td>
+<td>留在消息旁边的时刻</td>
+</tr>
+<tr>
+<td><code>time/tape.hpp</code></td>
+<td>开关、每核轨迹、封存的段和超阈值通知</td>
+</tr>
+<tr>
+<td><code>time/trace.hpp</code></td>
+<td>耗时样本、时钟差和分桶</td>
+</tr>
+<tr>
+<td><code>time/urgent.hpp</code></td>
+<td>不进队列的一个标签</td>
+</tr>
+<tr>
+<td><code>time/wheel.hpp</code></td>
+<td>时间轮</td>
+</tr>
+<tr>
+<td><code>util/arena.hpp</code></td>
+<td>默认显式大页的定容 bump 字节 arena</td>
+</tr>
+<tr>
+<td><code>util/batch.hpp</code></td>
+<td>按积压自适应的微批大小</td>
+</tr>
+<tr>
+<td><code>util/bound.hpp</code></td>
+<td>单次比较的边界检查和行走预算</td>
+</tr>
+<tr>
+<td><code>util/corebank.hpp</code></td>
+<td>调用方自持的每核固定步长银行</td>
+</tr>
+<tr>
+<td><code>util/chunk.hpp</code></td>
+<td>稀疏价位块和撤单句柄</td>
+</tr>
+<tr>
+<td><code>util/drill.hpp</code></td>
+<td>测试用的时钟、预算、档位和普通记录</td>
+</tr>
+<tr>
+<td><code>util/fillring.hpp</code></td>
+<td>原地填写的槽</td>
+</tr>
+<tr>
+<td><code>util/authbits.hpp</code></td>
+<td>MAC 白名单（≤3）与角色位测</td>
+</tr>
+<tr>
+<td><code>util/frame.hpp</code></td>
+<td>组帧、序号缺口和重排</td>
+</tr>
+<tr>
+<td><code>util/grace.hpp</code></td>
+<td>读者代和回收列表</td>
+</tr>
+<tr>
+<td><code>util/hex.hpp</code></td>
+<td>十六进制和逐字节比较</td>
+</tr>
+<tr>
+<td><code>util/hint.hpp</code></td>
+<td>分支提示、冷热段布局和预取</td>
+</tr>
+<tr>
+<td><code>util/mix64.hpp</code></td>
+<td>分裂混合</td>
+</tr>
+<tr>
+<td><code>util/mold.hpp</code></td>
+<td>预备报文、块长度和可以退回的编号</td>
+</tr>
+<tr>
+<td><code>util/objpool.hpp</code></td>
+<td>线程私有定容对象池</td>
+</tr>
+<tr>
+<td><code>util/numeric.hpp</code></td>
+<td>检查用的宽乘积</td>
+</tr>
+<tr>
+<td><code>util/page.hpp</code></td>
+<td>普通页与 Hugepagesize、按字节向上对齐</td>
+</tr>
+<tr>
+<td><code>util/pace.hpp</code></td>
+<td>令牌桶和理论到达时间</td>
+</tr>
+<tr>
+<td><code>util/phase.hpp</code></td>
+<td>有符号票号 PhaseGate；<code>flip_ready</code> 非阻塞等待上一轮排空；ActiveSum 轮换计数器</td>
+</tr>
+<tr>
+<td><code>util/pinbank.hpp</code></td>
+<td>PrioSnap 优先级三槽缓冲；PinBank 按槽引用计数的多读者快照</td>
+</tr>
+<tr>
+<td><code>util/readwin.hpp</code></td>
+<td>最慢读者再加上一段窗口</td>
+</tr>
+<tr>
+<td><code>util/seqgate.hpp</code></td>
+<td>序号缺口恢复、<code>gap_width</code> 与 <code>reset</code></td>
+</tr>
+<tr>
+<td><code>util/seqpub.hpp</code></td>
+<td>无背压、可覆写未消费槽的序号发布环</td>
+</tr>
+<tr>
+<td><code>util/seqwin.hpp</code></td>
+<td>遇到空洞就停下的序号窗口</td>
+</tr>
+<tr>
+<td><code>util/rankbits.hpp</code></td>
+<td><code>RankBits</code> 稠密下标与 <code>QuadTab</code> 四键表</td>
+</tr>
+<tr>
+<td><code>util/sig.hpp</code></td>
+<td>签名桶</td>
+</tr>
+<tr>
+<td><code>util/simd.hpp</code></td>
+<td>打包清零、打包拷贝和 cover 辅助</td>
+</tr>
+<tr>
+<td><code>util/snap.hpp</code></td>
+<td>整份发布的快照槽</td>
+</tr>
+<tr>
+<td><code>util/spin.hpp</code></td>
+<td>独占缓存行的 TTAS 自旋锁</td>
+</tr>
+<tr>
+<td><code>util/stage.hpp</code></td>
+<td>按占槽顺序完成的环</td>
+</tr>
+<tr>
+<td><code>util/stream.hpp</code></td>
+<td>帧校验和字节流重组</td>
+</tr>
+<tr>
+<td><code>util/sticky.hpp</code></td>
+<td>wait-free <code>StickyCounter</code>（写入后读侧可见最终值）</td>
+</tr>
+<tr>
+<td><code>util/stride.hpp</code></td>
+<td>某一个核那一槽的地址</td>
+</tr>
+<tr>
+<td><code>util/textbuf.hpp</code></td>
+<td>定长文本</td>
+</tr>
+<tr>
+<td><code>util/touch.hpp</code></td>
+<td>按缓存行预取并加载</td>
+</tr>
+<tr>
+<td><code>util/wirepx.hpp</code></td>
+<td>尾数指数价格与定点换算</td>
+</tr>
+</tbody></table>
+  </main>
+</div>
+</body>
+</html>

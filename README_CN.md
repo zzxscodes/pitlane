@@ -1,6 +1,6 @@
 # pitlane
 
-英文介绍是 `README.md`。API 用法见 `doc/API.md` 和 `doc/API_CN.md`。库有变动时，成对的文档一起改。
+英文介绍是 `README.md`。API 用法见 `doc/API.md` 和 `doc/API_CN.md`。可浏览的静态网页（左侧分节、中英文切换）在 `doc/site/`，打开 `doc/site/index.html`，或用 `python3 doc/gen_site.py` 重新生成。库有变动时，成对文档一起改并重新生成站点。
 
 pitlane 是一个 C++17 静态库。它给同一台机器上的交易进程准备一块共享工作区，并在这块工作区上处理委托、持仓、交易日和纸面撮合。价格用整数，时间用微秒。
 
@@ -14,7 +14,9 @@ pitlane 是一个 C++17 静态库。它给同一台机器上的交易进程准�
 
 使用时包含 `include/pitlane/pitlane.hpp`，链接 `libpitlane.a`。类型和函数都在命名空间 `pitlane` 中。这套接口是单独设计的，不能用来替换已经在运行的其他交易库。
 
-库的发行版本是 2.10.0。`version.hpp` 里的 `pitlane::kVersion` 是同一串文字。动态库文件名带这个版本，soname 保持 `libpitlane.so.1`。工作区布局版本是 `kDeskVersion`，当前是 3。
+库的发行版本是 2.11.0。`version.hpp` 里的 `pitlane::kVersion` 是同一串文字。动态库文件名带这个版本，soname 保持 `libpitlane.so.1`。工作区布局版本是 `kDeskVersion`，当前是 3。
+
+启动配置是可选的 INI 风格文件（见 `examples/pitlane.conf`）。`conf_load` 把键叠到代码默认值上；值为空则保留默认。`conf_normalize` 把不安全的取值压到合法范围（例如环容量取不超过编译期上限的 2 的幂），并把提示行写入调用方缓冲。`conf_map_opt` / `conf_arena_opt` / `desk_apply_conf` 只在建映射 / 初始化 desk 时生效；热路径不再打开配置文件。
 
 头文件和源文件按区域再分一层目录。`desk` 放共享区和上面的记录。`book` 放行情、交易日和纸面撮合。`order` 放委托生命周期、检查和持仓。`time` 放时钟和延迟记录。`study` 放特征、事后偏移和调用方决策辅助。`util` 放数值、文本、组帧和定长缓冲。`host` 放进程侧的 `sched_setaffinity`、调度策略、IRQ 亲和性、显式大页池、`mlockall` 与 NUMA membind。某个区域若有编译单元，源文件在 `src` 下的同名目录里。某个区域的测试在 `tests` 下的同名目录里。延迟程序是 `tests/time/perf.cpp`。单独包含某个头文件时写上区域，例如 `pitlane/order/sheet.hpp`。`version.hpp` 和 `pitlane.hpp` 放在同一层。
 

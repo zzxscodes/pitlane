@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Open a shared desk — pitlane API</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="side">
+    <h1>pitlane API</h1>
+    <div class="lang">
+      <a href="#" class="active">English</a>
+      <a href="../zh/打开共享区.html">中文</a>
+    </div>
+    <nav>
+      <a href="index.html">Overview</a><a href="startup-configuration.html">Startup configuration</a><a href="open-a-shared-desk.html" class="active">Open a shared desk</a><a href="publish-and-read.html">Publish and read</a><a href="run-the-session-loop.html">Run the session loop</a><a href="prepare-an-order.html">Prepare an order</a><a href="match-on-the-paper-venue.html">Match on the paper venue</a><a href="names-signals-and-the-counter.html">Names, signals, and the counter</a><a href="helpers.html">Helpers</a><a href="caller-owned-helpers.html">Caller-owned helpers</a><a href="frames-pacing-and-snapshots.html">Frames, pacing, and snapshots</a><a href="cycles-and-fixed-low-latency-tables.html">Cycles and fixed low-latency tables</a><a href="one-order-sheet.html">One order sheet</a><a href="research-and-a-caller-decision.html">Research and a caller decision</a><a href="a-price-window-a-slot-pool-and-two-charges.html">A price window, a slot pool, and two charges</a><a href="where-the-calls-live.html">Where the calls live</a>
+    </nav>
+  </aside>
+  <main class="main">
+    <div class="meta">Static API guide · open a section from the left</div>
+    <h1>Open a shared desk</h1>
+<p>One file mapping holds the desk. The writer creates it. Other processes attach to the same path.</p>
+<pre><code class="language-cpp">
+pitlane::MapInfo map{};
+if (pitlane::map_create(&quot;desk.bin&quot;, pitlane::desk_bytes(), &amp;map) != 0) return 1;
+pitlane::Desk* desk = pitlane::desk_view(&amp;map, 1);
+if (!desk) return 1;
+</code></pre>
+<p><code>map_create</code> creates or extends the file and does not wipe an existing mapping. The default <code>MapOpt</code> uses explicit huge pages only: length rounds to Hugepagesize, and the file is placed on hugetlbfs (default <code>/dev/hugepages</code> as <code>pitlane_&lt;basename&gt;</code>), or at the caller path when that path is already on hugetlbfs. THP / <code>MADV_HUGEPAGE</code> are never used. When explicit pages are unavailable the mapping falls back to the caller path and sets <code>MapInfo::fallback</code>. <code>mlock</code> is attempted by default; <code>numa_node &gt;= 0</code> binds the range with <code>MPOL_BIND</code>. <code>desk_view</code> returns the desk only when the magic is <code>PITLANE1</code> and the layout version is <code>kDeskVersion</code>, which is 3. The second argument formats a still-blank file when it is non-zero. A file with the wrong magic is left untouched and the call returns null. After the magic is written, do not format the mapping again.</p>
+<p>Another process attaches with <code>map_attach</code> and passes 0 to <code>desk_view</code> (same logical path so both sides resolve the same hugetlbfs file). <code>map_release</code> unmaps; if the mapping was locked it calls <code>munlock</code> first, then closes the file. Each ring has one writer. Readers do not share a cursor.</p>
+<p><code>desk-&gt;clock_us</code> is the session clock in microseconds. <code>DeskLoop::beat</code> stores the time it is given there.</p>
+  </main>
+</div>
+</body>
+</html>

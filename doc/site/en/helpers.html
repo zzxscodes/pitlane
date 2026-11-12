@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Helpers — pitlane API</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="side">
+    <h1>pitlane API</h1>
+    <div class="lang">
+      <a href="#" class="active">English</a>
+      <a href="../zh/辅助函数.html">中文</a>
+    </div>
+    <nav>
+      <a href="index.html">Overview</a><a href="startup-configuration.html">Startup configuration</a><a href="open-a-shared-desk.html">Open a shared desk</a><a href="publish-and-read.html">Publish and read</a><a href="run-the-session-loop.html">Run the session loop</a><a href="prepare-an-order.html">Prepare an order</a><a href="match-on-the-paper-venue.html">Match on the paper venue</a><a href="names-signals-and-the-counter.html">Names, signals, and the counter</a><a href="helpers.html" class="active">Helpers</a><a href="caller-owned-helpers.html">Caller-owned helpers</a><a href="frames-pacing-and-snapshots.html">Frames, pacing, and snapshots</a><a href="cycles-and-fixed-low-latency-tables.html">Cycles and fixed low-latency tables</a><a href="one-order-sheet.html">One order sheet</a><a href="research-and-a-caller-decision.html">Research and a caller decision</a><a href="a-price-window-a-slot-pool-and-two-charges.html">A price window, a slot pool, and two charges</a><a href="where-the-calls-live.html">Where the calls live</a>
+    </nav>
+  </aside>
+  <main class="main">
+    <div class="meta">Static API guide · open a section from the left</div>
+    <h1>Helpers</h1>
+<p><code>QuoteFold::apply</code> writes a batch of <code>Add</code>, <code>Set</code>, and <code>Del</code> edits. One invalid edit leaves the previous levels in place. <code>copy</code> returns the best price first. <code>PrintLog::push</code> stores a print and does not take a book. <code>DayRoll::on_msg</code> updates the current minute and returns false when the timestamp moves backward. Time is microseconds. A minute older than one day is dropped.</p>
+<pre><code class="language-cpp">
+pitlane::QuoteFold&lt;8&gt; book;
+const pitlane::FoldEdit edits[] = {{pitlane::FoldOp::Add, 1, 10, 4}};
+book.apply(edits, 1);
+</code></pre>
+<p>Side 1 is the bid and side 2 is the ask. <code>Add</code> fails when that price already exists. <code>Set</code> with quantity 0 removes a level. <code>Del</code> of a missing price succeeds.</p>
+<p><code>band_at_hold</code> keeps a price that sits exactly on the next band&#x27;s start in the lower band. <code>walk_up</code> and <code>walk_down</code> then take ticks from that band. After a step lands on the next start, later steps use the new band. <code>clamp_px</code> applies only when the upper limit is above the lower limit. <code>span_index</code> returns the span that contains a minute, or -1. An overnight span has an end at or before its begin. <code>session_part</code> returns open, lunch, or closed for a <code>SessionRow</code>.</p>
+<p><code>life_next</code> returns the next <code>Phase</code>. <code>Phase::None</code> means the event is not allowed from that phase. A fill while a cancel is waiting stays in <code>PullWait</code>. <code>Resume</code> and <code>ResumePartial</code> move a rejected cancel back to working or partial.</p>
+<p><code>margin_need</code> is multiplier times price times quantity times the margin numerator, divided by the margin denominator. <code>charge_class</code> uses the cash formula for stock, bond, fund, tech, index, and repo, and the rate formula for the other products. <code>scale_of</code> supplies the multiplier and the margin fraction.</p>
+<p><code>rest_room</code> is the quantity still allowed to rest on one leg. When both legs are sent together the result is 0. <code>cut_hedge</code> reduces the other leg after one leg is cut. <code>slice_weight</code> rounds half up and returns false when the new slice is not positive. <code>align_leg</code> divides by the feed coefficient and rounds to the tick, half up. <code>pair_qty_ok</code> requires 180 on a 688 or 689 code and 80 on other Shanghai or Shenzhen codes. <code>chase_px</code> walks the price up for a buy and down for a sell.</p>
+<p><code>IdBind::put</code> stores a pending link and fails when the table is full or the counter key already exists. <code>confirm</code> marks it linked. <code>erase</code> leaves a tomb so a later put can reuse the slot. A local id of 0 is rejected.</p>
+<p><code>bind_fill</code> accumulates quantity and amount on the early fields while the order is still unset, sent, or acknowledged. <code>bind_status</code> copies those fields into the order and turns an acknowledgement with a fill into a partial. <code>bind_final</code> holds a filled or cancelled status while the local remainder is still above the counter remainder. <code>bind_catchup</code> applies that status once the remainder is 0. <code>quote_repost</code> is false while a cancel is out and the new price equals the fill price.</p>
+<p><code>lane_accepts</code> reads a <code>LaneRule</code>. A pull needs <code>pull</code>. An enter needs the price type and the offset bit. <code>lane_can_amend</code> reads <code>amend</code>. <code>Cause</code> values from 10 are field checks, from 40 are cash and position, from 70 are risk, and from 100 are outside this process. <code>cause_band</code> returns that group. <code>cause_text</code> is a short fixed word.</p>
+<p><code>list_cause</code> checks the open list or the close list. <code>FlowWindow::allow</code> counts the new event and allows it only while the count is still below <code>limit</code>. The span is in the same unit as the timestamps. <code>count_ratio_ok</code> passes when the sample is still below <code>min_n</code>, and a ratio equal to the cap also passes. <code>cash_ratio_ok</code> fails when the cash ratio is equal to the cap. <code>cancel_ok</code> and <code>reject_ok</code> fail on an equal ratio. <code>fill_ok</code> passes on an equal floor. <code>px_shift</code> is the signed distance from the last price, scaled by <code>den</code>. <code>deviation_cause</code> uses the absolute distance. <code>wash_hit</code> matches the same instrument and the opposite side when the account matches, or when the group is not 0 and matches. The prices must meet or cross.</p>
+<p><code>ByteFrame::begin</code> reserves four bytes. <code>end</code> writes the payload length there and returns the total size, or -1. <code>frame_read</code> fails when the buffer is shorter than that length. <code>seq_feed</code> returns 0 for the next id, a positive gap when ids were skipped, and -1 for an old id. The first id starts the watch. <code>SeqHold::start</code> sets the next id that <code>take</code> will release. <code>offer</code> keeps an id only inside the next <code>Cap</code> ids. <code>SpanMark::mark</code> rejects a negative tick. <code>between</code> fails while either node is unset.</p>
+  </main>
+</div>
+</body>
+</html>

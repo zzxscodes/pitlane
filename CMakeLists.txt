@@ -1,10 +1,11 @@
 cmake_minimum_required(VERSION 3.16)
-project(pitlane VERSION 2.10.0 LANGUAGES CXX)
+project(pitlane VERSION 2.11.0 LANGUAGES CXX)
 
 set(PITLANE_SOURCES
     src/desk/broker.cpp
     src/desk/cash.cpp
     src/desk/codec.cpp
+    src/desk/config.cpp
     src/desk/feed.cpp
     src/desk/logline.cpp
     src/desk/names.cpp
