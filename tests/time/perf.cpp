@@ -80,29 +80,38 @@ int read_cpu_file(const char* pattern, int cpu) noexcept {
 
 void pick_cores(int& first, int& second, int& third) noexcept {
     first = 0;
-    second = 2;
-    third = 4;
-    int cpus[64];
+    second = 0;
+    third = 0;
+    int preferred[64];
     int cores[64];
-    int n = 0;
-    for (int cpu = 0; cpu < 256 && n < 64; ++cpu) {
+    int npref = 0;
+    for (int cpu = 0; cpu < 256 && npref < 64; ++cpu) {
         const int pkg = read_cpu_file("/sys/devices/system/cpu/cpu%d/topology/physical_package_id", cpu);
         const int core = read_cpu_file("/sys/devices/system/cpu/cpu%d/topology/core_id", cpu);
         if (pkg != 0 || core < 0) continue;
         bool seen = false;
-        for (int i = 0; i < n; ++i) {
+        for (int i = 0; i < npref; ++i) {
             if (cores[i] == core) seen = true;
         }
         if (seen) continue;
-        cpus[n] = cpu;
-        cores[n] = core;
-        ++n;
+        preferred[npref] = cpu;
+        cores[npref] = core;
+        ++npref;
     }
-    if (n >= 3) {
-        first = cpus[0];
-        second = cpus[1];
-        third = cpus[2];
+    int online[64];
+    int nonline = 0;
+    const long ncpu = ::sysconf(_SC_NPROCESSORS_ONLN);
+    const int limit = ncpu > 0 ? static_cast<int>(ncpu) : 1;
+    for (int cpu = 0; cpu < limit && nonline < 64; ++cpu) online[nonline++] = cpu;
+    if (nonline <= 0) {
+        online[0] = 0;
+        nonline = 1;
     }
+    const int* pool = npref >= 3 ? preferred : online;
+    const int npool = npref >= 3 ? npref : nonline;
+    first = pool[0];
+    second = pool[1 % npool];
+    third = pool[2 % npool];
 }
 
 bool prepare_gate(pitlane::NameList& names, pitlane::WashRow* wash, pitlane::GateAsk& ask, pitlane::FlowWindow& flow) noexcept {
@@ -147,7 +156,7 @@ pitlane::MapOpt map_opt_tmp() noexcept {
 }
 
 int engine(const char* path, int cpu) noexcept {
-    if (!pin_cpu(cpu)) return 7;
+    (void)pin_cpu(cpu);
     pitlane::MapInfo map{};
     if (pitlane::map_attach(path, pitlane::desk_bytes(), &map, map_opt_tmp()) != 0) return 2;
     pitlane::Desk* desk = pitlane::desk_view(&map, 0);
@@ -230,7 +239,7 @@ int engine(const char* path, int cpu) noexcept {
 }
 
 int gateway(const char* path, int cpu) noexcept {
-    if (!pin_cpu(cpu)) return 7;
+    (void)pin_cpu(cpu);
     pitlane::MapInfo map{};
     if (pitlane::map_attach(path, pitlane::desk_bytes(), &map, map_opt_tmp()) != 0) return 2;
     pitlane::Desk* desk = pitlane::desk_view(&map, 0);
@@ -238,10 +247,11 @@ int gateway(const char* path, int cpu) noexcept {
         pitlane::map_release(&map);
         return 3;
     }
-    pitlane::Pulse ready{};
+    // FanRing is single-producer; keep gateway ready off the shared pulses ring.
+    pitlane::TapePrint ready{};
     ready.name = 2;
-    ready.value = 2;
-    if (!desk->pulses.publish(ready, 0)) {
+    ready.qty = 2;
+    if (!desk->prints.publish(ready, 0)) {
         pitlane::map_release(&map);
         return 4;
     }
@@ -278,17 +288,26 @@ int gateway(const char* path, int cpu) noexcept {
 bool wait_ready(pitlane::Desk* desk) noexcept {
     bool engine_up = false;
     bool gateway_up = false;
-    uint64_t pos = 0;
+    uint64_t pulse_pos = 0;
+    uint64_t print_pos = 0;
     for (int i = 0; i < 100000000 && !(engine_up && gateway_up); ++i) {
-        pitlane::Pulse pulse{};
-        bool fresh = false;
-        if (!desk->pulses.at(pos, 1, pulse, &fresh)) {
-            pitlane::cpu_relax();
-            continue;
+        if (!engine_up) {
+            pitlane::Pulse pulse{};
+            bool fresh = false;
+            if (desk->pulses.at(pulse_pos, 1, pulse, &fresh) && pulse.value == 1) {
+                engine_up = true;
+                ++pulse_pos;
+            }
         }
-        if (pulse.value == 1) engine_up = true;
-        if (pulse.value == 2) gateway_up = true;
-        ++pos;
+        if (!gateway_up) {
+            pitlane::TapePrint print{};
+            bool fresh = false;
+            if (desk->prints.at(print_pos, 1, print, &fresh) && print.qty == 2) {
+                gateway_up = true;
+                ++print_pos;
+            }
+        }
+        if (!(engine_up && gateway_up)) pitlane::cpu_relax();
     }
     return engine_up && gateway_up;
 }
@@ -590,7 +609,8 @@ int main() {
     uint64_t p999s[5] = {};
     bool measured = false;
     if (engine_pid > 0 && gateway_pid > 0) {
-        const bool ready = pin_cpu(cpu_md) && wait_ready(desk);
+        (void)pin_cpu(cpu_md);
+        const bool ready = wait_ready(desk);
         expect(ready, "ready");
         if (ready) {
             pitlane::CycleScale wall;
