@@ -1,12 +1,26 @@
 # Changelog
 
+## [2.16.0] - 2026-11-12
+
+### Added
+
+- Local Mongo roles: `FactSeed` / `HoursSeed` / `seed_facts` / `seed_hours` / `seed_holidays` into Yard + `ClosedDays`
+- Local middleware roles: `TopicBus` / `BusNote` / `topic_id` (same-machine topic pub/sub); `RouteBook` (algo route table table)
+- Tests for shelf/bus/route; perf samples `topic_bus` / `venue_admit`
+
+### Changed
+
+- `DrillCue::Closed` value is 10 (`NotTrading`); removed `Warn`
+- README / API wording cleaned up for natural EN/ZH
+- Library release version is 2.16.0
+
 ## [2.15.0] - 2026-11-12
 
 ### Added
 
 - Local MD/TD/strategy framework hubs (pitlane names): `FeedHub` / `feed_push_*`, `TradeLane` / `lane_beat`, `StratHook` / `strat_bind_loop` / `strat_stage_*`, `CashSeed` / `HoldSeed` / `seed_cash` / `seed_hold`
 - PitConf `[venue]` aligned with `paper matcher` `match.ini`: go/pull lags (`go_usN` / `pull_usN` or `delayN` / `cancel_delayN` seconds), `rigid_rule` / `use_ext`, `rigid_extra`, `trade_open`, lot/rate/notional, `cancel_pow_x1000`; `conf_venue_cfg`
-- `VenueCfg::rigid`; `DrillCue::Warn`
+- `VenueCfg::rigid`
 
 ### Changed
 

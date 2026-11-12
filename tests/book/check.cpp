@@ -539,7 +539,8 @@ static void check_framework() {
 
     pitlane::DrillBook drills;
     expect(drills.set(42, pitlane::DrillCue::FillAll, 100, 0), "drill set");
-    expect(drills.set(43, pitlane::DrillCue::Warn), "drill warn");
+    expect(drills.set(43, pitlane::DrillCue::Closed), "drill closed");
+    expect(static_cast<uint8_t>(pitlane::DrillCue::Closed) == 10, "closed=NotTrading");
 
     pitlane::TradeLane lane{};
     lane.venue = &venue;

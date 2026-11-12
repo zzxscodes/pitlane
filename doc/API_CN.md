@@ -10,7 +10,7 @@
 
 所有名字都在命名空间 `pitlane` 里。链接 `libpitlane.a`，或者用 `-lpitlane` 链接动态库。动态库的 soname 是 `libpitlane.so.1`。两种链接方式使用同一套头文件。
 
-发行版本是 `kVersion`，当前是 2.15.0，并拆成 `kVersionMajor`、`kVersionMinor` 和 `kVersionPatch`。`kDeskVersion` 是 desk 映射文件的布局版本，当前是 3。`kYardVersion` 是独立的标的/行情池布局版本，当前是 2。库的一次新发行可以保持任一布局版本不动。
+发行版本是 `kVersion`，当前是 2.16.0，并拆成 `kVersionMajor`、`kVersionMinor` 和 `kVersionPatch`。`kDeskVersion` 是 desk 映射文件的布局版本，当前是 3。`kYardVersion` 是独立的标的/行情池布局版本，当前是 2。库的一次新发行可以保持任一布局版本不动。
 
 带左侧分节导航的静态网页在 `doc/site/`（`python3 doc/gen_site.py` 生成）。打开**本地** `doc/site/index.html` 或 GitHub Pages；在 `github.com/.../blob/...` 里打开只会看到源码。启动期设置见 **启动配置**。
 
@@ -22,7 +22,7 @@
 
 库在进程启动时接受的可调项，都放在可选的 INI 风格文件里（见 `examples/pitlane.conf`）。默认值是 `desk/config.hpp` 里 `PitConf` 的成员初值。省略某个键，或把值留空，就保留该默认值。未知键忽略。硬解析错误（截断行、该写数字却写了别的）时 `conf_load` 返回 false。
 
-`broker` 的 `ack_limit_us` / `life_limit_us` / `pull_limit_us` 默认 `60000000`（60 秒），对齐常见的 `trading center` `HeartBeatIntervalSec`；设为 `0` 关闭该轴。`host` 默认打开 `thp_disable` 与 `mlockall`。Desk FanRing 软容量仍停在编译期上限（`kIntentCap` 等）。十万级标的/行情池在独立的 `[yard]` / `Yard` 映射里（启动期一次建好，热路径不再分配）。`examples/pitlane.conf` 注释列出了与 `config.json` 的字段对照；Mongo / algo route 永不导入。
+`broker` 的 `ack_limit_us` / `life_limit_us` / `pull_limit_us` 默认 `60000000`（60 秒），对齐常见的 `trading center` `HeartBeatIntervalSec`；设为 `0` 关闭该轴。`host` 默认打开 `thp_disable` 与 `mlockall`。Desk FanRing 软容量仍停在编译期上限（`kIntentCap` 等）。十万级标的/行情池在独立的 `[yard]` / `Yard` 映射里（启动期一次建好，热路径不再分配）。Mongo 文档与 RabbitMQ topic 的职责由本地 API 承担（`seed_facts` / `TopicBus` / `RouteBook`），不会把连接串或券商 URI 写进库里。
 
 `conf_normalize` 在加载后只跑一次。它把环容量压到 `[2, 编译期 Cap]` 内的 2 的幂，把仅编译期定长的尺寸（`QueryFold`、`BrokerWatch::kCap`）恢复并写提示，并把每条调整写成一行可读文字放进调用方缓冲。启动时打印这些行。热路径不再打开配置文件。
 
@@ -188,11 +188,11 @@ pitlane::Report reps[4]{};
 pitlane::VenueOut out = venue.admit(in, in.stamp_us, reps, 4);
 ```
 
-`admit` 把回报写入调用方的缓冲区，并设置 `out.why`。`VenueCfg::trade_open=0` 时新报单以 `Why::Closed` 失败。`on_clock` 把时延已到的暂存单推进去，并完成到期的撤单（`hang` 粘滞时跳过）。`on_print` / `on_tape` 减少挂单前面的数量；`VenueCfg::rigid` 打开时 `tape_keep` 丢掉同向主动成交。`force_fill` / `force_pull` / `force_deny` / `drill_apply` 对齐 `paper matcher` forced fill 类注入（`DrillCue`；`Warn` 为空操作）。`TouchMode` / `resolve_px` 解析对手/本方/最新/中间/五档价。主动方向传 0 时，每一笔都保留。`on_shown` 处理后来的显示量变化，同一笔成交不会被计算两次。
+`admit` 把回报写入调用方缓冲区并设置 `out.why`。`trade_open=0` 时新开仓得到 `Why::Closed`。`on_clock` 在延迟到期后推进 staged 单并完成到期撤单（`hang` 时跳过）。`on_print` / `on_tape` 削减队列前方数量；打开 `rigid` 时 `tape_keep` 丢掉同向主动成交。`force_*` / `drill_apply` 对齐模拟器 forced fill 注入（`DrillCue::Closed` = 10，即 `NotTrading`）。`TouchMode` / `resolve_px` 解析对手/本方/最新/中间/五档。主动方为 0 时保留每笔成交。
 
-PitConf `[venue]` 对齐 `paper matcher` `match.ini`：九段 go/pull 延迟（`go_usN` / `pull_usN`，或小数秒 `delayN` / `cancel_delayN` / `go_secN` / `pull_secN`）、`rigid_rule`→`rigid`、`use_ext`→`tape_first`、`rigid_extra`、`trade_open`、`lot`、`rate_cap`、`notional_cap`、`cancel_pow_x1000`。`conf_venue_cfg` 拷进 `VenueCfg`。
+PitConf `[venue]` 对齐模拟器 `match.ini`：九段 go/pull 延迟、`rigid_rule`→`rigid`、`use_ext`→`tape_first`，以及 lot/rate/notional 等。用 `conf_venue_cfg` 得到 `VenueCfg`。
 
-`FeedHub` 把 mark/print/tick 扇入 `Yard` 与 Desk 环（本地行情组合层）。`TradeLane::lane_beat` 把意图经 `PaperVenue`（可选 `DrillBook`）排出并发布回报（本地交易通道）。`StratHook` / `strat_bind_loop` / `strat_stage_enter` / `strat_stage_pull` 把策略回调绑到 `DeskLoop` 并投递意图。`seed_cash` / `seed_hold` 在启动期写入资金/持仓行（模拟器账户/持仓种子角色）。热路径仍无堆；启动期可以分配。
+组合层（热路径仍无堆）：`FeedHub`、`TradeLane`、`StratHook`、`seed_cash` / `seed_hold`；本地基础数据用 `seed_facts` / `seed_hours` / `seed_holidays`；本机 topic 用 `TopicBus`；策略→算法绑定用 `RouteBook`。
 
 `Style::Day` 打到限价时，剩余数量全部成交，可以多于该档显示量。`Style::Passive` 一旦会打穿就过期。`Style::Immediate` 只保留显示量。`Style::All` 在显示量不够整张时整张过期。同一账户的买卖互打时，这张单停止。
 
@@ -400,6 +400,9 @@ book.apply(edits, 1);
 | `desk/config.hpp` | 启动期 `PitConf` 加载、纠偏、host 应用、资金/持仓软上限、`conf_yard_plan` / `conf_venue_cfg` |
 | `desk/feedhub.hpp` | 本地行情组合层 `FeedHub` / `feed_push_*` |
 | `desk/seed.hpp` | 启动期 `CashSeed` / `HoldSeed` |
+| `desk/shelf.hpp` | 本地基础数据种子（`seed_facts` / hours / holidays） |
+| `desk/bus.hpp` | 本地 topic 总线（`TopicBus`） |
+| `desk/routebook.hpp` | 本地算法路由表（`RouteBook`） |
 | `desk/yard.hpp` | 启动期标的/行情池（`YardPlan`、claim/bind/publish/latest） |
 | `order/prelock.hpp` | 两阶段冻结 reserve / commit |
 | `order/credit.hpp` | 负债空头池与 `option_free` |

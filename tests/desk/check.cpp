@@ -671,12 +671,73 @@ static void check_yard() {
     }
 }
 
+static void check_local_shelf_bus() {
+    pitlane::YardPlan plan{};
+    plan.sym_slots = 8;
+    plan.quote_lanes = 4;
+    plan.quote_depth = 4;
+    plan.order_lanes = 1;
+    plan.trade_lanes = 1;
+    plan.rebuild_lanes = 1;
+    plan.mix_lanes = 1;
+    plan.order_depth = 4;
+    plan.trade_depth = 4;
+    plan.rebuild_depth = 4;
+    plan.mix_depth = 4;
+    plan.base_info_cap = 8;
+    plan.trade_time_cap = 4;
+    char path[64];
+    std::snprintf(path, sizeof path, "/tmp/pitlane-shelf-%d.bin", static_cast<int>(::getpid()));
+    ::unlink(path);
+    pitlane::YardView y{};
+    expect(pitlane::yard_open(path, plan, &y, map_opt_tmp(), 1) == 0, "shelf yard");
+
+    pitlane::HoursSeed hs{};
+    expect(pitlane::shelf_copy32(hs.key, "SSE"), "hours key");
+    hs.open_sec = 9 * 3600 + 30 * 60;
+    hs.close_sec = 15 * 3600;
+    expect(pitlane::seed_hours(y, &hs, 1) == 1, "seed hours");
+
+    pitlane::FactSeed fs{};
+    expect(pitlane::shelf_copy32(fs.code, "600000.SH") && pitlane::shelf_copy32(fs.hours_key, "SSE"), "fact keys");
+    fs.tick_sz = 1;
+    fs.lot_sz = 100;
+    fs.mult = 1;
+    expect(pitlane::seed_facts(y, &fs, 1) == 1, "seed facts");
+    const uint32_t sid = pitlane::yard_claim_sym(y, "600000.SH");
+    expect(sid != 0 && pitlane::yard_sym(y, sid)->facts_id != 0, "facts linked");
+
+    pitlane::ClosedDays closed;
+    const int hols[] = {20260101, 20261001};
+    expect(pitlane::seed_holidays(closed, hols, 2) == 2 && closed.has(20260101), "seed holidays");
+
+    pitlane::TopicBus bus;
+    const uint32_t topic = pitlane::topic_id("outer_respond_routing");
+    expect(topic != 0, "topic id");
+    const char body[] = "ack";
+    expect(bus.publish_key("outer_respond_routing", 2, body, 3, 42, 0), "bus pub");
+    pitlane::BusNote got{};
+    uint64_t cur = 0;
+    expect(bus.drain(0, cur, topic, &got, 1) == 1 && got.kind == 2 && got.len == 3, "bus drain");
+    expect(std::memcmp(got.data, "ack", 3) == 0, "bus payload");
+
+    pitlane::RouteBook routes;
+    expect(routes.bind("algo_book", "TwapAlgo") && routes.bind("algo_book", "TwapControl"), "route bind");
+    expect(routes.has("algo_book", "TwapAlgo"), "route has");
+    char names[4][pitlane::RouteBook::kName]{};
+    expect(routes.lookup("algo_book", names, 4) == 2, "route lookup");
+
+    pitlane::yard_close(&y);
+    ::unlink(path);
+}
+
 int main() {
-    expect(pitlane::kVersionMajor == 2 && pitlane::kVersionMinor == 15 && pitlane::kVersionPatch == 0, "release");
-    expect(std::strcmp(pitlane::kVersion, "2.15.0") == 0, "release text");
+    expect(pitlane::kVersionMajor == 2 && pitlane::kVersionMinor == 16 && pitlane::kVersionPatch == 0, "release");
+    expect(std::strcmp(pitlane::kVersion, "2.16.0") == 0, "release text");
     expect(pitlane::kDeskVersion == 3, "desk layout");
     check_conf();
     check_yard();
+    check_local_shelf_bus();
     check_ring();
     check_batch();
     check_ids();

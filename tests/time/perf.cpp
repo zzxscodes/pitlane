@@ -529,6 +529,52 @@ int main() {
                report, 100, 1000),
            "fill_ring");
 
+    {
+        pitlane::TopicBus bus;
+        uint64_t cur = 0;
+        const char body[] = "x";
+        expect(sample(
+                   "topic_bus",
+                   [&] {
+                       (void)bus.publish_key("t", 1, body, 1, 0, 0);
+                       pitlane::BusNote note{};
+                       const int n = bus.drain(0, cur, 0, &note, 1);
+                       pitlane::keep(static_cast<uint64_t>(n));
+                   },
+                   report, 100, 1000),
+               "topic_bus");
+    }
+
+    {
+        pitlane::VenueCfg cfg{};
+        cfg.lot = 1;
+        pitlane::PaperVenue venue(cfg);
+        const pitlane::Rung asks[] = {{100, 8}};
+        venue.set_levels(1, nullptr, 0, asks, 1);
+        venue.set_band(1, 90, 110);
+        pitlane::Report reps[4]{};
+        uint64_t tag = 1;
+        const int64_t stamp = (9 * 60 + 40) * 60 * 1000000ll;
+        expect(sample(
+                   "venue_admit",
+                   [&] {
+                       pitlane::Intent in{};
+                       in.tag = tag++;
+                       in.name = 1;
+                       in.acct = 1;
+                       in.px = 100;
+                       in.qty = 1;
+                       in.stamp_us = stamp;
+                       in.side = 1;
+                       in.act = 1;
+                       in.style = 1;
+                       const pitlane::VenueOut out = venue.admit(in, stamp, reps, 4);
+                       pitlane::keep(static_cast<uint64_t>(out.reports));
+                   },
+                   report, 50, 400),
+               "venue_admit");
+    }
+
     pitlane::Urgent urgent;
     expect(sample(
                "urgent",

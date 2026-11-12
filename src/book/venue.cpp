@@ -509,8 +509,6 @@ int PaperVenue::drill_apply(const DrillRow& row, int64_t now_us, Report* buf, in
         case DrillCue::Closed:
             cfg_.trade_open = 0;
             return 0;
-        case DrillCue::Warn:
-            return 0;
         default:
             return -1;
     }
