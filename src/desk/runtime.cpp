@@ -51,6 +51,9 @@ int DeskLoop::beat(Desk& desk, int64_t now_us, const LoopHooks& hooks) noexcept 
     n += drain(desk.prints, print_cur_, hooks.on_print, hooks.user);
     n += drain(desk.algos, algo_cur_, hooks.on_algo, hooks.user);
     n += drain(desk.queries, query_cur_, hooks.on_query, hooks.user);
+    n += drain(desk.pack_reqs, pack_req_cur_, hooks.on_pack_req, hooks.user);
+    n += drain(desk.pack_rsps, pack_rsp_cur_, hooks.on_pack_rsp, hooks.user);
+    n += drain(desk.logs, log_cur_, hooks.on_log, hooks.user);
 
     const uint64_t end = desk.controls.tail();
     while (control_cur_ < end) {

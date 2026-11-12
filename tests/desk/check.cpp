@@ -320,6 +320,34 @@ static void check_session() {
     expect(loop.beat(*desk, 6, hooks) >= 1 && loop.stopped(), "stop");
     expect(loop.beat(*desk, 7, hooks) == 0, "stopped stays quiet");
 
+    {
+        pitlane::PackageNote preq{};
+        preq.id = 7;
+        preq.kind = 1;
+        preq.len = 3;
+        preq.data[0] = 9;
+        expect(desk->pack_reqs.publish(preq, bit), "pack req");
+        pitlane::LogNote ln{};
+        ln.level = 1;
+        ln.stamp_us = 9;
+        std::snprintf(ln.line, sizeof ln.line, "hello");
+        expect(desk->logs.publish(ln, bit), "log note");
+        pitlane::AlgoJob job{};
+        job.tag = 11;
+        job.phase = 1;
+        expect(desk->algos.publish(job, bit), "algo job");
+        static int g_algo = 0, g_pack = 0, g_log = 0;
+        g_algo = g_pack = g_log = 0;
+        pitlane::DeskLoop loop2;
+        pitlane::LoopHooks h2{};
+        h2.on_algo = [](void*, const pitlane::AlgoJob&) { ++g_algo; };
+        h2.on_pack_req = [](void*, const pitlane::PackageNote&) { ++g_pack; };
+        h2.on_log = [](void*, const pitlane::LogNote&) { ++g_log; };
+        expect(loop2.beat(*desk, 9, h2) >= 3 && g_algo == 1 && g_pack == 1 && g_log == 1, "pack/log/algo drain");
+        expect(pitlane::desk_log_publish(*desk, 2, 10, "async", bit), "desk_log_publish");
+        expect(pitlane::strat_pause(*desk, 0, 10, bit), "strat pause");
+    }
+
     const char raw[] = {1, 2, 3, 4};
     pitlane::FanRing<pitlane::Parcel<4>, 2> parcels;
     expect(!pitlane::publish_parcel(parcels, 1, raw, 5, 1), "parcel too big");
@@ -438,7 +466,7 @@ static void check_conf() {
     conf.query_engines = 9;
     char hints[1024]{};
     const int n = pitlane::conf_normalize(conf, hints, 1024);
-    expect(n >= 1 && conf.intent_cap == 512 && conf.quote_cap == pitlane::kQuoteCap, "normalize rings");
+    expect(n >= 1 && conf.intent_cap == 512 && conf.quote_cap == 2048, "normalize rings");
     expect(conf.max_live == 0 && conf.query_engines == pitlane::QueryFold::kEngines, "normalize broker query");
     expect(hints[0] != 0, "hints");
 
@@ -458,7 +486,8 @@ static void check_conf() {
     pitlane::MapOpt mop = pitlane::conf_map_opt(loaded);
     expect(mop.hugepage == 0 && mop.lock == 1, "map opt");
 
-    alignas(64) unsigned char raw[sizeof(pitlane::Desk)]{};
+    auto* raw = new (std::nothrow) unsigned char[sizeof(pitlane::Desk)];
+    expect(raw != nullptr, "desk heap");
     auto* desk = new (raw) pitlane::Desk();
     loaded.intent_cap = 256;
     loaded.report_cap = 256;
@@ -468,14 +497,20 @@ static void check_conf() {
     loaded.pulse_cap = 128;
     loaded.print_cap = 128;
     loaded.query_cap = 128;
+    loaded.pack_req_cap = 64;
+    loaded.pack_rsp_cap = 128;
+    loaded.log_cap = 64;
     expect(pitlane::conf_normalize(loaded, nullptr, 0) >= 0, "norm again");
     expect(pitlane::desk_apply_conf(*desk, loaded) && desk->intents.capacity() == 256, "desk tune");
+    expect(desk->pack_reqs.capacity() == 64 && desk->logs.capacity() == 64, "pack/log tune");
 
     pitlane::CashLine cash_rows[8]{};
     pitlane::CashBoard cash(cash_rows, 8);
     loaded.cash_cap = 4;
     expect(pitlane::cash_apply_conf(cash, loaded) && cash.capacity() == 4, "cash soft");
     expect(cash.upsert(1, "p", "a", "d", "b") != nullptr, "cash upsert soft");
+    desk->~Desk();
+    delete[] raw;
 
     {
         int err = 0;
@@ -740,14 +775,33 @@ static void check_local_shelf_bus() {
         ::unlink("pitlane_holidays.txt");
     }
 
+    {
+        FILE* ff = std::fopen("pitlane_facts.csv", "w");
+        expect(ff != nullptr, "facts file");
+        if (ff) {
+            std::fputs("# code,tick,lot,mult,hours\n600001.SH,1,100,1,SSE\n", ff);
+            std::fclose(ff);
+        }
+        FILE* hf = std::fopen("pitlane_hours.csv", "w");
+        expect(hf != nullptr, "hours file");
+        if (hf) {
+            std::fputs("SSE,34200,41400,46800,54000\n", hf);
+            std::fclose(hf);
+        }
+        expect(pitlane::load_hours(y, "pitlane_hours.csv") == 1, "load hours");
+        expect(pitlane::load_facts(y, "pitlane_facts.csv") == 1, "load facts");
+        ::unlink("pitlane_facts.csv");
+        ::unlink("pitlane_hours.csv");
+    }
+
     pitlane::yard_close(&y);
     ::unlink(path);
 }
 
 int main() {
-    expect(pitlane::kVersionMajor == 2 && pitlane::kVersionMinor == 16 && pitlane::kVersionPatch == 1, "release");
-    expect(std::strcmp(pitlane::kVersion, "2.16.1") == 0, "release text");
-    expect(pitlane::kDeskVersion == 3, "desk layout");
+    expect(pitlane::kVersionMajor == 2 && pitlane::kVersionMinor == 17 && pitlane::kVersionPatch == 0, "release");
+    expect(std::strcmp(pitlane::kVersion, "2.17.0") == 0, "release text");
+    expect(pitlane::kDeskVersion == 4, "desk layout");
     check_conf();
     check_yard();
     check_local_shelf_bus();

@@ -31,7 +31,7 @@ pitlane::LoopHooks hooks{};
 hooks.on_quote = on_quote;
 loop.beat(*desk, /*now_us=*/1000, hooks);
 </code></pre>
-<p>The hooks are function pointers: <code>on_quote</code>, <code>on_report</code>, <code>on_pulse</code>, <code>on_print</code>, <code>on_algo</code>, <code>on_query</code>, <code>on_control</code>, and <code>on_timer</code>. Only the hooks you set are called. Messages published for this loop must include reader bit 7, or use a mask of 0.</p>
+<p>The hooks are function pointers: <code>on_quote</code>, <code>on_report</code>, <code>on_pulse</code>, <code>on_print</code>, <code>on_algo</code>, <code>on_query</code>, <code>on_pack_req</code>, <code>on_pack_rsp</code>, <code>on_log</code>, <code>on_control</code>, and <code>on_timer</code>. Only the hooks you set are called. Messages published for this loop must include reader bit 7, or use a mask of 0.</p>
   </main>
 </div>
 </body>

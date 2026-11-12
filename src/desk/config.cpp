@@ -329,6 +329,12 @@ int set_key(PitConf& conf, const char* section, const char* key, const char* val
             return ok(parse_u32(val, conf.print_cap));
         if (std::strcmp(key, "query_cap") == 0)
             return ok(parse_u32(val, conf.query_cap));
+        if (std::strcmp(key, "pack_req_cap") == 0)
+            return ok(parse_u32(val, conf.pack_req_cap));
+        if (std::strcmp(key, "pack_rsp_cap") == 0)
+            return ok(parse_u32(val, conf.pack_rsp_cap));
+        if (std::strcmp(key, "log_cap") == 0)
+            return ok(parse_u32(val, conf.log_cap));
         if (std::strcmp(key, "cash_cap") == 0)
             return ok(parse_u32(val, conf.cash_cap));
         if (std::strcmp(key, "hold_cap") == 0)
@@ -583,6 +589,9 @@ int conf_normalize(PitConf& conf, char* hints, int hints_cap) noexcept {
     fix_ring(conf.pulse_cap, kPulseCap, "pulse_cap");
     fix_ring(conf.print_cap, kPrintCap, "print_cap");
     fix_ring(conf.query_cap, kQueryCap, "query_cap");
+    fix_ring(conf.pack_req_cap, kPackReqCap, "pack_req_cap");
+    fix_ring(conf.pack_rsp_cap, kPackRspCap, "pack_rsp_cap");
+    fix_ring(conf.log_cap, kLogCap, "log_cap");
 
     auto fix_rows = [&](uint32_t& field, uint32_t hi, const char* name) {
         const uint32_t before = field;
@@ -888,6 +897,12 @@ bool desk_apply_conf(Desk& desk, const PitConf& conf) noexcept {
     if (!desk.prints.tune(conf.print_cap))
         return false;
     if (!desk.queries.tune(conf.query_cap))
+        return false;
+    if (!desk.pack_reqs.tune(conf.pack_req_cap))
+        return false;
+    if (!desk.pack_rsps.tune(conf.pack_rsp_cap))
+        return false;
+    if (!desk.logs.tune(conf.log_cap))
         return false;
     return true;
 }

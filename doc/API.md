@@ -10,7 +10,7 @@ Include one header:
 
 Everything is in the namespace `pitlane`. Link `libpitlane.a`, or link the shared library with `-lpitlane`. The shared library's soname is `libpitlane.so.1`. The headers are the same for both.
 
-The release is `kVersion`, currently 2.16.1, also split into `kVersionMajor`, `kVersionMinor`, and `kVersionPatch`. `kDeskVersion` is the desk mapping-file layout and is currently 3. `kYardVersion` is the separate symbol/quote yard layout and is currently 2. A new library release can leave either layout number where it is.
+The release is `kVersion`, currently 2.17.0, also split into `kVersionMajor`, `kVersionMinor`, and `kVersionPatch`. `kDeskVersion` is the desk mapping-file layout and is currently 4. `kYardVersion` is the separate symbol/quote yard layout and is currently 2. A new library release can leave either layout number where it is.
 
 A browsable static site with a left-hand section list is generated into `doc/site/` (`python3 doc/gen_site.py`). Open a local `doc/site/index.html` or the GitHub Pages deployment — viewing the file on `github.com/.../blob/...` shows source only. Startup settings are covered under **Startup configuration**.
 
@@ -69,7 +69,7 @@ pitlane::Desk* desk = pitlane::desk_view(&map, 1);
 if (!desk) return 1;
 ```
 
-`map_create` creates or extends the file and does not wipe an existing mapping. The default `MapOpt` uses explicit huge pages only: length rounds to Hugepagesize, and the file is placed on hugetlbfs (default `/dev/hugepages` as `pitlane_<basename>`), or at the caller path when that path is already on hugetlbfs. THP / `MADV_HUGEPAGE` are never used. When explicit pages are unavailable the mapping falls back to the caller path and sets `MapInfo::fallback`. `mlock` is attempted by default; `numa_node >= 0` binds the range with `MPOL_BIND`. `desk_view` returns the desk only when the magic is `PITLANE1` and the layout version is `kDeskVersion`, which is 3. The second argument formats a still-blank file when it is non-zero. A file with the wrong magic is left untouched and the call returns null. After the magic is written, do not format the mapping again.
+`map_create` creates or extends the file and does not wipe an existing mapping. The default `MapOpt` uses explicit huge pages only: length rounds to Hugepagesize, and the file is placed on hugetlbfs (default `/dev/hugepages` as `pitlane_<basename>`), or at the caller path when that path is already on hugetlbfs. THP / `MADV_HUGEPAGE` are never used. When explicit pages are unavailable the mapping falls back to the caller path and sets `MapInfo::fallback`. `mlock` is attempted by default; `numa_node >= 0` binds the range with `MPOL_BIND`. `desk_view` returns the desk only when the magic is `PITLANE1` and the layout version is `kDeskVersion`, which is 4. The second argument formats a still-blank file when it is non-zero. A file with the wrong magic is left untouched and the call returns null. After the magic is written, do not format the mapping again.
 
 Another process attaches with `map_attach` and passes 0 to `desk_view` (same logical path so both sides resolve the same hugetlbfs file). `map_release` unmaps; if the mapping was locked it calls `munlock` first, then closes the file. Each ring has one writer. Readers do not share a cursor.
 
@@ -95,7 +95,7 @@ if (!pitlane::yard_publish_tick(yard, id, tick)) return 1;
 
 ## Publish and read
 
-`Desk` contains eight rings: `intents`, `reports`, `quotes`, `algos`, `controls`, `pulses`, `prints`, and `queries`. Their compile-time capacities are `kIntentCap` 1024, `kReportCap` 1024, `kQuoteCap` 2048, `kAlgoCap` 256, `kControlCap` 256, `kPulseCap` 512, `kPrintCap` 512, and `kQueryCap` 256. Soft capacity after `desk_apply_conf` / `FanRing::tune` is at most that size and is reported by `capacity()`. Cash and positions occupy `cash` and `hold`, 256 rows each.
+`Desk` contains eleven rings: `intents`, `reports`, `quotes`, `algos`, `controls`, `pulses`, `prints`, `queries`, `pack_reqs`, `pack_rsps`, and `logs`. Compile-time capacities track trade lane / package lane scale: `kIntentCap`/`kReportCap`/`kAlgoCap` 32768, `kQuoteCap` 8192, `kControlCap` 16384, `kPulseCap`/`kPrintCap` 4096, `kQueryCap` 1024, `kPackReqCap`/`kLogCap` 2048, `kPackRspCap` 16384. Soft capacity after `desk_apply_conf` / `FanRing::tune` is at most that size and is reported by `capacity()`. Cash and positions occupy `cash` (`kCashCap` 512) and `hold` (`kHoldCap` 4096).
 
 `publish` takes the message and a reader mask. A mask of 0 means the first reader to acknowledge the slot claims it. Any other mask lists the readers that must acknowledge before the slot can be reused. Reader numbers are 0 through 63. The session loop is reader 7, `kLoopReader`.
 
@@ -127,7 +127,7 @@ if (desk->intents.at(0, pitlane::kLoopReader, got, &fresh) && fresh) {
 }
 ```
 
-`Intent`, `Report`, and `Quote` are defined in `desk/types.hpp`. The other slot types, `AlgoJob`, `ControlNote`, `Pulse`, `TapePrint`, and `QueryNote`, are defined in `desk/wire.hpp`. A payload larger than those slots uses `Parcel<Bytes>` on a ring the caller owns. `publish_parcel` fails when the length is greater than `Bytes`.
+`Intent`, `Report`, and `Quote` are defined in `desk/types.hpp`. The other slot types — `AlgoJob`, `ControlNote`, `Pulse`, `TapePrint`, `QueryNote`, `PackageNote`, and `LogNote` — are defined in `desk/wire.hpp`. A payload larger than those slots uses `Parcel<Bytes>` on a ring the caller owns. `publish_parcel` fails when the length is greater than `Bytes`. Hot path may `desk_log_publish` a `LogNote`; cold side drains the `logs` ring.
 
 ## Run the session loop
 
@@ -143,7 +143,7 @@ hooks.on_quote = on_quote;
 loop.beat(*desk, /*now_us=*/1000, hooks);
 ```
 
-The hooks are function pointers: `on_quote`, `on_report`, `on_pulse`, `on_print`, `on_algo`, `on_query`, `on_control`, and `on_timer`. Only the hooks you set are called. Messages published for this loop must include reader bit 7, or use a mask of 0.
+The hooks are function pointers: `on_quote`, `on_report`, `on_pulse`, `on_print`, `on_algo`, `on_query`, `on_pack_req`, `on_pack_rsp`, `on_log`, `on_control`, and `on_timer`. Only the hooks you set are called. Messages published for this loop must include reader bit 7, or use a mask of 0.
 
 ## Prepare an order
 
@@ -192,7 +192,7 @@ pitlane::VenueOut out = venue.admit(in, in.stamp_us, reps, 4);
 
 PitConf `[venue]` mirrors simulator `match.ini`: nine go/pull lags (`go_usN` / `pull_usN`, or fractional-second `delayN` / `cancel_delayN`), `rigid_rule`→`rigid`, `use_ext`→`tape_first`, plus lot/rate/notional/`cancel_pow_x1000`. Use `conf_venue_cfg` to build a `VenueCfg`.
 
-Composition helpers (still allocation-free on the hot path): `FeedHub` into Yard/Desk; `TradeLane::lane_beat` for paper TD; `StratHook` onto `DeskLoop`; `seed_cash` / `seed_hold` for account rows; `seed_facts` / `seed_hours` / `seed_holidays` for local basic-data tables; `TopicBus` for same-machine topic pub/sub; `RouteBook` for strategy→algo binding. `pulse_bridge` fans `PulseBoard` into desk `pulses`.
+Composition helpers (still allocation-free on the hot path): `FeedHub` into Yard/Desk; `TradeLane::lane_beat` for paper TD; `StratHook` onto `DeskLoop` (including algo/package/log/pause); `seed_cash` / `seed_hold` for account rows; `seed_facts` / `seed_hours` / `seed_holidays` plus cold `load_facts` / `load_hours` / `load_holidays` for local basic-data tables; `TopicBus` for same-machine topic pub/sub; `RouteBook` for strategy→algo binding. `pulse_bridge` fans `PulseBoard` into desk `pulses`.
 
 `Style::Day` fills the whole remainder at its limit, even past the size shown there. `Style::Passive` expires if it would cross. `Style::Immediate` keeps only the shown size. `Style::All` expires the whole order when the shown size is short. A self-trade against the same account stops the order.
 
@@ -400,7 +400,7 @@ These calls do not open a socket, do not send an order, and do not start a threa
 | `desk/config.hpp` | Startup `PitConf` load, normalize, host apply, cash/hold soft tune, `conf_yard_plan` / `conf_venue_cfg` |
 | `desk/feedhub.hpp` | Local MD `FeedHub` / `feed_push_*` |
 | `desk/seed.hpp` | Startup `CashSeed` / `HoldSeed` |
-| `desk/shelf.hpp` | Local basic-data seeds (`seed_facts` / hours / holidays / `load_holidays`) |
+| `desk/shelf.hpp` | Local basic-data seeds (`seed_facts` / hours / holidays / `load_facts` / `load_hours` / `load_holidays`) |
 | `desk/bus.hpp` | Local topic bus (`TopicBus`) |
 | `desk/routebook.hpp` | Local algo route table (`RouteBook`) |
 | `desk/pulsehub.hpp` | `pulse_bridge` PulseBoard → desk pulses |

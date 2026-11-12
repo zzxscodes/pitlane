@@ -121,4 +121,131 @@ inline int load_holidays(ClosedDays& days, const char* path) noexcept {
     return ok;
 }
 
+
+// Cold file loader: code,tick_sz,lot_sz,mult[,hours_key] per line. Startup only.
+inline int load_facts(YardView& y, const char* path) noexcept {
+    if (!path || !path[0]) return -1;
+    FILE* f = std::fopen(path, "r");
+    if (!f) return -1;
+    char line[192];
+    int ok = 0;
+    while (std::fgets(line, sizeof line, f)) {
+        char* p = line;
+        while (*p == ' ' || *p == '\t') ++p;
+        if (!*p || *p == '#' || *p == ';' || *p == '\n' || *p == '\r') continue;
+        FactSeed row{};
+        char* tok = p;
+        int field = 0;
+        for (char* q = p;; ++q) {
+            const int end = (*q == 0 || *q == '\n' || *q == '\r' || *q == ',');
+            if (!end) continue;
+            const char save = *q;
+            *q = 0;
+            while (*tok == ' ' || *tok == '\t') ++tok;
+            char* e = tok + std::strlen(tok);
+            while (e > tok && (e[-1] == ' ' || e[-1] == '\t')) --e;
+            *e = 0;
+            if (field == 0) {
+                if (!shelf_copy32(row.code, tok) || !row.code[0]) {
+                    std::fclose(f);
+                    return -1;
+                }
+            } else if (field == 1) {
+                row.tick_sz = 0;
+                for (const char* c = tok; *c; ++c) {
+                    if (*c < '0' || *c > '9') { std::fclose(f); return -1; }
+                    row.tick_sz = row.tick_sz * 10 + (*c - '0');
+                }
+            } else if (field == 2) {
+                row.lot_sz = 0;
+                for (const char* c = tok; *c; ++c) {
+                    if (*c < '0' || *c > '9') { std::fclose(f); return -1; }
+                    row.lot_sz = row.lot_sz * 10 + (*c - '0');
+                }
+            } else if (field == 3) {
+                row.mult = 0;
+                for (const char* c = tok; *c; ++c) {
+                    if (*c < '0' || *c > '9') { std::fclose(f); return -1; }
+                    row.mult = row.mult * 10 + (*c - '0');
+                }
+            } else if (field == 4) {
+                if (!shelf_copy32(row.hours_key, tok)) { std::fclose(f); return -1; }
+            } else {
+                std::fclose(f);
+                return -1;
+            }
+            ++field;
+            if (save == 0 || save == '\n' || save == '\r') break;
+            *q = save;
+            tok = q + 1;
+        }
+        if (field < 4) { std::fclose(f); return -1; }
+        if (seed_facts(y, &row, 1) != 1) { std::fclose(f); return -1; }
+        ++ok;
+    }
+    std::fclose(f);
+    return ok;
+}
+
+// Cold file loader: key,open_sec,close_sec[,open2_sec,close2_sec] per line. Startup only.
+inline int load_hours(YardView& y, const char* path) noexcept {
+    if (!path || !path[0]) return -1;
+    FILE* f = std::fopen(path, "r");
+    if (!f) return -1;
+    char line[160];
+    int ok = 0;
+    while (std::fgets(line, sizeof line, f)) {
+        char* p = line;
+        while (*p == ' ' || *p == '\t') ++p;
+        if (!*p || *p == '#' || *p == ';' || *p == '\n' || *p == '\r') continue;
+        HoursSeed row{};
+        char* tok = p;
+        int field = 0;
+        for (char* q = p;; ++q) {
+            const int end = (*q == 0 || *q == '\n' || *q == '\r' || *q == ',');
+            if (!end) continue;
+            const char save = *q;
+            *q = 0;
+            while (*tok == ' ' || *tok == '\t') ++tok;
+            char* e = tok + std::strlen(tok);
+            while (e > tok && (e[-1] == ' ' || e[-1] == '\t')) --e;
+            *e = 0;
+            auto parse_i32 = [](const char* s, int32_t& out) -> bool {
+                if (!s || !*s) return false;
+                long v = 0;
+                for (const char* c = s; *c; ++c) {
+                    if (*c < '0' || *c > '9') return false;
+                    v = v * 10 + (*c - '0');
+                    if (v > 0x7fffffffL) return false;
+                }
+                out = static_cast<int32_t>(v);
+                return true;
+            };
+            if (field == 0) {
+                if (!shelf_copy32(row.key, tok) || !row.key[0]) { std::fclose(f); return -1; }
+            } else if (field == 1) {
+                if (!parse_i32(tok, row.open_sec)) { std::fclose(f); return -1; }
+            } else if (field == 2) {
+                if (!parse_i32(tok, row.close_sec)) { std::fclose(f); return -1; }
+            } else if (field == 3) {
+                if (!parse_i32(tok, row.open2_sec)) { std::fclose(f); return -1; }
+            } else if (field == 4) {
+                if (!parse_i32(tok, row.close2_sec)) { std::fclose(f); return -1; }
+            } else {
+                std::fclose(f);
+                return -1;
+            }
+            ++field;
+            if (save == 0 || save == '\n' || save == '\r') break;
+            *q = save;
+            tok = q + 1;
+        }
+        if (field < 3) { std::fclose(f); return -1; }
+        if (seed_hours(y, &row, 1) != 1) { std::fclose(f); return -1; }
+        ++ok;
+    }
+    std::fclose(f);
+    return ok;
+}
+
 } // namespace pitlane

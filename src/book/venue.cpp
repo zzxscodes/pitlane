@@ -258,7 +258,16 @@ VenueOut PaperVenue::admit(const Intent& in, int64_t now_us, Report* buf, int ca
             out.why = Why::Missing;
             return out;
         }
-        const int64_t lag = table_lag_us(cfg_.lag, minute_from_us(in.stamp_us), true);
+        int64_t lag = 0;
+        if (cfg_.clock && cfg_.clock->npts > 0) {
+            lag = cfg_.clock->back(in.stamp_us);
+            if (lag < 0) {
+                out.why = Why::Stamp;
+                return out;
+            }
+        } else {
+            lag = table_lag_us(cfg_.lag, minute_from_us(in.stamp_us), true);
+        }
         t.pull_ready_us = ready_at(in.stamp_us, lag);
         t.phase = static_cast<uint8_t>(Phase::PullWait);
         if (t.pull_ready_us <= now_us) {
@@ -338,7 +347,17 @@ VenueOut PaperVenue::admit(const Intent& in, int64_t now_us, Report* buf, int ca
     t.style = in.style;
     t.lot = in.lot > 0 ? in.lot : cfg_.lot;
     t.phase = static_cast<uint8_t>(Phase::Staged);
-    const int64_t lag = table_lag_us(cfg_.lag, minute_from_us(in.stamp_us), false);
+    int64_t lag = 0;
+    if (cfg_.clock && cfg_.clock->npts > 0) {
+        lag = cfg_.clock->go(in.stamp_us);
+        if (lag < 0) {
+            free_ticket(ti);
+            out.why = Why::Stamp;
+            return out;
+        }
+    } else {
+        lag = table_lag_us(cfg_.lag, minute_from_us(in.stamp_us), false);
+    }
     t.ready_us = ready_at(in.stamp_us, lag);
     if (t.ready_us <= now_us) {
         out.reports = activate(ti, now_us, buf, cap, 0);

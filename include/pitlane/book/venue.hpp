@@ -5,6 +5,7 @@
 #include "pitlane/book/gap.hpp"
 #include "pitlane/book/lags.hpp"
 #include "pitlane/desk/types.hpp"
+#include "pitlane/time/simclock.hpp"
 
 #include <cstdint>
 
@@ -12,6 +13,7 @@ namespace pitlane {
 
 struct VenueCfg {
     LagTable lag{};
+    SimClock* clock{nullptr}; // when set with samples, admit uses go/back; else lag bands
     int64_t rigid_extra{0};  // buy fills a print only at or below limit - extra
     int64_t lot{1};
     double cancel_pow{1.0};
@@ -32,9 +34,9 @@ struct VenueOut {
 // queue position only through prints and displayed-size changes.
 class PaperVenue {
 public:
-    static constexpr uint32_t kNames = 48;
-    static constexpr uint32_t kTickets = 192;
-    static constexpr int kDepth = 8;
+    static constexpr uint32_t kNames = 256;
+    static constexpr uint32_t kTickets = 1024;
+    static constexpr int kDepth = 10;
 
     explicit PaperVenue(const VenueCfg& cfg) noexcept;
 
@@ -42,7 +44,10 @@ public:
     void set_top(uint32_t name, int64_t bid_px, int64_t bid_qty, int64_t ask_px, int64_t ask_qty, int64_t last_px) noexcept;
     void set_levels(uint32_t name, const Rung* bids, int nbid, const Rung* asks, int nask) noexcept;
     void set_open(uint8_t open) noexcept { cfg_.trade_open = open ? 1 : 0; }
+    void set_clock(SimClock* clock) noexcept { cfg_.clock = clock; }
     uint8_t is_open() const noexcept { return cfg_.trade_open; }
+    uint8_t tape_first() const noexcept { return cfg_.tape_first; }
+    const VenueCfg& cfg() const noexcept { return cfg_; }
 
     VenueOut admit(const Intent& in, int64_t now_us, Report* buf, int cap) noexcept;
     int on_clock(int64_t now_us, Report* buf, int cap) noexcept;

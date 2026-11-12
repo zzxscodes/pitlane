@@ -21,7 +21,7 @@
   <main class="main">
     <div class="meta">Static API guide · open a section from the left</div>
     <h1>发布和读取</h1>
-<p><code>Desk</code> 有八条环：<code>intents</code>、<code>reports</code>、<code>quotes</code>、<code>algos</code>、<code>controls</code>、<code>pulses</code>、<code>prints</code> 和 <code>queries</code>。编译期容量分别是 <code>kIntentCap</code> 1024、<code>kReportCap</code> 1024、<code>kQuoteCap</code> 2048、<code>kAlgoCap</code> 256、<code>kControlCap</code> 256、<code>kPulseCap</code> 512、<code>kPrintCap</code> 512 和 <code>kQueryCap</code> 256。经 <code>desk_apply_conf</code> / <code>FanRing::tune</code> 后的软容量不超过该上限，由 <code>capacity()</code> 报告。资金和持仓在 <code>cash</code> 和 <code>hold</code> 里，各 256 行。</p>
+<p><code>Desk</code> 有十一条环：<code>intents</code>、<code>reports</code>、<code>quotes</code>、<code>algos</code>、<code>controls</code>、<code>pulses</code>、<code>prints</code>、<code>queries</code>、<code>pack_reqs</code>、<code>pack_rsps</code> 和 <code>logs</code>。编译期容量对齐 trade lane / package lane：<code>kIntentCap</code>/<code>kReportCap</code>/<code>kAlgoCap</code> 32768、<code>kQuoteCap</code> 8192、<code>kControlCap</code> 16384、<code>kPulseCap</code>/<code>kPrintCap</code> 4096、<code>kQueryCap</code> 1024、<code>kPackReqCap</code>/<code>kLogCap</code> 2048、<code>kPackRspCap</code> 16384。经 <code>desk_apply_conf</code> / <code>FanRing::tune</code> 后的软容量不超过该上限，由 <code>capacity()</code> 报告。资金和持仓在 <code>cash</code>（<code>kCashCap</code> 512）与 <code>hold</code>（<code>kHoldCap</code> 4096）里。</p>
 <p><code>publish</code> 接收一条消息和一个读者掩码。掩码为 0 时，第一个确认的读者取走这个槽。其他掩码列出必须确认的读者，这些读者都确认之后槽才能再次使用。读者编号从 0 到 63。会话循环是读者 7，也就是 <code>kLoopReader</code>。</p>
 <pre><code class="language-cpp">
 pitlane::Intent in{};
@@ -48,7 +48,7 @@ if (desk-&gt;intents.at(0, pitlane::kLoopReader, got, &amp;fresh) &amp;&amp; fre
     desk-&gt;intents.ack(0, pitlane::kLoopReader);
 }
 </code></pre>
-<p><code>Intent</code>、<code>Report</code> 和 <code>Quote</code> 在 <code>desk/types.hpp</code>。其余槽类型 <code>AlgoJob</code>、<code>ControlNote</code>、<code>Pulse</code>、<code>TapePrint</code> 和 <code>QueryNote</code> 在 <code>desk/wire.hpp</code>。比这些槽更大的数据，由调用方放在自己的环上，类型是 <code>Parcel&lt;Bytes&gt;</code>。长度大于 <code>Bytes</code> 时，<code>publish_parcel</code> 失败。</p>
+<p><code>Intent</code>、<code>Report</code> 和 <code>Quote</code> 在 <code>desk/types.hpp</code>。其余槽类型——<code>AlgoJob</code>、<code>ControlNote</code>、<code>Pulse</code>、<code>TapePrint</code>、<code>QueryNote</code>、<code>PackageNote</code>、<code>LogNote</code>——在 <code>desk/wire.hpp</code>。比这些槽更大的数据，由调用方放在自己的环上，类型是 <code>Parcel&lt;Bytes&gt;</code>。长度大于 <code>Bytes</code> 时，<code>publish_parcel</code> 失败。热路径可用 <code>desk_log_publish</code> 写入 <code>LogNote</code>，冷侧再排空 <code>logs</code> 环。</p>
   </main>
 </div>
 </body>
