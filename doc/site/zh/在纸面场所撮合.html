@@ -32,7 +32,7 @@ venue.set_levels(1, nullptr, 0, asks, 1);
 pitlane::Report reps[4]{};
 pitlane::VenueOut out = venue.admit(in, in.stamp_us, reps, 4);
 </code></pre>
-<p><code>admit</code> 把回报写入调用方的缓冲区，并设置 <code>out.why</code>。<code>on_clock</code> 把时延已到的暂存单推进去，并完成到期的撤单。<code>on_print</code> 和 <code>on_tape</code> 减少挂单前面的数量。主动方向和挂单方向相同的逐笔不成交这张挂单。主动方向传 0 时，每一笔都保留。<code>on_shown</code> 处理后来的显示量变化，同一笔成交不会被计算两次。</p>
+<p><code>admit</code> 把回报写入调用方的缓冲区，并设置 <code>out.why</code>。<code>VenueCfg::trade_open=0</code> 时新报单以 <code>Why::Closed</code> 失败。<code>on_clock</code> 把时延已到的暂存单推进去，并完成到期的撤单（<code>hang</code> 粘滞时跳过）。<code>on_print</code> / <code>on_tape</code> 减少挂单前面的数量；<code>tape_keep</code> 丢掉同向主动成交。<code>force_fill</code> / <code>force_pull</code> / <code>force_deny</code> / <code>drill_apply</code> 对齐 <code>paper matcher</code> forced fill 类注入（<code>DrillCue</code>）。<code>TouchMode</code> / <code>resolve_px</code> 解析对手/本方/最新/中间/五档价。主动方向传 0 时，每一笔都保留。<code>on_shown</code> 处理后来的显示量变化，同一笔成交不会被计算两次。</p>
 <p><code>Style::Day</code> 打到限价时，剩余数量全部成交，可以多于该档显示量。<code>Style::Passive</code> 一旦会打穿就过期。<code>Style::Immediate</code> 只保留显示量。<code>Style::All</code> 在显示量不够整张时整张过期。同一账户的买卖互打时，这张单停止。</p>
 <p>9 点 30 分之前，时延表是 0。之后 <code>session_band</code> 按 10:00、10:30、11:00、11:30、13:30、14:00、14:30 和 15:00 把一天分开。没有载入采样点时，<code>SimClock</code> 使用这九段。<code>SimClock::go</code> 返回负数时，表示这张单没有进入盘口。这个结果由调用方处理。<code>admit</code> 自己不读这只时钟。</p>
 <p><code>auction_clear</code> 选择成交量最大的价格。<code>tie_higher</code> 在成交量相同时取更高的价格。否则取更接近参考价的价格。</p>

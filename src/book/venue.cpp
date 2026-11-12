@@ -1,5 +1,7 @@
 #include "pitlane/book/venue.hpp"
 
+#include "pitlane/book/touch.hpp"
+
 namespace pitlane {
 namespace {
 
@@ -216,6 +218,10 @@ int PaperVenue::activate(int ti, int64_t now_us, Report* buf, int cap, int n) no
 VenueOut PaperVenue::admit(const Intent& in, int64_t now_us, Report* buf, int cap) noexcept {
     VenueOut out;
     const bool pull = in.act == static_cast<uint8_t>(Act::Pull);
+    if (!pull && !cfg_.trade_open) {
+        out.why = Why::Closed;
+        return out;
+    }
     if (!pull && in.qty <= 0) {
         out.why = Why::Qty;
         return out;
@@ -354,6 +360,7 @@ int PaperVenue::on_clock(int64_t now_us, Report* buf, int cap) noexcept {
     int n = 0;
     for (uint32_t i = 0; i < kTickets; ++i) {
         if (!tickets_[i].used) continue;
+        if (tickets_[i].sticky) continue;
         if (tickets_[i].phase == static_cast<uint8_t>(Phase::Staged) && tickets_[i].ready_us <= now_us) {
             n = activate(static_cast<int>(i), now_us, buf, cap, n);
             continue;
@@ -377,6 +384,136 @@ int PaperVenue::on_clock(int64_t now_us, Report* buf, int cap) noexcept {
     return n;
 }
 
+int PaperVenue::fill_silent(int ti, int64_t qty) noexcept {
+    Ticket& t = tickets_[ti];
+    int64_t room = t.qty - t.done;
+    if (room < 0) room = 0;
+    if (qty > room) qty = room;
+    if (qty <= 0) return 0;
+    t.done += qty;
+    t.phase = t.done >= t.qty ? static_cast<uint8_t>(Phase::Filled) : static_cast<uint8_t>(Phase::Partial);
+    if (t.done >= t.qty) free_ticket(ti);
+    return 1;
+}
+
+int PaperVenue::force_fill(uint64_t tag, int64_t px, int64_t qty, int64_t now_us, Report* buf, int cap) noexcept {
+    const int ti = find_tag(tag);
+    if (ti < 0) return -1;
+    Ticket& t = tickets_[ti];
+    if (!live_phase(t.phase) && t.phase != static_cast<uint8_t>(Phase::Staged)) return -1;
+    t.sticky = 0;
+    if (t.phase == static_cast<uint8_t>(Phase::Staged)) t.phase = static_cast<uint8_t>(Phase::Working);
+    const int64_t fill_px = px > 0 ? px : t.px;
+    int64_t want = qty > 0 ? qty : (t.qty - t.done);
+    const int n = fill_ticket(ti, fill_px, want, now_us, buf, cap, 0);
+    if (tickets_[ti].used && tickets_[ti].done >= tickets_[ti].qty) free_ticket(ti);
+    return n;
+}
+
+int PaperVenue::force_pull(uint64_t tag, int64_t now_us, Report* buf, int cap) noexcept {
+    const int ti = find_tag(tag);
+    if (ti < 0) return -1;
+    Ticket& t = tickets_[ti];
+    if (!live_phase(t.phase) && t.phase != static_cast<uint8_t>(Phase::Staged)) return -1;
+    t.sticky = 0;
+    t.phase = static_cast<uint8_t>(Phase::Cancelled);
+    Report r{};
+    r.tag = t.tag;
+    r.px = t.px;
+    r.left = t.qty - t.done;
+    r.qty = r.left;
+    r.stamp_us = now_us;
+    r.phase = t.phase;
+    r.side = t.side;
+    r.name = t.name;
+    const int n = emit(buf, cap, 0, r);
+    free_ticket(ti);
+    return n;
+}
+
+int PaperVenue::force_deny(uint64_t tag, int64_t now_us, Report* buf, int cap) noexcept {
+    const int ti = find_tag(tag);
+    if (ti < 0) return -1;
+    Ticket& t = tickets_[ti];
+    t.sticky = 0;
+    t.phase = static_cast<uint8_t>(Phase::Denied);
+    Report r{};
+    r.tag = t.tag;
+    r.px = t.px;
+    r.left = t.qty - t.done;
+    r.stamp_us = now_us;
+    r.phase = t.phase;
+    r.side = t.side;
+    r.name = t.name;
+    r.why = static_cast<uint16_t>(Why::Mode);
+    const int n = emit(buf, cap, 0, r);
+    free_ticket(ti);
+    return n;
+}
+
+bool PaperVenue::hang(uint64_t tag, uint8_t on) noexcept {
+    const int ti = find_tag(tag);
+    if (ti < 0) return false;
+    tickets_[ti].sticky = on ? 1 : 0;
+    return true;
+}
+
+int PaperVenue::drill_apply(const DrillRow& row, int64_t now_us, Report* buf, int cap) noexcept {
+    if (row.tag == 0 || row.cue == DrillCue::None) return -1;
+    switch (row.cue) {
+        case DrillCue::FillAll:
+            return force_fill(row.tag, row.px, 0, now_us, buf, cap);
+        case DrillCue::FillTwice: {
+            const int ti = find_tag(row.tag);
+            if (ti < 0) return -1;
+            Ticket& t = tickets_[ti];
+            const int64_t leaves = t.qty - t.done;
+            if (leaves <= 0) return -1;
+            const int64_t first = leaves / 2 > 0 ? leaves / 2 : 1;
+            int n = force_fill(row.tag, row.px, first, now_us, buf, cap);
+            if (n < 0) return n;
+            if (find_tag(row.tag) >= 0) {
+                const int n2 = force_fill(row.tag, row.px, 0, now_us, buf ? buf + n : nullptr, cap - n);
+                if (n2 > 0) n += n2;
+            }
+            return n;
+        }
+        case DrillCue::Kill:
+            return force_pull(row.tag, now_us, buf, cap);
+        case DrillCue::KillLeft: {
+            const int ti = find_tag(row.tag);
+            if (ti < 0) return -1;
+            Ticket& t = tickets_[ti];
+            int64_t part = row.qty > 0 ? row.qty : (t.qty - t.done) / 2;
+            if (part <= 0) part = 1;
+            int n = force_fill(row.tag, row.px, part, now_us, buf, cap);
+            if (n < 0) return n;
+            if (find_tag(row.tag) >= 0) {
+                const int n2 = force_pull(row.tag, now_us, buf ? buf + n : nullptr, cap - n);
+                if (n2 > 0) n += n2;
+            }
+            return n;
+        }
+        case DrillCue::Deny:
+            return force_deny(row.tag, now_us, buf, cap);
+        case DrillCue::HangEnter:
+        case DrillCue::HangPull:
+            return hang(row.tag, 1) ? 0 : -1;
+        case DrillCue::DropFill: {
+            const int ti = find_tag(row.tag);
+            if (ti < 0) return -1;
+            Ticket& t = tickets_[ti];
+            int64_t want = row.qty > 0 ? row.qty : (t.qty - t.done);
+            return fill_silent(ti, want);
+        }
+        case DrillCue::Closed:
+            cfg_.trade_open = 0;
+            return 0;
+        default:
+            return -1;
+    }
+}
+
 int PaperVenue::on_print(uint32_t name, int64_t px, int64_t qty, int64_t now_us, Report* buf, int cap) noexcept {
     return on_tape(name, px, qty, 0, now_us, buf, cap);
 }
@@ -389,7 +526,7 @@ int PaperVenue::on_tape(uint32_t name, int64_t px, int64_t qty, uint8_t aggresso
     for (uint32_t i = 0; i < kTickets; ++i) {
         Ticket& t = tickets_[i];
         if (!t.used || t.name != name) continue;
-        if (aggressor != 0 && t.side == aggressor) continue;
+        if (!tape_keep(aggressor, t.side, cfg_.rigid_extra != 0)) continue;
         const uint8_t phase = t.phase;
         if (phase != static_cast<uint8_t>(Phase::Working) && phase != static_cast<uint8_t>(Phase::Partial) &&
             phase != static_cast<uint8_t>(Phase::PullWait))

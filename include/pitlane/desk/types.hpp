@@ -47,7 +47,8 @@ enum class Why : uint16_t {
     Notional = 11,
     Full = 12,
     Missing = 13,
-    Book = 14
+    Book = 14,
+    Closed = 15  // session closed / NotTrading role
 };
 
 struct Intent {

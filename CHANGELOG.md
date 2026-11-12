@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.14.0] - 2026-11-12
+
+### Added
+
+- Paper drill surface aligned with `paper matcher` forced fill/session state roles: `DrillCue` / `DrillBook`, `PaperVenue::{force_fill,force_pull,force_deny,hang,drill_apply}`, `Why::Closed` / `VenueCfg::trade_open`
+- `TouchMode` / `resolve_px` / `tape_keep`; `HoldLine::{sellable,frozen,frozen_yday}` + `sellable_of` / `sell_room` / `acct_ready`
+
+### Changed
+
+- Library release version is 2.14.0
+
 ## [2.13.0] - 2026-11-12
 
 ### Added

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "pitlane/desk/cash.hpp"
 #include "pitlane/order/lane.hpp"
 #include "pitlane/util/numeric.hpp"
 
@@ -273,6 +274,18 @@ inline int64_t freeze_px(bool buy, int64_t limit, int64_t bid, int64_t ask) noex
     if (limit > 0) return limit;
     if (buy) return ask > 0 ? ask : 0;
     return bid > 0 ? bid : 0;
+}
+
+// Pre-trade seed readiness (simulator CheckPlaceOrder / NoAssetRecord role).
+inline bool acct_ready(const CashLine* cash, const HoldLine* hold) noexcept {
+    return cash != nullptr && cash->live.load(std::memory_order_relaxed) == 1 && hold != nullptr &&
+           hold->live.load(std::memory_order_relaxed) == 1;
+}
+
+inline Cause sell_room(const HoldLine& hold, int64_t qty) noexcept {
+    if (qty <= 0) return Cause::BadQty;
+    if (sellable_of(hold) < qty) return Cause::NoPos;
+    return Cause::Ok;
 }
 
 }  // namespace pitlane

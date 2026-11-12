@@ -10,7 +10,7 @@
 
 所有名字都在命名空间 `pitlane` 里。链接 `libpitlane.a`，或者用 `-lpitlane` 链接动态库。动态库的 soname 是 `libpitlane.so.1`。两种链接方式使用同一套头文件。
 
-发行版本是 `kVersion`，当前是 2.13.0，并拆成 `kVersionMajor`、`kVersionMinor` 和 `kVersionPatch`。`kDeskVersion` 是 desk 映射文件的布局版本，当前是 3。`kYardVersion` 是独立的标的/行情池布局版本，当前是 2。库的一次新发行可以保持任一布局版本不动。
+发行版本是 `kVersion`，当前是 2.14.0，并拆成 `kVersionMajor`、`kVersionMinor` 和 `kVersionPatch`。`kDeskVersion` 是 desk 映射文件的布局版本，当前是 3。`kYardVersion` 是独立的标的/行情池布局版本，当前是 2。库的一次新发行可以保持任一布局版本不动。
 
 带左侧分节导航的静态网页在 `doc/site/`（`python3 doc/gen_site.py` 生成）。打开**本地** `doc/site/index.html` 或 GitHub Pages；在 `github.com/.../blob/...` 里打开只会看到源码。启动期设置见 **启动配置**。
 
@@ -188,7 +188,7 @@ pitlane::Report reps[4]{};
 pitlane::VenueOut out = venue.admit(in, in.stamp_us, reps, 4);
 ```
 
-`admit` 把回报写入调用方的缓冲区，并设置 `out.why`。`on_clock` 把时延已到的暂存单推进去，并完成到期的撤单。`on_print` 和 `on_tape` 减少挂单前面的数量。主动方向和挂单方向相同的逐笔不成交这张挂单。主动方向传 0 时，每一笔都保留。`on_shown` 处理后来的显示量变化，同一笔成交不会被计算两次。
+`admit` 把回报写入调用方的缓冲区，并设置 `out.why`。`VenueCfg::trade_open=0` 时新报单以 `Why::Closed` 失败。`on_clock` 把时延已到的暂存单推进去，并完成到期的撤单（`hang` 粘滞时跳过）。`on_print` / `on_tape` 减少挂单前面的数量；`tape_keep` 丢掉同向主动成交。`force_fill` / `force_pull` / `force_deny` / `drill_apply` 对齐 `paper matcher` forced fill 类注入（`DrillCue`）。`TouchMode` / `resolve_px` 解析对手/本方/最新/中间/五档价。主动方向传 0 时，每一笔都保留。`on_shown` 处理后来的显示量变化，同一笔成交不会被计算两次。
 
 `Style::Day` 打到限价时，剩余数量全部成交，可以多于该档显示量。`Style::Passive` 一旦会打穿就过期。`Style::Immediate` 只保留显示量。`Style::All` 在显示量不够整张时整张过期。同一账户的买卖互打时，这张单停止。
 

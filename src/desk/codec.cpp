@@ -177,6 +177,7 @@ const char* why_text(Why why) noexcept {
         case Why::Full: return "full";
         case Why::Missing: return "missing";
         case Why::Book: return "book";
+        case Why::Closed: return "closed";
     }
     return "unknown";
 }

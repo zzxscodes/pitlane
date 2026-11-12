@@ -631,8 +631,8 @@ static void check_yard() {
 }
 
 int main() {
-    expect(pitlane::kVersionMajor == 2 && pitlane::kVersionMinor == 13 && pitlane::kVersionPatch == 0, "release");
-    expect(std::strcmp(pitlane::kVersion, "2.13.0") == 0, "release text");
+    expect(pitlane::kVersionMajor == 2 && pitlane::kVersionMinor == 14 && pitlane::kVersionPatch == 0, "release");
+    expect(std::strcmp(pitlane::kVersion, "2.14.0") == 0, "release text");
     expect(pitlane::kDeskVersion == 3, "desk layout");
     check_conf();
     check_yard();

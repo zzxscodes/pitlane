@@ -48,12 +48,23 @@ struct HoldLine {
     int64_t long_yday{0};
     int64_t short_today{0};
     int64_t short_yday{0};
+    // T+1 / seed parity with simulator position.json (pitlane names).
+    int64_t sellable{0};      // lots free to sell now; 0 → treat as long_yday
+    int64_t frozen{0};        // locked today lots
+    int64_t frozen_yday{0};   // locked yesterday lots
     char prod[16]{};
     char acct[24]{};
     char name[16]{};
     uint8_t tier{0};
     uint8_t split_yday{0};
 };
+
+// Sellable lots for stock-style close. Explicit sellable wins; else long_yday - frozen_yday.
+inline int64_t sellable_of(const HoldLine& row) noexcept {
+    if (row.sellable > 0) return row.sellable;
+    const int64_t y = row.long_yday - row.frozen_yday;
+    return y > 0 ? y : 0;
+}
 
 class CashBoard {
 public:

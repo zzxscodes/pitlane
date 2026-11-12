@@ -10,7 +10,7 @@ Include one header:
 
 Everything is in the namespace `pitlane`. Link `libpitlane.a`, or link the shared library with `-lpitlane`. The shared library's soname is `libpitlane.so.1`. The headers are the same for both.
 
-The release is `kVersion`, currently 2.13.0, also split into `kVersionMajor`, `kVersionMinor`, and `kVersionPatch`. `kDeskVersion` is the desk mapping-file layout and is currently 3. `kYardVersion` is the separate symbol/quote yard layout and is currently 2. A new library release can leave either layout number where it is.
+The release is `kVersion`, currently 2.14.0, also split into `kVersionMajor`, `kVersionMinor`, and `kVersionPatch`. `kDeskVersion` is the desk mapping-file layout and is currently 3. `kYardVersion` is the separate symbol/quote yard layout and is currently 2. A new library release can leave either layout number where it is.
 
 A browsable static site with a left-hand section list is generated into `doc/site/` (`python3 doc/gen_site.py`). Open a local `doc/site/index.html` or the GitHub Pages deployment — viewing the file on `github.com/.../blob/...` shows source only. Startup settings are covered under **Startup configuration**.
 
@@ -188,7 +188,7 @@ pitlane::Report reps[4]{};
 pitlane::VenueOut out = venue.admit(in, in.stamp_us, reps, 4);
 ```
 
-`admit` writes reports into the caller buffer and sets `out.why`. `on_clock` promotes staged orders whose delay has elapsed and completes cancels that are due. `on_print` and `on_tape` reduce the quantity ahead of a resting order. A print whose aggressive side equals the resting order's side does not fill it. Pass 0 as the aggressor to keep every print. `on_shown` applies a later change in displayed size without counting the same trade twice.
+`admit` writes reports into the caller buffer and sets `out.why`. With `VenueCfg::trade_open=0`, new enters fail with `Why::Closed`. `on_clock` promotes staged orders whose delay has elapsed and completes cancels that are due (skipped while `hang` sticky). `on_print` and `on_tape` reduce the quantity ahead of a resting order; `tape_keep` drops same-side aggressor prints. `force_fill` / `force_pull` / `force_deny` / `drill_apply` cover `paper matcher` forced fill-style injects via `DrillCue` (pitlane names). `TouchMode` / `resolve_px` resolve opp/own/last/mid/best5 prices. Pass 0 as the aggressor to keep every print. `on_shown` applies a later change in displayed size without counting the same trade twice.
 
 `Style::Day` fills the whole remainder at its limit, even past the size shown there. `Style::Passive` expires if it would cross. `Style::Immediate` keeps only the shown size. `Style::All` expires the whole order when the shown size is short. A self-trade against the same account stops the order.
 

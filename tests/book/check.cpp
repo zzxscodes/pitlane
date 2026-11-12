@@ -218,6 +218,40 @@ static void check_venue() {
     hit.tag = 16;
     hit.side = 1;
     expect(wash.admit(hit, stamp, reps, 8).why == pitlane::Why::Wash, "same account");
+
+    pitlane::VenueCfg closed_cfg{};
+    closed_cfg.trade_open = 0;
+    pitlane::PaperVenue closed(closed_cfg);
+    expect(closed.admit(buy, stamp, reps, 8).why == pitlane::Why::Closed, "session closed");
+
+    pitlane::PaperVenue drill(pitlane::VenueCfg{});
+    drill.set_levels(1, bid, 1, high_ask, 1);
+    pitlane::Intent dord = buy;
+    dord.tag = 77;
+    dord.px = 100;
+    dord.qty = 4;
+    expect(drill.admit(dord, stamp, reps, 8).why == pitlane::Why::None, "drill admit");
+    expect(drill.hang(77, 1), "hang");
+    expect(drill.on_clock(stamp + 6000000, reps, 8) == 0, "hang skips clock");
+    expect(drill.force_fill(77, 100, 0, stamp + 7, reps, 8) == 1 && reps[0].phase == static_cast<uint8_t>(pitlane::Phase::Filled),
+           "force fill");
+
+    pitlane::DrillBook book;
+    expect(book.set(88, pitlane::DrillCue::Kill) && book.find(88) != nullptr, "drill book");
+    pitlane::TouchView tv{};
+    tv.bid_px = 99;
+    tv.ask_px = 101;
+    tv.last_px = 100;
+    expect(pitlane::resolve_px(true, pitlane::TouchMode::Opp, tv) == 101, "touch opp");
+    expect(pitlane::resolve_px(true, pitlane::TouchMode::Mid, tv) == 100, "touch mid");
+    expect(pitlane::tape_keep(1, 1, true) == false && pitlane::tape_keep(1, 2, true), "tape keep");
+
+    pitlane::HoldLine hold{};
+    hold.long_yday = 10;
+    hold.frozen_yday = 3;
+    expect(pitlane::sellable_of(hold) == 7, "sellable yday");
+    hold.sellable = 4;
+    expect(pitlane::sellable_of(hold) == 4 && pitlane::sell_room(hold, 5) == pitlane::Cause::NoPos, "sell room");
 }
 
 static void check_calendar() {

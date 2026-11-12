@@ -1,6 +1,7 @@
 #pragma once
 
 #include "pitlane/book/arrive.hpp"
+#include "pitlane/book/drill.hpp"
 #include "pitlane/book/gap.hpp"
 #include "pitlane/book/lags.hpp"
 #include "pitlane/desk/types.hpp"
@@ -11,11 +12,13 @@ namespace pitlane {
 
 struct VenueCfg {
     LagTable lag{};
-    int64_t rigid_extra{0};   // buy fills a print only at or below limit - extra
+    int64_t rigid_extra{0};  // buy fills a print only at or below limit - extra
     int64_t lot{1};
     double cancel_pow{1.0};
-    int rate_cap{0};          // admits per name per second, 0 disables
-    int64_t notional_cap{0};  // px * qty ceiling, 0 disables
+    int rate_cap{0};         // admits per name per second, 0 disables
+    int64_t notional_cap{0}; // px * qty ceiling, 0 disables
+    uint8_t trade_open{1};   // 0 → admit Enter fails Why::Closed (NotTrading role)
+    uint8_t tape_first{0};   // informational; caller may prefer on_tape before quote cross
 };
 
 struct VenueOut {
@@ -37,6 +40,8 @@ public:
     void set_band(uint32_t name, int64_t down, int64_t up) noexcept;
     void set_top(uint32_t name, int64_t bid_px, int64_t bid_qty, int64_t ask_px, int64_t ask_qty, int64_t last_px) noexcept;
     void set_levels(uint32_t name, const Rung* bids, int nbid, const Rung* asks, int nask) noexcept;
+    void set_open(uint8_t open) noexcept { cfg_.trade_open = open ? 1 : 0; }
+    uint8_t is_open() const noexcept { return cfg_.trade_open; }
 
     VenueOut admit(const Intent& in, int64_t now_us, Report* buf, int cap) noexcept;
     int on_clock(int64_t now_us, Report* buf, int cap) noexcept;
@@ -45,6 +50,13 @@ public:
     int on_tape(uint32_t name, int64_t px, int64_t qty, uint8_t aggressor, int64_t now_us, Report* buf, int cap) noexcept;
     int on_shown(uint32_t name, uint8_t side, int64_t px, int64_t prev_qty, int64_t now_qty, int64_t now_us, Report* buf,
                  int cap) noexcept;
+
+    // Deterministic drills (simulator forced fill role). Fail-closed on miss/full.
+    int force_fill(uint64_t tag, int64_t px, int64_t qty, int64_t now_us, Report* buf, int cap) noexcept;
+    int force_pull(uint64_t tag, int64_t now_us, Report* buf, int cap) noexcept;
+    int force_deny(uint64_t tag, int64_t now_us, Report* buf, int cap) noexcept;
+    bool hang(uint64_t tag, uint8_t on) noexcept; // sticky: on_clock skips promote/cancel
+    int drill_apply(const DrillRow& row, int64_t now_us, Report* buf, int cap) noexcept;
 
 private:
     struct Ticket {
@@ -63,6 +75,7 @@ private:
         uint8_t style;
         uint8_t phase;
         uint8_t used;
+        uint8_t sticky; // 1 → HangEnter / HangPull
     };
     struct NameState {
         int64_t down;
@@ -88,6 +101,7 @@ private:
     int activate(int ti, int64_t now_us, Report* buf, int cap, int filled_base) noexcept;
     int emit(Report* buf, int cap, int n, const Report& r) const noexcept;
     int fill_ticket(int ti, int64_t px, int64_t qty, int64_t now_us, Report* buf, int cap, int n) noexcept;
+    int fill_silent(int ti, int64_t qty) noexcept;
 
     VenueCfg cfg_;
     Ticket tickets_[kTickets]{};
@@ -96,4 +110,4 @@ private:
     int free_next_[kTickets]{};
 };
 
-}  // namespace pitlane
+} // namespace pitlane
