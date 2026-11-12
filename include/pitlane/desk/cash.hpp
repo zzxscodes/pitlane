@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <climits>
 #include <cstdint>
 
 #if defined(__x86_64__) || defined(__i386__)
@@ -79,6 +80,13 @@ private:
     uint32_t map_at_[kMap]{};
     uint8_t map_used_[kMap]{};
 };
+
+// Account-level buying power check (notional + fee against free_amt). Not a virtual sub-book.
+inline bool cash_enough(const CashLine& row, int64_t notional, int64_t fee) noexcept {
+    if (notional < 0 || fee < 0) return false;
+    if (notional > INT64_MAX - fee) return false;
+    return row.free_amt >= notional + fee;
+}
 
 class HoldBoard {
 public:

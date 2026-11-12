@@ -2,9 +2,11 @@
 
 #include "pitlane/version.hpp"
 
+#include "pitlane/desk/acct.hpp"
 #include "pitlane/desk/broker.hpp"
 #include "pitlane/desk/cash.hpp"
 #include "pitlane/desk/codec.hpp"
+#include "pitlane/desk/risk.hpp"
 #include "pitlane/desk/feed.hpp"
 #include "pitlane/desk/ids.hpp"
 #include "pitlane/desk/layout.hpp"
@@ -34,9 +36,11 @@
 #include "pitlane/book/venue.hpp"
 
 #include "pitlane/order/ack.hpp"
+#include "pitlane/order/basket.hpp"
 #include "pitlane/order/bind.hpp"
 #include "pitlane/order/idclaim.hpp"
 #include "pitlane/order/inbound.hpp"
+#include "pitlane/order/inflight.hpp"
 #include "pitlane/order/judge.hpp"
 #include "pitlane/order/lane.hpp"
 #include "pitlane/order/latch.hpp"
@@ -85,6 +89,7 @@
 #include "pitlane/host/priority.hpp"
 
 #include "pitlane/util/arena.hpp"
+#include "pitlane/util/authbits.hpp"
 #include "pitlane/util/batch.hpp"
 #include "pitlane/util/bound.hpp"
 #include "pitlane/util/corebank.hpp"

@@ -51,6 +51,17 @@ inline LotErr lock_future(LotLock& book, Off how, int64_t qty) noexcept {
     return LotErr::Ok;
 }
 
+// Read-only lock capacity check. Does not mutate the book.
+inline LotErr lock_future_ok(const LotLock& book, Off how, int64_t qty) noexcept {
+    LotLock tmp = book;
+    return lock_future(tmp, how, qty);
+}
+
+inline bool lock_cash_sell_ok(const LotLock& book, int64_t qty) noexcept {
+    if (qty <= 0) return true;
+    return book.free_lots >= qty;
+}
+
 inline bool lock_cash_sell(LotLock& book, int64_t qty) noexcept {
     if (qty <= 0) return true;
     if (book.free_lots < qty) return false;

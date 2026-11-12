@@ -10,7 +10,7 @@ Include one header:
 
 Everything is in the namespace `pitlane`. Link `libpitlane.a`, or link the shared library with `-lpitlane`. The shared library's soname is `libpitlane.so.1`. The headers are the same for both.
 
-The release is `kVersion`, currently 2.9.0, also split into `kVersionMajor`, `kVersionMinor`, and `kVersionPatch`. `kDeskVersion` is the mapping-file layout and is currently 3. A new library release can leave the layout number where it is.
+The release is `kVersion`, currently 2.10.0, also split into `kVersionMajor`, `kVersionMinor`, and `kVersionPatch`. `kDeskVersion` is the mapping-file layout and is currently 3. A new library release can leave the layout number where it is.
 
 Headers live under `pitlane/desk/`, `pitlane/book/`, `pitlane/order/`, `pitlane/time/`, `pitlane/study/`, `pitlane/util/`, and `pitlane/host/`. `version.hpp` stays beside `pitlane.hpp`. The table below names the area in the path.
 
@@ -144,7 +144,7 @@ Before 09:30 the delay tables are zero. After that, `session_band` splits the da
 
 `BrokerWatch::screen` checks quantity, side, notional, and the number of live orders. `remember` tracks a sent order. `expire` drops orders that missed their acknowledgement limit, passed their lifetime, or waited too long after a cancel. A limit of 0 or less turns that check off.
 
-`QueryFold` accepts at most 4 engines and 32 accounts, with 16 queued requests per engine. `push` fails when the engine, the account, or the queue is out of range. `fold` merges the queues, and `pending` lists each account once. The library does not sleep between pages. The caller decides when to query again.
+`QueryFold` accepts at most 4 engines and 32 accounts, with 16 queued requests per engine and 8 query kinds. `push(engine, acct)` keeps the old acct-only path. `push(engine, acct, kind, page)` stores an optional page token; out-of-range engine, account, kind, or a full queue fails closed. `fold` merges the queues. `pending` lists each account once. `pending_kind` lists distinct `(acct, kind)` rows with the last page token; a short output buffer returns -1. The library does not sleep between pages. The caller decides when to query again.
 
 `session_date` moves a clock reading onto its trading day. From 08:00 through 18:00 the shift is 0. After 18:00, Monday shifts back 3 days and other days shift back 1. In the early morning, Monday shifts back 2 days and other days shift back 1. Weekends and days in `ClosedDays` are then skipped.
 
@@ -274,7 +274,9 @@ These calls do not open a socket, do not send an order, and do not start a threa
 
 `sheet_apply` moves the sheet through the life table. An event the table refuses leaves every field unchanged. A fill larger than the quantity still open is refused the same way. A fill that takes the whole remainder lands on partial, with nothing left. Finish is a separate event. Reject stores the cause the caller passes. The first non-negative stamp is kept for send, accept, and the finishing events. A negative stamp does not write. `sheet_ack_ns` and `sheet_done_ns` subtract those stamps. `sheet_line` replaces a text buffer with one line of id, side, phase, cause, quantity, filled, and left. A local id that does not fit a signed 64-bit value is refused, and the previous line stays.
 
-`gate_ask` runs the checks for one enter or one pull and returns the first cause. A null list, rule, wash table, or flow window is skipped. An enter with a limit price requires a positive price and quantity. A symbol on the list is blocked. A channel that refuses a pull returns the pull-cap cause. A channel that refuses the price mode returns the price cause. Any other channel refusal is blocked. Deviation runs for a limit enter when the cap is zero or positive. Wash runs for an enter when the table is present. The flow window is updated only after those checks pass. A window that is already at the limit returns the order-flow cause, or the pull-flow cause for a pull, and is left unchanged. The call does not send the order.
+`gate_ask` runs the checks for one enter or one pull and returns the first cause. A null list, rule, wash table, cash row, lot book, risk caps, watch, or flow window is skipped. An enter with a limit price requires a positive price and quantity. A symbol on the list is blocked. A channel that refuses a pull returns the pull-cap cause. A channel that refuses the price mode returns the price cause. Any other channel refusal is blocked. Deviation runs for a limit enter when the cap is zero or positive. Wash runs for an enter when the table is present. When `cash` and `cash_need` are set, `cash_enough` must hold. When `lots` and `lock_qty` are set, inventory is checked read-only (`lock_future_ok` or `lock_cash_sell_ok`). When `risk` is set, qty / notional / live caps are applied (via `BrokerWatch::screen` when `watch` is set). The flow window is updated only after those checks pass; any earlier failure leaves the flow window and inflight side state unchanged. A window that is already at the limit returns the order-flow cause, or the pull-flow cause for a pull, and is left unchanged. The call does not send the order.
+
+`risk_merge` takes the stricter positive limit on each axis (zero means that axis is off). `AcctRiskTab` stores per-account caps; a miss is fail-closed. `sign_begin(need)` resets a slip and sets how many modules must `sign_pass` before `sign_ready` (typical need=3 for global / account / lane). A reject sticks until reset.
 
 ## Research and a caller decision
 
@@ -321,11 +323,13 @@ These calls do not open a socket, do not send an order, and do not start a threa
 | `book/lags.hpp` | Session bands and sampled delay |
 | `book/ladder.hpp` | A fixed price window and the best occupied tick |
 | `book/own.hpp` | Local tops of book the caller feeds |
-| `book/quote.hpp` | Quote batches, the print log, and minute rolls |
+| `book/quote.hpp` | Quote batches, ordered apply, the print log, and minute rolls |
 | `book/steps.hpp` | Tick bands and price walks |
 | `book/venue.hpp` | `PaperVenue` |
-| `desk/broker.hpp` | `BrokerWatch` and `QueryFold` |
-| `desk/cash.hpp` | Cash and position rows |
+| `desk/acct.hpp` | Trader→accounts table and `acct_idle` |
+| `desk/broker.hpp` | `BrokerWatch`, `QueryFold`, and `QueryWant` |
+| `desk/risk.hpp` | `risk_merge` and `AcctRiskTab` |
+| `desk/cash.hpp` | Cash/hold boards and `cash_enough` |
 | `desk/codec.hpp` | Symbol class, offset, and direction |
 | `desk/feed.hpp` | Subscription mask, price scale, and raw ticks |
 | `desk/ids.hpp` | `IdMint` |
@@ -348,18 +352,20 @@ These calls do not open a socket, do not send an order, and do not start a threa
 | `order/idclaim.hpp` | Fixed-capacity id state table (Wait / Live / Final) |
 | `order/inbound.hpp` | Commands waiting for their due time |
 | `order/judge.hpp` | List, flow, ratio, deviation, and self-trade checks |
-| `order/lane.hpp` | Channel rules and `Cause` |
+| `order/inflight.hpp` | List-only inflight timeout scan |
+| `order/lane.hpp` | Channel rules, `LaneBook`, and `Cause` |
+| `order/basket.hpp` | Per-name basket target ledger |
 | `order/ledger.hpp` | Freezes, margin, fees, fills, login ids, and the working slot |
 | `order/life.hpp` | Order transitions and phase names |
 | `order/line.hpp` | Arrival order of ids at one price |
-| `order/lots.hpp` | Splitting one quantity into orders |
-| `order/parent.hpp` | Parent time slices and a basket header |
+| `order/lots.hpp` | Lot split, board-lot, and margin quantity helpers |
+| `order/parent.hpp` | Parent time slices and a basket control header |
 | `order/plan.hpp` | The next order, resting room, slices, and chase prices |
 | `order/pool.hpp` | Fixed slots found by id |
 | `order/recon.hpp` | Local and counter fill alignment |
 | `order/shed.hpp` | Sojourn drop |
-| `order/sheet.hpp` | One order sheet and one pass over the checks |
-| `order/sign.hpp` | Check counts and opening quota |
+| `order/sheet.hpp` | Order sheet, partial cancel, and `gate_ask` |
+| `order/sign.hpp` | Sign composition and opening quota |
 | `order/ticket.hpp` | Command snapshot and revision |
 | `order/typed.hpp` | Compile-time ticket tags |
 | `study/acb.hpp` | FIFO lot queue and average-cost position book |
@@ -388,6 +394,7 @@ These calls do not open a socket, do not send an order, and do not start a threa
 | `util/chunk.hpp` | Sparse price blocks and cancel handles |
 | `util/drill.hpp` | Clocks, budgets, ladders, and plain records for tests |
 | `util/fillring.hpp` | A slot filled in place |
+| `util/authbits.hpp` | MAC whitelist (≤3) and role bit tests |
 | `util/frame.hpp` | Frames, sequence gaps, and reordering |
 | `util/grace.hpp` | Reader epochs and a retire list |
 | `util/hex.hpp` | Hex and a byte compare |
@@ -401,7 +408,7 @@ These calls do not open a socket, do not send an order, and do not start a threa
 | `util/phase.hpp` | Signed-ticket PhaseGate; non-blocking flip_ready; ActiveSum counter rotate |
 | `util/pinbank.hpp` | PrioSnap priority triple buffer; PinBank multi-reader snapshots with per-slot refcounts |
 | `util/readwin.hpp` | The slowest reader plus a window |
-| `util/seqgate.hpp` | Sequence gap recovery |
+| `util/seqgate.hpp` | Sequence gap recovery, `gap_width`, and `reset` |
 | `util/seqpub.hpp` | No-backpressure sequence ring; may overwrite unread slots |
 | `util/seqwin.hpp` | A sequence window that stops at a hole |
 | `util/rankbits.hpp` | `RankBits` dense ranks and `QuadTab` four-key lines |

@@ -347,6 +347,37 @@ static void check_session() {
     expect(fold.pending(accts, 4) == 1 && accts[0] == 3, "coalesced");
     fold.clear_acct(3);
     expect(fold.pending(accts, 4) == 0, "cleared");
+    expect(fold.push(0, 2, 1, 99) && fold.push(0, 2, 2, 7), "kind push");
+    fold.fold();
+    pitlane::QueryWant wants[4]{};
+    expect(fold.pending_kind(wants, 4) == 2, "kind pending");
+    fold.clear_want(2, 1);
+    expect(fold.pending_kind(wants, 4) == 1 && wants[0].kind == 2 && wants[0].page == 7, "kind page");
+
+    pitlane::RiskCaps glob{};
+    glob.max_qty = 100;
+    glob.max_notional = 10000;
+    glob.max_live = 5;
+    pitlane::RiskCaps acct{};
+    acct.max_qty = 40;
+    acct.max_live = 0;
+    pitlane::RiskCaps merged = pitlane::risk_merge(glob, acct);
+    expect(merged.max_qty == 40 && merged.max_notional == 10000 && merged.max_live == 5, "risk merge");
+    pitlane::AcctRiskTab<4> tab;
+    expect(tab.put(2, acct) && tab.merged(2, glob, merged) && merged.max_qty == 40, "acct risk");
+    expect(!tab.merged(9, glob, merged), "risk miss");
+
+    pitlane::TraderAcctTab<4, 4> traders;
+    expect(traders.link("t1", 10) && traders.link("t1", 11), "trader link");
+    uint32_t t_accts[4]{};
+    expect(traders.accts("t1", t_accts, 4) == 2, "trader accts");
+    pitlane::CashLine cash{};
+    cash.free_amt = 100;
+    cash.held_amt = 0;
+    pitlane::HoldLine hold{};
+    expect(pitlane::acct_idle(&cash, &hold, 0) && !pitlane::acct_idle(&cash, &hold, 1), "acct idle");
+    expect(pitlane::cash_enough(cash, 50, 1) && !pitlane::cash_enough(cash, 100, 1), "cash enough");
+
     pitlane::AcctLink link{};
     std::strcpy(link.trader, "t");
     std::strcpy(link.counter, "paper");
@@ -386,8 +417,8 @@ static void check_session() {
 }
 
 int main() {
-    expect(pitlane::kVersionMajor == 2 && pitlane::kVersionMinor == 9 && pitlane::kVersionPatch == 0, "release");
-    expect(std::strcmp(pitlane::kVersion, "2.9.0") == 0, "release text");
+    expect(pitlane::kVersionMajor == 2 && pitlane::kVersionMinor == 10 && pitlane::kVersionPatch == 0, "release");
+    expect(std::strcmp(pitlane::kVersion, "2.10.0") == 0, "release text");
     expect(pitlane::kDeskVersion == 3, "desk layout");
     check_ring();
     check_batch();

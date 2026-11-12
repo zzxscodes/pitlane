@@ -105,4 +105,28 @@ inline bool recon_cancel(BookOrder& order, ReconEvent& out) noexcept {
     return true;
 }
 
+// Partial cancel residual. qty is the cancelled size. Fail-closed: bad qty or terminal phase leaves order unchanged.
+// Under PullWait a late fill path remains recon_fill (stays PullWait until fully filled).
+inline bool recon_cancel_qty(BookOrder& order, int64_t qty, ReconEvent& out) noexcept {
+    if (!order.known || qty <= 0) return false;
+    if (order.phase == Phase::Filled || order.phase == Phase::Cancelled || order.phase == Phase::Denied ||
+        order.phase == Phase::Expired) {
+        return false;
+    }
+    const int64_t left = order.qty > order.filled ? order.qty - order.filled : 0;
+    if (qty > left) return false;
+    order.qty -= qty;
+    if (order.qty == order.filled) {
+        order.phase = Phase::Cancelled;
+    } else if (order.phase == Phase::PullWait) {
+        order.phase = order.filled > 0 ? Phase::Partial : Phase::Working;
+    } else if (order.filled > 0) {
+        order.phase = Phase::Partial;
+    } else {
+        order.phase = Phase::Working;
+    }
+    out = ReconEvent{ReconKind::Cancel, qty, 0, 0};
+    return true;
+}
+
 }  // namespace pitlane

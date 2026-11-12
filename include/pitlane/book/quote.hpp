@@ -1,5 +1,7 @@
 #pragma once
 
+#include "pitlane/util/frame.hpp"
+
 #include <cstdint>
 #include <cstring>
 
@@ -73,6 +75,47 @@ public:
         built_ = 1;
         return true;
     }
+
+    // Best bid/ask. Fail-closed when a side is empty.
+    bool top(int64_t* bid_px, int64_t* bid_qty, int64_t* ask_px, int64_t* ask_qty) const noexcept {
+        if (nb_ <= 0 || na_ <= 0) return false;
+        if (bid_px) *bid_px = bpx_[nb_ - 1];
+        if (bid_qty) *bid_qty = bqty_[nb_ - 1];
+        if (ask_px) *ask_px = apx_[na_ - 1];
+        if (ask_qty) *ask_qty = aqty_[na_ - 1];
+        return true;
+    }
+
+    void clear() noexcept {
+        nb_ = 0;
+        na_ = 0;
+        built_ = 0;
+        last_seq_ = 0;
+        seq_on_ = 0;
+    }
+
+    // Contiguous sequence only. Gap or old seq leaves the book and watch unchanged (fail-closed).
+    // Source failover stays outside the library.
+    bool apply_ordered(uint64_t seq, const FoldEdit* edits, int n, SeqWatch& watch) noexcept {
+        if (seq == 0) return false;
+        if (!watch.started) {
+            if (!apply(edits, n)) return false;
+            watch.started = 1;
+            watch.next = seq + 1;
+            last_seq_ = seq;
+            seq_on_ = 1;
+            return true;
+        }
+        if (seq != watch.next) return false;
+        if (!apply(edits, n)) return false;
+        watch.next = seq + 1;
+        last_seq_ = seq;
+        seq_on_ = 1;
+        return true;
+    }
+
+    uint64_t last_seq() const noexcept { return last_seq_; }
+    bool seq_on() const noexcept { return seq_on_ != 0; }
 
 private:
     static bool worse(bool bid, int64_t stored, int64_t incoming) noexcept {
@@ -149,6 +192,8 @@ private:
     int nb_{0};
     int na_{0};
     uint8_t built_{0};
+    uint64_t last_seq_{0};
+    uint8_t seq_on_{0};
 };
 
 template <int Cap>

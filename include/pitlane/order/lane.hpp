@@ -33,6 +33,60 @@ inline bool lane_accepts(const LaneRule& rule, PxMode mode, Off off, Act act) no
     return false;
 }
 
+// Fixed counter_id → LaneRule. Miss and full table fail-closed.
+
+template <int Cap>
+class LaneBook {
+public:
+    static_assert(Cap >= 1 && Cap <= 256, "cap");
+
+    bool put(uint32_t counter_id, const LaneRule& rule) noexcept {
+        if (counter_id == 0) return false;
+        const int i = find(counter_id);
+        if (i >= 0) {
+            row_[i].rule = rule;
+            return true;
+        }
+        for (int j = 0; j < Cap; ++j) {
+            if (row_[j].used) continue;
+            row_[j].id = counter_id;
+            row_[j].rule = rule;
+            row_[j].used = 1;
+            return true;
+        }
+        return false;
+    }
+
+    const LaneRule* pick(uint32_t counter_id) const noexcept {
+        const int i = find(counter_id);
+        return i < 0 ? nullptr : &row_[i].rule;
+    }
+
+private:
+    struct Row {
+        uint32_t id{0};
+        LaneRule rule{};
+        uint8_t used{0};
+    };
+
+    int find(uint32_t counter_id) const noexcept {
+        for (int i = 0; i < Cap; ++i) {
+            if (row_[i].used && row_[i].id == counter_id) return i;
+        }
+        return -1;
+    }
+
+    Row row_[Cap]{};
+};
+
+template <int Cap>
+inline bool lane_pick(const LaneBook<Cap>& book, uint32_t counter_id, LaneRule& out) noexcept {
+    const LaneRule* r = book.pick(counter_id);
+    if (!r) return false;
+    out = *r;
+    return true;
+}
+
 // Reject codes share one numbering with a counter. Bands stay stable for monitors.
 enum class Cause : uint16_t {
     Ok = 0,
