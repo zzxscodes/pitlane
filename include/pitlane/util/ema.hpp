@@ -47,4 +47,22 @@ PITLANE_INLINE bool ema_push(IntEma& e, int64_t x) noexcept {
     return true;
 }
 
+// EMA of mean and of squared deviation proxy. std_out is abs(x - mean) smoothed.
+struct IntEmaDev {
+    IntEma mean{};
+    IntEma absdev{};
+};
+
+PITLANE_INLINE bool ema_dev_open(IntEmaDev& d, unsigned period, int64_t seed) noexcept {
+    return ema_open(d.mean, period, seed) && ema_open(d.absdev, period, 0);
+}
+
+PITLANE_INLINE bool ema_dev_push(IntEmaDev& d, int64_t x, int64_t& std_out) noexcept {
+    if (!ema_push(d.mean, x)) return false;
+    const int64_t abs_d = x >= d.mean.v ? x - d.mean.v : d.mean.v - x;
+    if (!ema_push(d.absdev, abs_d)) return false;
+    std_out = d.absdev.v;
+    return true;
+}
+
 }  // namespace pitlane

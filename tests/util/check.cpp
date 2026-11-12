@@ -639,6 +639,39 @@ void check_seq_latest_lane_ema() {
 
     pitlane::IntEma ema;
     expect(pitlane::ema_open(ema, 3, 100) && pitlane::ema_push(ema, 110), "ema");
+
+    pitlane::IntEmaDev dev;
+    int64_t std_out = -1;
+    expect(pitlane::ema_dev_open(dev, 3, 100) && pitlane::ema_dev_push(dev, 110, std_out) && std_out >= 0, "ema dev");
+}
+
+static void check_pin_phase() {
+    pitlane::PrioSnap<int, 3> snap;
+    expect(snap.view() == nullptr, "prio empty");
+    expect(snap.write(11, pitlane::SlotPri::Normal), "prio normal");
+    expect(snap.view() == nullptr, "prio not live yet");
+    snap.flush_ready();
+    expect(snap.view() && *snap.view() == 11, "prio flush");
+    expect(snap.write(22, pitlane::SlotPri::High) && snap.view() && *snap.view() == 22, "prio high");
+
+    pitlane::PinBank<int, 3> bank;
+    *bank.write_slot() = 7;
+    expect(bank.publish(), "pin publish");
+    int copied = 0;
+    expect(bank.copy_out(copied) != 0 && copied == 7, "pin copy");
+
+    pitlane::PhaseCounter a{};
+    pitlane::PhaseCounter b{};
+    pitlane::ActiveSum sum;
+    sum.cell.store(&a, std::memory_order_relaxed);
+    sum.add(5);
+    expect(a.n.load() == 5, "phase add");
+    const int64_t held = sum.gate.arrive();
+    expect(sum.try_rotate(&b) == nullptr, "phase pending");
+    sum.gate.depart(held);
+    expect(sum.try_rotate(&b) == &a, "phase rotate");
+    sum.add(3);
+    expect(b.n.load() == 3 && a.n.load() == 5, "phase switched");
 }
 
 int main() {
@@ -663,6 +696,7 @@ int main() {
     check_chunk();
     check_mold();
     check_seq_latest_lane_ema();
+    check_pin_phase();
     if (g_fails) {
         std::fprintf(stderr, "%d util check(s) failed\n", g_fails);
         return 1;

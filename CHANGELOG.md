@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.9.0] - 2026-11-12
+
+### Added
+
+- `PrioSnap` priority triple buffer and `PinBank` multi-reader snapshots with per-slot refcounts (fail-closed)
+- `PhaseGate` / `ActiveSum` signed-ticket phase gate and counter rotate after drain
+- `IdClaim` fixed-capacity id state table (Wait / Live / Final)
+- `infer_lots` / `CumSnap` per-price lot inference from cumulative volume/turnover
+- `FifoLot` / `AcbBook` / `acb_apply` FIFO lot queue and average-cost position book
+- `IntEmaDev` integer EMA mean + absolute-deviation pair
+
+### Changed
+
+- Library release version is 2.9.0
+
 ## [2.8.0] - 2026-11-12
 
 ### Added
