@@ -420,7 +420,12 @@ bool pass_once(pitlane::Desk* desk, uint64_t& seq, uint64_t& report_pos, const p
     int body = keep;
     while (body > 0 && ns_samples[body - 1] > 2000ull && ns_samples[body - 1] > cut) --body;
     out.stalls = keep - body;
+    // Under ASan / busy CI hosts, allow a wider stall tail before discarding the pass.
+#if defined(PITLANE_RELAX_LATENCY)
+    if (body < keep - keep / 20) return false;
+#else
     if (body < keep - keep / 100) return false;
+#endif
     out.p99 = percentile(ns_samples, body, 99, 100);
     out.p999 = percentile(ns_samples, body, 999, 1000);
     return out.p50 <= out.p99 && out.p99 <= out.p999 && out.p999 <= out.max_ns;
@@ -619,7 +624,14 @@ int main() {
             uint64_t report_pos = 0;
             for (int i = 0; i < 5; ++i) {
                 PassReport pass;
-                const bool ok = pass_once(desk, seq, report_pos, wall, i == 0 ? 1024 : 64, 2000, pass);
+                bool ok = false;
+#if defined(PITLANE_RELAX_LATENCY)
+                for (int attempt = 0; attempt < 3 && !ok; ++attempt) {
+                    ok = pass_once(desk, seq, report_pos, wall, i == 0 && attempt == 0 ? 1024 : 64, 2000, pass);
+                }
+#else
+                ok = pass_once(desk, seq, report_pos, wall, i == 0 ? 1024 : 64, 2000, pass);
+#endif
                 expect(ok, "pass path");
                 std::printf("t2t_ns run=%d p50=%llu p99=%llu p999=%llu raw_p999=%llu max=%llu stalls=%d\n", i,
                             static_cast<unsigned long long>(pass.p50), static_cast<unsigned long long>(pass.p99),
