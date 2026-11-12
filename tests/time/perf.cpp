@@ -137,10 +137,19 @@ bool prepare_gate(pitlane::NameList& names, pitlane::WashRow* wash, pitlane::Gat
     return true;
 }
 
+
+pitlane::MapOpt map_opt_tmp() noexcept {
+    pitlane::MapOpt opt{};
+    opt.hugepage = 0;
+    opt.lock = 0;
+    opt.prefault = 1;
+    return opt;
+}
+
 int engine(const char* path, int cpu) noexcept {
     if (!pin_cpu(cpu)) return 7;
     pitlane::MapInfo map{};
-    if (pitlane::map_attach(path, pitlane::desk_bytes(), &map) != 0) return 2;
+    if (pitlane::map_attach(path, pitlane::desk_bytes(), &map, map_opt_tmp()) != 0) return 2;
     pitlane::Desk* desk = pitlane::desk_view(&map, 0);
     if (!desk) {
         pitlane::map_release(&map);
@@ -223,7 +232,7 @@ int engine(const char* path, int cpu) noexcept {
 int gateway(const char* path, int cpu) noexcept {
     if (!pin_cpu(cpu)) return 7;
     pitlane::MapInfo map{};
-    if (pitlane::map_attach(path, pitlane::desk_bytes(), &map) != 0) return 2;
+    if (pitlane::map_attach(path, pitlane::desk_bytes(), &map, map_opt_tmp()) != 0) return 2;
     pitlane::Desk* desk = pitlane::desk_view(&map, 0);
     if (!desk) {
         pitlane::map_release(&map);
@@ -563,7 +572,7 @@ int main() {
     std::snprintf(path, sizeof(path), "/tmp/pitlane-e2e-%d.bin", static_cast<int>(::getpid()));
     ::unlink(path);
     pitlane::MapInfo map{};
-    expect(pitlane::map_create(path, pitlane::desk_bytes(), &map) == 0, "map");
+    expect(pitlane::map_create(path, pitlane::desk_bytes(), &map, map_opt_tmp()) == 0, "map");
     pitlane::Desk* desk = pitlane::desk_view(&map, 1);
     expect(desk != nullptr, "desk");
     const pid_t engine_pid = desk ? ::fork() : -1;

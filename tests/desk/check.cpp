@@ -8,6 +8,15 @@
 
 static int g_fails = 0;
 
+static pitlane::MapOpt map_opt_tmp() noexcept {
+    pitlane::MapOpt opt{};
+    opt.hugepage = 0;
+    opt.lock = 0;
+    opt.prefault = 1;
+    return opt;
+}
+
+
 static void expect(bool cond, const char* what) {
     if (cond) return;
     std::fprintf(stderr, "fail: %s\n", what);
@@ -64,6 +73,16 @@ void check_batch() {
     pitlane::FanRing<pitlane::Intent, 4> once;
     expect(once.publish(items[0], 0) && once.ack_span(0, 1, 2) == 1, "first claim span");
     expect(once.ack_span(0, 1, 3) == 0, "second claim span");
+
+    pitlane::FanRing<pitlane::Intent, 4> inplace;
+    pitlane::Intent* body = inplace.claim(0x1);
+    expect(body != nullptr, "claim body");
+    body->tag = 42;
+    expect(inplace.publish_claimed() && inplace.tail() == 1, "publish claimed");
+    bool seen_fresh = false;
+    const pitlane::Intent* seen = inplace.view(0, 0, &seen_fresh);
+    expect(seen && seen->tag == 42 && seen_fresh, "view");
+    expect(inplace.ack(0, 0), "view ack");
 }
 
 static void check_ids() {
@@ -101,7 +120,7 @@ static void check_region() {
     const char* path = "pitlane_region.bin";
     ::unlink(path);
     pitlane::MapInfo map{};
-    expect(pitlane::map_create(path, pitlane::desk_bytes(), &map) == 0, "map");
+    expect(pitlane::map_create(path, pitlane::desk_bytes(), &map, map_opt_tmp()) == 0, "map");
     pitlane::Desk* desk = pitlane::desk_view(&map, 1);
     expect(desk != nullptr, "format");
     pitlane::Intent wire{};
@@ -111,7 +130,7 @@ static void check_region() {
     pitlane::map_release(&map);
 
     pitlane::MapInfo again_map{};
-    expect(pitlane::map_attach(path, pitlane::desk_bytes(), &again_map) == 0, "remap");
+    expect(pitlane::map_attach(path, pitlane::desk_bytes(), &again_map, map_opt_tmp()) == 0, "remap");
     pitlane::Desk* back = pitlane::desk_view(&again_map, 0);
     expect(back != nullptr, "magic");
     pitlane::Intent got{};
@@ -267,7 +286,7 @@ static void check_session() {
     const char* path = "pitlane_suite_region.bin";
     ::unlink(path);
     pitlane::MapInfo map{};
-    expect(pitlane::map_create(path, pitlane::desk_bytes(), &map) == 0, "suite map");
+    expect(pitlane::map_create(path, pitlane::desk_bytes(), &map, map_opt_tmp()) == 0, "suite map");
     pitlane::Desk* desk = pitlane::desk_view(&map, 1);
     expect(desk && desk->version == pitlane::kDeskVersion, "version");
     pitlane::Quote q{};
@@ -349,7 +368,7 @@ static void check_session() {
     expect(child >= 0, "fork");
     if (child == 0) {
         pitlane::MapInfo child_map{};
-        if (pitlane::map_attach(path, pitlane::desk_bytes(), &child_map) != 0) _exit(2);
+        if (pitlane::map_attach(path, pitlane::desk_bytes(), &child_map, map_opt_tmp()) != 0) _exit(2);
         pitlane::Desk* seen = pitlane::desk_view(&child_map, 0);
         if (!seen) _exit(3);
         pitlane::Quote child_q{};
@@ -367,8 +386,9 @@ static void check_session() {
 }
 
 int main() {
-    expect(pitlane::kVersionMajor == 2 && pitlane::kVersionMinor == 5 && pitlane::kVersionPatch == 0, "release");
-    expect(std::strcmp(pitlane::kVersion, "2.5.0") == 0, "release text");
+    expect(pitlane::kVersionMajor == 2 && pitlane::kVersionMinor == 6 && pitlane::kVersionPatch == 0, "release");
+    expect(std::strcmp(pitlane::kVersion, "2.6.0") == 0, "release text");
+    expect(pitlane::kDeskVersion == 3, "desk layout");
     check_ring();
     check_batch();
     check_ids();

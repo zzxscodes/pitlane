@@ -14,6 +14,7 @@
 #define PITLANE_HOT __attribute__((hot))
 #define PITLANE_COLD __attribute__((cold))
 #define PITLANE_FLATTEN __attribute__((flatten))
+#define PITLANE_ALIGN(n) __attribute__((aligned(n)))
 #else
 #define PITLANE_LIKELY(x) (!!(x))
 #define PITLANE_UNLIKELY(x) (!!(x))
@@ -22,6 +23,7 @@
 #define PITLANE_HOT
 #define PITLANE_COLD
 #define PITLANE_FLATTEN
+#define PITLANE_ALIGN(n)
 #endif
 
 namespace pitlane {

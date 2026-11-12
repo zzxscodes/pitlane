@@ -474,6 +474,41 @@ static void check_bound_spin_arena() {
     const uint64_t keys[] = {10, 20, 30, 40, 50};
     expect(tab.seat(keys, 5), "quad seat");
     expect(tab.find(10) >= 0 && tab.find(50) >= 0 && tab.find(99) < 0, "quad find");
+
+    pitlane::ObjectPool<int, 4> pool;
+    int* pa = pool.allocate();
+    int* pb = pool.allocate();
+    expect(pa && pb && pool.live() == 2, "pool alloc");
+    *pa = 1;
+    *pb = 2;
+    expect(pool.release(pa) && pool.live() == 1, "pool free");
+    int* pc = pool.allocate();
+    expect(pc == pa && pool.free() == 2, "pool reuse");
+
+    pitlane::StickyCounter sticky(1);
+    expect(sticky.read() == 1, "sticky read");
+    expect(sticky.decrement(), "sticky zero");
+    expect(sticky.read() == 0 && !sticky.increment_if_not_zero(), "sticky sticky");
+
+    pitlane::CoreBank<2, 128> bank;
+    bank.reset();
+    int* h = static_cast<int*>(bank.alloc(sizeof(int), alignof(int)));
+    expect(h != nullptr, "bank alloc");
+    *h = 7;
+    int* other = static_cast<int*>(bank.at(h, 1));
+    expect(other && *other == 0, "bank other");
+    *other = 9;
+    expect(*h == 7 && *other == 9, "bank split");
+
+    pitlane::WirePx w{};
+    w.m = 12345;
+    w.s = -2;
+    int64_t eng = 0;
+    expect(pitlane::to_engine(w, 1, eng) && eng == 123, "wire to engine");
+    pitlane::WirePx back{};
+    expect(pitlane::from_engine(12300, -2, back) && back.m == 1230000, "engine to wire");
+    int64_t prod = 0;
+    expect(pitlane::fixed_mul(100, 1, 200, 1, 1, prod) && prod == 20000, "fixed mul");
 }
 
 static void check_touch() {
