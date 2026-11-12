@@ -1,5 +1,21 @@
 # Changelog
 
+## [2.8.0] - 2026-11-12
+
+### Added
+
+- `SeqField` seqlock publisher for small hot-path records
+- `LatestKeep` per-key market-data coalesce (latest wins)
+- `DualLane` request/report sequence + heartbeat window helpers
+- `PaceLatch` / `window_back` parent pacing hysteresis
+- Study flow: `ofi_step` / `OfiWin`, `SecMove`, `TradeMidGap`, aggressor `FootBin`
+- Wire mold extras: `CapRow` / `WireMode` / `FastHead` / presence bits / `clamp_wire_i64` / `ByteCode`
+- `IntEma` Q16 integer EMA
+
+### Changed
+
+- Library release version is 2.8.0
+
 ## [2.7.0] - 2026-11-12
 
 ### Added

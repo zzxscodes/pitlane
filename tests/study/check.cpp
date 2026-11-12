@@ -185,6 +185,35 @@ static void check_right() {
     expect(pitlane::right_value(2, 90, 100) == 10 && pitlane::right_value(3, 90, 100) == -1, "put");
 }
 
+static void check_flow() {
+    pitlane::TopSnap a{};
+    a.bid_px = 100;
+    a.ask_px = 101;
+    a.bid_sz = 5;
+    a.ask_sz = 5;
+    pitlane::TopSnap b = a;
+    b.bid_sz = 8;
+    expect(pitlane::ofi_step(a, b) == 3, "ofi size up");
+    pitlane::OfiWin win;
+    pitlane::ofi_on(win, a);
+    pitlane::ofi_on(win, b);
+    expect(win.sum == 3, "ofi win");
+    expect(pitlane::agg_from_seq(3, 1) == pitlane::Agg::Buy, "agg");
+    pitlane::FootBin foot;
+    pitlane::foot_add(foot, pitlane::Agg::Buy, 2);
+    pitlane::foot_add(foot, pitlane::Agg::Sell, 1);
+    expect(pitlane::foot_delta(foot) == 1 && pitlane::foot_total(foot) == 3, "foot");
+    pitlane::SecMove<8> move;
+    move.push(1000, 100);
+    move.push(2000, 101);
+    int ppm = 0;
+    expect(move.move_ppm(ppm, 2000, 500) && ppm == 100, "sec move");
+    pitlane::TradeMidGap<4> gaps;
+    expect(gaps.push(105, 100) && gaps.push(95, 100), "gaps");
+    int64_t mean = 0;
+    expect(gaps.mean(mean) && mean == 0, "gap mean");
+}
+
 int main() {
     check_feat_and_mark();
     check_tables();
@@ -194,6 +223,7 @@ int main() {
     check_plan();
     check_extreme();
     check_right();
+    check_flow();
     if (g_fails) {
         std::fprintf(stderr, "%d study check(s) failed\n", g_fails);
         return 1;

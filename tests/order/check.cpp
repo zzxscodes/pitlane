@@ -546,6 +546,17 @@ static void check_typed() {
     expect(pitlane::ticket_leaves(done) == 0, "typed done");
 }
 
+static void check_latch() {
+    pitlane::PaceLatch latch;
+    pitlane::latch_cross(latch, 100, 50, 0, 0);
+    expect(latch.cross_on == 1, "cross on");
+    pitlane::latch_cross(latch, 100, 2, 0, 0);
+    expect(latch.cross_on == 0, "cross off");
+    pitlane::latch_trim(latch, 100, 20, 0);
+    expect(latch.trim_on == 1, "trim on");
+    expect(pitlane::window_back(1000000, 30000, 100000) == 100000, "window");
+}
+
 int main() {
     check_lots();
     check_ledger();
@@ -565,6 +576,7 @@ int main() {
     check_sign_ack();
     check_sign_rest();
     check_typed();
+    check_latch();
     if (g_fails) {
         std::fprintf(stderr, "%d order check(s) failed\n", g_fails);
         return 1;
