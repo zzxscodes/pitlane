@@ -15,6 +15,9 @@ struct LoopHooks {
     void (*on_print)(void* user, const TapePrint& print){nullptr};
     void (*on_algo)(void* user, const AlgoJob& job){nullptr};
     void (*on_query)(void* user, const QueryNote& note){nullptr};
+    void (*on_pack_req)(void* user, const PackageNote& note){nullptr};
+    void (*on_pack_rsp)(void* user, const PackageNote& note){nullptr};
+    void (*on_log)(void* user, const LogNote& note){nullptr};
     void (*on_control)(void* user, const ControlNote& note){nullptr};
     void (*on_timer)(void* user, uint64_t timer_id, int64_t now_us){nullptr};
     void* user{nullptr};
@@ -43,6 +46,9 @@ private:
     uint64_t print_cur_{0};
     uint64_t algo_cur_{0};
     uint64_t query_cur_{0};
+    uint64_t pack_req_cur_{0};
+    uint64_t pack_rsp_cur_{0};
+    uint64_t log_cur_{0};
     uint64_t control_cur_{0};
     uint8_t stop_{0};
 

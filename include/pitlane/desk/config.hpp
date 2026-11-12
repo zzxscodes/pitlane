@@ -41,6 +41,9 @@ struct PitConf {
     uint32_t pulse_cap{kPulseCap};
     uint32_t print_cap{kPrintCap};
     uint32_t query_cap{kQueryCap};
+    uint32_t pack_req_cap{kPackReqCap};
+    uint32_t pack_rsp_cap{kPackRspCap};
+    uint32_t log_cap{kLogCap};
     uint32_t cash_cap{kCashCap};
     uint32_t hold_cap{kHoldCap};
 

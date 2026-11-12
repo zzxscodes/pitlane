@@ -31,7 +31,7 @@ pitlane::LoopHooks hooks{};
 hooks.on_quote = on_quote;
 loop.beat(*desk, /*now_us=*/1000, hooks);
 </code></pre>
-<p>钩子是函数指针：<code>on_quote</code>、<code>on_report</code>、<code>on_pulse</code>、<code>on_print</code>、<code>on_algo</code>、<code>on_query</code>、<code>on_control</code> 和 <code>on_timer</code>。只有你设置了的钩子会被调用。要让这个循环看到的消息，发布时必须带上读者位 7，或者使用掩码 0。</p>
+<p>钩子是函数指针：<code>on_quote</code>、<code>on_report</code>、<code>on_pulse</code>、<code>on_print</code>、<code>on_algo</code>、<code>on_query</code>、<code>on_pack_req</code>、<code>on_pack_rsp</code>、<code>on_log</code>、<code>on_control</code> 和 <code>on_timer</code>。只有你设置了的钩子会被调用。要让这个循环看到的消息，发布时必须带上读者位 7，或者使用掩码 0。</p>
   </main>
 </div>
 </body>

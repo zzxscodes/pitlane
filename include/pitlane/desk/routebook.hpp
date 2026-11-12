@@ -9,8 +9,8 @@ namespace pitlane {
 
 class RouteBook {
 public:
-    static constexpr int kKeys = 64;
-    static constexpr int kAlgos = 8;
+    static constexpr int kKeys = 256;
+    static constexpr int kAlgos = 16;
     static constexpr int kName = 32;
 
     bool bind(const char* strategy, const char* algo) noexcept {

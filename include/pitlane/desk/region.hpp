@@ -15,24 +15,26 @@ namespace pitlane {
 // Each ring has a single writer. Readers keep their own cursors.
 // Cash and inventory rows stay in place and are updated under RowGate.
 //
-// Explicit huge pages only: when MapOpt::hugepage is set, map_create / map_attach
-// place the file on hugetlbfs (default /dev/hugepages) or use a path already on
-// that mount. Ordinary mounts never get MADV_HUGEPAGE / THP. If explicit pages
-// are unavailable the mapping falls back to the caller path and sets fallback.
-// Optional mlock and NUMA bind apply after a successful map. Desk layout is
-// FanRing claim state bumps the on-disk layout; kDeskVersion is 3.
+// Compile-time Caps track trade lane / package lane / MaxPosition scale (powers of
+// two). Soft tune at startup may shrink usable depth; physical arrays stay Cap.
+// Package and log lanes cover package lane / log report size roles locally.
+// Layout bump: kDeskVersion is 4.
 
-inline constexpr uint32_t kIntentCap = 1024;
-inline constexpr uint32_t kReportCap = 1024;
-inline constexpr uint32_t kQuoteCap = 2048;
-inline constexpr uint32_t kCashCap = 256;
-inline constexpr uint32_t kHoldCap = 256;
-inline constexpr uint32_t kAlgoCap = 256;
-inline constexpr uint32_t kControlCap = 256;
-inline constexpr uint32_t kPulseCap = 512;
-inline constexpr uint32_t kPrintCap = 512;
-inline constexpr uint32_t kQueryCap = 256;
-inline constexpr uint32_t kDeskVersion = 3;
+// Powers of two under trade lane / package lane maxima; soft-tune may shrink usable depth.
+inline constexpr uint32_t kIntentCap = 32768;   // MaxOrderRequestSize ~120k
+inline constexpr uint32_t kReportCap = 32768;   // MaxOrderRespondSize ~60k
+inline constexpr uint32_t kQuoteCap = 8192;
+inline constexpr uint32_t kCashCap = 512;
+inline constexpr uint32_t kHoldCap = 4096;      // MaxPositionPerAccount
+inline constexpr uint32_t kAlgoCap = 32768;     // MaxAlgoOrderRequestSize
+inline constexpr uint32_t kControlCap = 16384;  // MaxControlSize ~10k
+inline constexpr uint32_t kPulseCap = 4096;
+inline constexpr uint32_t kPrintCap = 4096;
+inline constexpr uint32_t kQueryCap = 1024;
+inline constexpr uint32_t kPackReqCap = 2048;   // MaxPackageReqSize
+inline constexpr uint32_t kPackRspCap = 16384;  // MaxPackageRspSize ~120k (soft)
+inline constexpr uint32_t kLogCap = 2048;       // log report size
+inline constexpr uint32_t kDeskVersion = 4;
 
 struct alignas(64) Desk {
     FanRing<Intent, kIntentCap> intents;
@@ -43,6 +45,9 @@ struct alignas(64) Desk {
     FanRing<Pulse, kPulseCap> pulses;
     FanRing<TapePrint, kPrintCap> prints;
     FanRing<QueryNote, kQueryCap> queries;
+    FanRing<PackageNote, kPackReqCap> pack_reqs;
+    FanRing<PackageNote, kPackRspCap> pack_rsps;
+    FanRing<LogNote, kLogCap> logs;
     CashLine cash[kCashCap];
     HoldLine hold[kHoldCap];
     alignas(64) std::atomic<int64_t> clock_us{0};

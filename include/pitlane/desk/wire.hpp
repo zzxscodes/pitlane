@@ -71,6 +71,23 @@ struct QueryNote {
     char locate[24]{};
 };
 
+// package lane role (local). Body capped; oversized payloads stay on Parcel rings.
+struct PackageNote {
+    uint64_t id{0};
+    uint32_t len{0};
+    uint16_t kind{0}; // 1 req, 2 rsp
+    uint16_t pad{0};
+    uint8_t data[240]{};
+};
+
+// log report size role: cold/async drain; hot path only publishes the note.
+struct LogNote {
+    int32_t level{0};
+    int32_t pad{0};
+    int64_t stamp_us{0};
+    char line[112]{};
+};
+
 struct ParcelHead {
     uint64_t id{0};
     uint32_t len{0};
@@ -87,6 +104,8 @@ static_assert(std::is_trivially_copyable<ControlNote>::value, "ControlNote");
 static_assert(std::is_trivially_copyable<Pulse>::value, "Pulse");
 static_assert(std::is_trivially_copyable<TapePrint>::value, "TapePrint");
 static_assert(std::is_trivially_copyable<QueryNote>::value, "QueryNote");
+static_assert(std::is_trivially_copyable<PackageNote>::value, "PackageNote");
+static_assert(std::is_trivially_copyable<LogNote>::value, "LogNote");
 static_assert(std::is_trivially_copyable<Parcel<32>>::value, "Parcel");
 
 template <uint32_t Bytes, uint32_t Cap>

@@ -1,5 +1,23 @@
 # Changelog
 
+## [2.17.0] - 2026-11-12
+
+### Added
+- Desk layout `kDeskVersion` 4: `pack_reqs` / `pack_rsps` / `logs` FanRings (package lane / log report size roles)
+- trade lane-scale compile-time caps (`kIntentCap`/`kReportCap`/`kAlgoCap` 32768, `kHoldCap` 4096, …)
+- `PaperVenue` SimClock wiring (`VenueCfg::clock` / `set_clock`); larger name/ticket/depth tables
+- `TradeLane` respects `tape_first` (Match.use_ext): prints before intents when set
+- `StratHook` `on_algo` / package / log / control; `strat_stage_algo` / `strat_pause` / `strat_resume` / `desk_log_publish`
+- Cold loaders `load_facts` / `load_hours`; RouteBook grows to 256×16
+- `DeskLoop` drains package and log rings
+
+### Changed
+- HoldBoard / CashBoard open-address maps cover hold/cash soft caps
+- Docs and example conf updated for desk v4 / 2.17.0
+
+### Notes
+- Library release version is 2.17.0
+
 ## [2.16.1] - 2026-11-12
 
 ### Added

@@ -236,6 +236,31 @@ static void check_venue() {
     expect(drill.force_fill(77, 100, 0, stamp + 7, reps, 8) == 1 && reps[0].phase == static_cast<uint8_t>(pitlane::Phase::Filled),
            "force fill");
 
+    pitlane::SimClock clock{};
+    clock.npts = 1;
+    clock.pts[0].sent_ns = 0;
+    clock.pts[0].exch_ns = 3000000; // 3s go lag in µs units
+    clock.pts[0].seen_ns = 3000000;
+    pitlane::VenueCfg scfg{};
+    scfg.clock = &clock;
+    scfg.lot = 1;
+    pitlane::PaperVenue sven(scfg);
+    const pitlane::Rung sasks[] = {{100, 4}};
+    sven.set_levels(1, nullptr, 0, sasks, 1);
+    pitlane::Intent sb = buy;
+    sb.tag = 88;
+    sb.stamp_us = stamp;
+    pitlane::VenueOut so = sven.admit(sb, stamp, reps, 8);
+    expect(so.why == pitlane::Why::None && reps[0].phase == static_cast<uint8_t>(pitlane::Phase::Staged), "simclock staged");
+    expect(sven.on_clock(stamp + 1000, reps, 8) == 0, "simclock lag");
+    expect(sven.on_clock(stamp + 3000000, reps, 8) == 1 && reps[0].phase == static_cast<uint8_t>(pitlane::Phase::Filled),
+           "simclock fill");
+
+    pitlane::VenueCfg tcfg{};
+    tcfg.tape_first = 1;
+    pitlane::PaperVenue tven(tcfg);
+    expect(tven.tape_first() == 1, "tape_first flag");
+
     pitlane::DrillBook book;
     expect(book.set(88, pitlane::DrillCue::Kill) && book.find(88) != nullptr, "drill book");
     pitlane::TouchView tv{};

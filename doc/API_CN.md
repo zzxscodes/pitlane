@@ -10,7 +10,7 @@
 
 所有名字都在命名空间 `pitlane` 里。链接 `libpitlane.a`，或者用 `-lpitlane` 链接动态库。动态库的 soname 是 `libpitlane.so.1`。两种链接方式使用同一套头文件。
 
-发行版本是 `kVersion`，当前是 2.16.1，并拆成 `kVersionMajor`、`kVersionMinor` 和 `kVersionPatch`。`kDeskVersion` 是 desk 映射文件的布局版本，当前是 3。`kYardVersion` 是独立的标的/行情池布局版本，当前是 2。库的一次新发行可以保持任一布局版本不动。
+发行版本是 `kVersion`，当前是 2.17.0，并拆成 `kVersionMajor`、`kVersionMinor` 和 `kVersionPatch`。`kDeskVersion` 是 desk 映射文件的布局版本，当前是 4。`kYardVersion` 是独立的标的/行情池布局版本，当前是 2。库的一次新发行可以保持任一布局版本不动。
 
 带左侧分节导航的静态网页在 `doc/site/`（`python3 doc/gen_site.py` 生成）。打开**本地** `doc/site/index.html` 或 GitHub Pages；在 `github.com/.../blob/...` 里打开只会看到源码。启动期设置见 **启动配置**。
 
@@ -69,7 +69,7 @@ pitlane::Desk* desk = pitlane::desk_view(&map, 1);
 if (!desk) return 1;
 ```
 
-`map_create` 创建或扩展文件，不会清掉已经存在的映射。默认 `MapOpt` 走显式大页：长度按 Hugepagesize 对齐，优先在 hugetlbfs（默认 `/dev/hugepages`，逻辑名映射为 `pitlane_<基名>`）建文件；路径本身已在 hugetlbfs 上则直接使用。不用 THP / `MADV_HUGEPAGE`。显式大页不可用时回退到调用方路径并置 `MapInfo::fallback`。默认尝试 `mlock`，`numa_node >= 0` 时对该区间做 `MPOL_BIND`。只有魔数是 `PITLANE1` 且布局版本是 `kDeskVersion` 时，`desk_view` 才返回工作区。当前布局版本是 3。第二个参数非 0 时，才会初始化一份仍然空白的文件。魔数不对的文件保持原样，调用返回空指针。魔数写上以后不要再次初始化。
+`map_create` 创建或扩展文件，不会清掉已经存在的映射。默认 `MapOpt` 走显式大页：长度按 Hugepagesize 对齐，优先在 hugetlbfs（默认 `/dev/hugepages`，逻辑名映射为 `pitlane_<基名>`）建文件；路径本身已在 hugetlbfs 上则直接使用。不用 THP / `MADV_HUGEPAGE`。显式大页不可用时回退到调用方路径并置 `MapInfo::fallback`。默认尝试 `mlock`，`numa_node >= 0` 时对该区间做 `MPOL_BIND`。只有魔数是 `PITLANE1` 且布局版本是 `kDeskVersion` 时，`desk_view` 才返回工作区。当前布局版本是 4。第二个参数非 0 时，才会初始化一份仍然空白的文件。魔数不对的文件保持原样，调用返回空指针。魔数写上以后不要再次初始化。
 
 其他进程用 `map_attach` 挂上，再把 0 传给 `desk_view`（须与创建时同一逻辑路径，以便解析到同一 hugetlbfs 文件）。`map_release` 解除映射；若曾 `mlock` 则先 `munlock`，再关闭文件。每条环只有一个写入者。读者不要共用一个读取位置。
 
@@ -95,7 +95,7 @@ if (!pitlane::yard_publish_tick(yard, id, tick)) return 1;
 
 ## 发布和读取
 
-`Desk` 有八条环：`intents`、`reports`、`quotes`、`algos`、`controls`、`pulses`、`prints` 和 `queries`。编译期容量分别是 `kIntentCap` 1024、`kReportCap` 1024、`kQuoteCap` 2048、`kAlgoCap` 256、`kControlCap` 256、`kPulseCap` 512、`kPrintCap` 512 和 `kQueryCap` 256。经 `desk_apply_conf` / `FanRing::tune` 后的软容量不超过该上限，由 `capacity()` 报告。资金和持仓在 `cash` 和 `hold` 里，各 256 行。
+`Desk` 有十一条环：`intents`、`reports`、`quotes`、`algos`、`controls`、`pulses`、`prints`、`queries`、`pack_reqs`、`pack_rsps` 和 `logs`。编译期容量对齐 trade lane / package lane：`kIntentCap`/`kReportCap`/`kAlgoCap` 32768、`kQuoteCap` 8192、`kControlCap` 16384、`kPulseCap`/`kPrintCap` 4096、`kQueryCap` 1024、`kPackReqCap`/`kLogCap` 2048、`kPackRspCap` 16384。经 `desk_apply_conf` / `FanRing::tune` 后的软容量不超过该上限，由 `capacity()` 报告。资金和持仓在 `cash`（`kCashCap` 512）与 `hold`（`kHoldCap` 4096）里。
 
 `publish` 接收一条消息和一个读者掩码。掩码为 0 时，第一个确认的读者取走这个槽。其他掩码列出必须确认的读者，这些读者都确认之后槽才能再次使用。读者编号从 0 到 63。会话循环是读者 7，也就是 `kLoopReader`。
 
@@ -127,7 +127,7 @@ if (desk->intents.at(0, pitlane::kLoopReader, got, &fresh) && fresh) {
 }
 ```
 
-`Intent`、`Report` 和 `Quote` 在 `desk/types.hpp`。其余槽类型 `AlgoJob`、`ControlNote`、`Pulse`、`TapePrint` 和 `QueryNote` 在 `desk/wire.hpp`。比这些槽更大的数据，由调用方放在自己的环上，类型是 `Parcel<Bytes>`。长度大于 `Bytes` 时，`publish_parcel` 失败。
+`Intent`、`Report` 和 `Quote` 在 `desk/types.hpp`。其余槽类型——`AlgoJob`、`ControlNote`、`Pulse`、`TapePrint`、`QueryNote`、`PackageNote`、`LogNote`——在 `desk/wire.hpp`。比这些槽更大的数据，由调用方放在自己的环上，类型是 `Parcel<Bytes>`。长度大于 `Bytes` 时，`publish_parcel` 失败。热路径可用 `desk_log_publish` 写入 `LogNote`，冷侧再排空 `logs` 环。
 
 ## 跑会话循环
 
@@ -143,7 +143,7 @@ hooks.on_quote = on_quote;
 loop.beat(*desk, /*now_us=*/1000, hooks);
 ```
 
-钩子是函数指针：`on_quote`、`on_report`、`on_pulse`、`on_print`、`on_algo`、`on_query`、`on_control` 和 `on_timer`。只有你设置了的钩子会被调用。要让这个循环看到的消息，发布时必须带上读者位 7，或者使用掩码 0。
+钩子是函数指针：`on_quote`、`on_report`、`on_pulse`、`on_print`、`on_algo`、`on_query`、`on_pack_req`、`on_pack_rsp`、`on_log`、`on_control` 和 `on_timer`。只有你设置了的钩子会被调用。要让这个循环看到的消息，发布时必须带上读者位 7，或者使用掩码 0。
 
 ## 准备一张委托
 
@@ -192,7 +192,7 @@ pitlane::VenueOut out = venue.admit(in, in.stamp_us, reps, 4);
 
 PitConf `[venue]` 对齐模拟器 `match.ini`：九段 go/pull 延迟、`rigid_rule`→`rigid`、`use_ext`→`tape_first`，以及 lot/rate/notional 等。用 `conf_venue_cfg` 得到 `VenueCfg`。
 
-组合层（热路径仍无堆）：`FeedHub`、`TradeLane`、`StratHook`、`seed_cash` / `seed_hold`；本地基础数据用 `seed_facts` / `seed_hours` / `seed_holidays`；本机 topic 用 `TopicBus`；策略→算法绑定用 `RouteBook`。`pulse_bridge` 把 `PulseBoard` 队列扇入 Desk `pulses`（本机信号分发）。
+组合层（热路径仍无堆）：`FeedHub`、`TradeLane`、`StratHook`（含 algo/package/log/pause）、`seed_cash` / `seed_hold`；本地基础数据用 `seed_facts` / `seed_hours` / `seed_holidays` 以及冷加载 `load_facts` / `load_hours` / `load_holidays`；本机 topic 用 `TopicBus`；策略→算法绑定用 `RouteBook`。`pulse_bridge` 把 `PulseBoard` 队列扇入 Desk `pulses`（本机信号分发）。
 
 `Style::Day` 打到限价时，剩余数量全部成交，可以多于该档显示量。`Style::Passive` 一旦会打穿就过期。`Style::Immediate` 只保留显示量。`Style::All` 在显示量不够整张时整张过期。同一账户的买卖互打时，这张单停止。
 
@@ -400,7 +400,7 @@ book.apply(edits, 1);
 | `desk/config.hpp` | 启动期 `PitConf` 加载、纠偏、host 应用、资金/持仓软上限、`conf_yard_plan` / `conf_venue_cfg` |
 | `desk/feedhub.hpp` | 本地行情组合层 `FeedHub` / `feed_push_*` |
 | `desk/seed.hpp` | 启动期 `CashSeed` / `HoldSeed` |
-| `desk/shelf.hpp` | 本地基础数据种子（`seed_facts` / hours / holidays / `load_holidays`） |
+| `desk/shelf.hpp` | 本地基础数据种子（`seed_facts` / hours / holidays / `load_facts` / `load_hours` / `load_holidays`） |
 | `desk/bus.hpp` | 本地 topic 总线（`TopicBus`） |
 | `desk/routebook.hpp` | 本地算法路由表（`RouteBook`） |
 | `desk/pulsehub.hpp` | `pulse_bridge`：PulseBoard → desk pulses |

@@ -92,7 +92,7 @@ private:
     CashLine* lines_;
     uint32_t cap_;
     uint32_t soft_;
-    static constexpr uint32_t kMap = 512;
+    static constexpr uint32_t kMap = 1024;
     uint64_t map_key_[kMap]{};
     uint32_t map_at_[kMap]{};
     uint8_t map_used_[kMap]{};
@@ -125,7 +125,7 @@ private:
     HoldLine* lines_;
     uint32_t cap_;
     uint32_t soft_;
-    static constexpr uint32_t kMap = 512;
+    static constexpr uint32_t kMap = 8192;
     uint64_t map_key_[kMap]{};
     uint32_t map_at_[kMap]{};
     uint8_t map_used_[kMap]{};
