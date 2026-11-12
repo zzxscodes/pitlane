@@ -604,6 +604,41 @@ static void check_mold() {
     expect(pitlane::read_block(frame, 24, 8, head, &body) && head.tmpl == 7 && body[0] == 9, "wider block");
     expect(!pitlane::read_block(frame, 24, 16, head, &body), "older reader rejects a short block");
     expect(pitlane::block_end(frame, 24) == frame + 20, "skip the extra bytes");
+    expect(pitlane::pick_mode(1, 3, 2, 4, false) == pitlane::WireMode::Fast, "overlap");
+    expect(pitlane::pick_mode(1, 2, 3, 4, true) == pitlane::WireMode::Tag, "tag fallback");
+    uint32_t bits = 0;
+    expect(pitlane::bit_set(bits, 3) && pitlane::bit_on(bits, 3), "presence");
+    expect(pitlane::clamp_wire_i64(1, 100) == 1 && pitlane::clamp_wire_i64(100, 100) == 0, "clamp");
+    pitlane::ByteCode<2> code;
+    code.in[0] = 1;
+    code.out[0] = 10;
+    code.in[1] = 2;
+    code.out[1] = -1;
+    int16_t mapped = 0;
+    expect(code.map(1, mapped) && mapped == 10 && !code.map(2, mapped), "bytecode");
+}
+
+void check_seq_latest_lane_ema() {
+    pitlane::SeqField<int64_t> field;
+    field.write(7);
+    int64_t got = 0;
+    expect(field.read(got) && got == 7, "seqfield");
+
+    pitlane::LatestKeep<int64_t, 4> keep;
+    expect(keep.put(1, 10) && keep.put(2, 20) && keep.put(1, 11), "latest put");
+    expect(keep.dirty() == 2, "dirty keys");
+    int64_t out[4]{};
+    uint32_t keys[4]{};
+    expect(keep.drain(out, 4, keys) == 2 && keep.dirty() == 0, "drain");
+
+    pitlane::DualLane lane;
+    expect(pitlane::next_req(lane) == 1 && pitlane::on_report(lane, 1) == 1, "lane live");
+    expect(pitlane::on_report(lane, 1) == 0 && pitlane::on_report(lane, 3) == 2, "lane gap");
+    pitlane::on_beat_lane(lane, 9, 100);
+    expect(!pitlane::lane_dead(lane, 100) && pitlane::lane_dead(lane, 100 + lane.gap_us), "lane dead");
+
+    pitlane::IntEma ema;
+    expect(pitlane::ema_open(ema, 3, 100) && pitlane::ema_push(ema, 110), "ema");
 }
 
 int main() {
@@ -627,6 +662,7 @@ int main() {
     check_touch();
     check_chunk();
     check_mold();
+    check_seq_latest_lane_ema();
     if (g_fails) {
         std::fprintf(stderr, "%d util check(s) failed\n", g_fails);
         return 1;

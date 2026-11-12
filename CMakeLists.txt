@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(pitlane VERSION 2.7.0 LANGUAGES CXX)
+project(pitlane VERSION 2.8.0 LANGUAGES CXX)
 
 set(PITLANE_SOURCES
     src/desk/broker.cpp

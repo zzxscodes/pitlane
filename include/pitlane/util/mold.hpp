@@ -1,5 +1,7 @@
 #pragma once
 
+#include "pitlane/util/hint.hpp"
+
 #include <cstdint>
 #include <cstring>
 
@@ -87,5 +89,70 @@ inline const uint8_t* block_end(const uint8_t* p, int n) noexcept {
     if (n < 8 + block) return nullptr;
     return p + 8 + block;
 }
+
+// Schema capability row and presence-bitmap fast layout (notes §15 / SBE-style molds).
+
+struct CapRow {
+    uint16_t sid{0};
+    uint16_t vmin{0};
+    uint16_t vmax{0};
+};
+
+enum class WireMode : uint8_t { Fast = 1, Tag = 2, Off = 3 };
+
+PITLANE_INLINE WireMode pick_mode(uint16_t a_min, uint16_t a_max, uint16_t b_min, uint16_t b_max,
+                                  bool tag_ok) noexcept {
+    const uint16_t hi = a_max < b_max ? a_max : b_max;
+    const uint16_t lo = a_min > b_min ? a_min : b_min;
+    if (hi >= lo) return WireMode::Fast;
+    if (tag_ok) return WireMode::Tag;
+    return WireMode::Off;
+}
+
+struct FastHead {
+    uint16_t block{0};
+    uint16_t ver{0};
+    uint32_t bits{0};
+};
+
+PITLANE_INLINE bool bit_on(uint32_t bits, int i) noexcept {
+    if (unlikely(i < 0 || i >= 32)) return false;
+    return (bits & (1u << i)) != 0;
+}
+
+PITLANE_INLINE bool bit_set(uint32_t& bits, int i) noexcept {
+    if (unlikely(i < 0 || i >= 32)) return false;
+    bits |= (1u << i);
+    return true;
+}
+
+PITLANE_INLINE uint32_t fold_crc(const uint8_t* p, int n, uint32_t seed) noexcept {
+    if (unlikely(!p || n < 0)) return seed;
+    uint32_t c = seed;
+    for (int i = 0; i < n; ++i) c = (c * 16777619u) ^ p[i];
+    return c;
+}
+
+// Wire sentinel clamp (gateway DOUBLE_CONVERT pattern as integers): values at/above bad_hi become 0.
+PITLANE_INLINE int64_t clamp_wire_i64(int64_t v, int64_t bad_hi) noexcept {
+    return v >= bad_hi ? 0 : v;
+}
+
+template <int N>
+struct ByteCode {
+    static_assert(N >= 1 && N <= 256, "rows");
+    uint8_t in[N]{};
+    int16_t out[N]{};
+
+    bool map(uint8_t c, int16_t& o) const noexcept {
+        for (int i = 0; i < N; ++i) {
+            if (in[i] != c) continue;
+            if (out[i] < 0) return false;
+            o = out[i];
+            return true;
+        }
+        return false;
+    }
+};
 
 }  // namespace pitlane
