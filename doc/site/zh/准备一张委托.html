@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>准备一张委托 — pitlane API</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="side">
+    <h1>pitlane API</h1>
+    <div class="lang">
+      <a href="../en/prepare-an-order.html">English</a>
+      <a href="#" class="active">中文</a>
+    </div>
+    <nav>
+      <a href="index.html">概述</a><a href="启动配置.html">启动配置</a><a href="打开共享区.html">打开共享区</a><a href="发布和读取.html">发布和读取</a><a href="跑会话循环.html">跑会话循环</a><a href="准备一张委托.html" class="active">准备一张委托</a><a href="在纸面场所撮合.html">在纸面场所撮合</a><a href="合约-信号和柜台.html">合约、信号和柜台</a><a href="辅助函数.html">辅助函数</a><a href="调用方自己保管的辅助函数.html">调用方自己保管的辅助函数</a><a href="组帧-节奏和快照.html">组帧、节奏和快照</a><a href="周期计数和定长低延迟表.html">周期计数和定长低延迟表</a><a href="一张委托单.html">一张委托单</a><a href="研究-以及调用方自己的决定.html">研究，以及调用方自己的决定</a><a href="价格窗口-槽池和两笔费用.html">价格窗口、槽池和两笔费用</a><a href="调用所在的头文件.html">调用所在的头文件</a>
+    </nav>
+  </aside>
+  <main class="main">
+    <div class="meta">Static API guide · open a section from the left</div>
+    <h1>准备一张委托</h1>
+<p><code>IdMint</code> 生成可以跨重启识别的订单号。字段是站点、种类、交易日个位、十秒槽和流水号，放在一个 64 位整数里。种类由调用方定义。</p>
+<pre><code class="language-cpp">
+pitlane::IdMint mint(/*site=*/1, /*kind=*/1);
+uint64_t tag = mint.next(/*day_index=*/4, /*sec_of_day=*/10 * 3600);
+</code></pre>
+<p><code>normalize_gate</code> 在委托入库前整理开平和方向。现货类强制开仓。上期所和能源中心把普通平仓改成平昨。其他期货交易所把平今和平昨收成普通平仓。线方向 0、2、5、6 是多头，1、3、4、7 是空头。限价为 0 时拒绝。结果里的 <code>Why</code> 说明原因。</p>
+<pre><code class="language-cpp">
+pitlane::GateForm form{};
+std::snprintf(form.symbol, sizeof form.symbol, &quot;rb2410.SHF&quot;);
+form.side = static_cast&lt;uint8_t&gt;(pitlane::Side::Sell);
+form.off = static_cast&lt;int8_t&gt;(pitlane::Off::Close);
+form.px_mode = static_cast&lt;int8_t&gt;(pitlane::PxMode::Limit);
+form.px = 3500;
+form.qty = 2;
+pitlane::GateResult gate = pitlane::normalize_gate(form);
+</code></pre>
+<p><code>split_lots</code> 把一笔期货手数拆成几段。模式是 <code>TodayThenYdayThenOpen</code>、<code>CloseOnly</code> 和 <code>YdayThenStop</code>。其他模式返回 -1。超过最大手数的一段会被切开，小于最小手数的一段会被丢掉。</p>
+<p><code>commodity_plan</code> 和 <code>index_plan</code> 各自给出推向目标仓的下一张单。今仓和昨仓分开时，先平昨。<code>index_plan</code> 里的昨仓等于持仓减去当日已经开出的数量。<code>plan_px</code> 对买入取卖一，对卖出取买一。</p>
+<p><code>lock_future</code> 和 <code>lock_cash_sell</code> 冻结平仓或股票卖出需要的数量。<code>book_fill</code> 按成交写回今仓、昨仓和总仓。</p>
+  </main>
+</div>
+</body>
+</html>

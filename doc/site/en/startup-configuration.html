@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Startup configuration — pitlane API</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="side">
+    <h1>pitlane API</h1>
+    <div class="lang">
+      <a href="#" class="active">English</a>
+      <a href="../zh/启动配置.html">中文</a>
+    </div>
+    <nav>
+      <a href="index.html">Overview</a><a href="startup-configuration.html" class="active">Startup configuration</a><a href="open-a-shared-desk.html">Open a shared desk</a><a href="publish-and-read.html">Publish and read</a><a href="run-the-session-loop.html">Run the session loop</a><a href="prepare-an-order.html">Prepare an order</a><a href="match-on-the-paper-venue.html">Match on the paper venue</a><a href="names-signals-and-the-counter.html">Names, signals, and the counter</a><a href="helpers.html">Helpers</a><a href="caller-owned-helpers.html">Caller-owned helpers</a><a href="frames-pacing-and-snapshots.html">Frames, pacing, and snapshots</a><a href="cycles-and-fixed-low-latency-tables.html">Cycles and fixed low-latency tables</a><a href="one-order-sheet.html">One order sheet</a><a href="research-and-a-caller-decision.html">Research and a caller decision</a><a href="a-price-window-a-slot-pool-and-two-charges.html">A price window, a slot pool, and two charges</a><a href="where-the-calls-live.html">Where the calls live</a>
+    </nav>
+  </aside>
+  <main class="main">
+    <div class="meta">Static API guide · open a section from the left</div>
+    <h1>Startup configuration</h1>
+<p>All tunables that the library accepts at process start live in an optional INI-like file (see <code>examples/pitlane.conf</code>). Defaults are the member initializers on <code>PitConf</code> in <code>desk/config.hpp</code>. Omit a key, or leave the value empty, to keep that default. Unknown keys are ignored. Hard parse errors (truncated line, non-numeric where a number is required) make <code>conf_load</code> return false.</p>
+<p><code>conf_normalize</code> runs once after load. It clamps ring capacities to a power of two in <code>[2, compile-time Cap]</code>, restores compile-time-only sizes (<code>QueryFold</code>, <code>BrokerWatch::kCap</code>) with a hint, and writes one human-readable line per adjustment into a caller buffer. Print those lines at startup. The hot path never opens the file again.</p>
+<pre><code class="language-cpp">
+pitlane::PitConf conf{};
+if (!pitlane::conf_load(&quot;/etc/pitlane.conf&quot;, conf)) return 1;
+char hints[1024]{};
+if (pitlane::conf_normalize(conf, hints, sizeof hints) &gt; 0) {
+    std::fputs(hints, stderr);
+}
+
+pitlane::MapOpt mop = pitlane::conf_map_opt(conf);
+pitlane::MapInfo map{};
+if (pitlane::map_create(&quot;desk.bin&quot;, pitlane::desk_bytes(), &amp;map, mop) != 0) return 1;
+pitlane::Desk* desk = pitlane::desk_view(&amp;map, 1);
+if (!desk) return 1;
+if (!pitlane::desk_apply_conf(*desk, conf)) return 1;  // FanRing::tune, empty desk only
+</code></pre>
+<p><code>conf_map_opt</code> / <code>conf_arena_opt</code> / <code>conf_risk_caps</code> copy the normalized fields into the option structs used by map, arena, and risk helpers. <code>desk_apply_conf</code> calls <code>FanRing::tune</code> on each desk ring while the ring is still empty. Soft capacity never grows past the compile-time slot array; the on-disk <code>Desk</code> layout stays <code>kDeskVersion</code>.</p>
+<table><thead><tr>
+<th>Section</th>
+<th>Keys (summary)</th>
+</tr></thead><tbody>
+<tr>
+<td><code>[map]</code></td>
+<td><code>hugepage</code>, <code>lock</code>, <code>prefault</code>, <code>numa_node</code>, <code>hugepage_dir</code></td>
+</tr>
+<tr>
+<td><code>[arena]</code></td>
+<td><code>hugepage</code>, <code>lock</code>, <code>prefault</code>, <code>numa_node</code></td>
+</tr>
+<tr>
+<td><code>[desk]</code></td>
+<td><code>intent_cap</code> … <code>query_cap</code>, <code>cash_cap</code>, <code>hold_cap</code></td>
+</tr>
+<tr>
+<td><code>[broker]</code></td>
+<td><code>max_qty</code>, <code>max_notional</code>, <code>max_live</code>, <code>*_limit_us</code>, <code>watch_cap</code> (hint-only)</td>
+</tr>
+<tr>
+<td><code>[query]</code></td>
+<td><code>engines</code>, <code>accounts</code>, <code>queue</code>, <code>kinds</code> (hint-only; compile-time)</td>
+</tr>
+</tbody></table>
+  </main>
+</div>
+</body>
+</html>

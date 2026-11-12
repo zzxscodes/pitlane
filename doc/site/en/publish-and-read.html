@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Publish and read — pitlane API</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="side">
+    <h1>pitlane API</h1>
+    <div class="lang">
+      <a href="#" class="active">English</a>
+      <a href="../zh/发布和读取.html">中文</a>
+    </div>
+    <nav>
+      <a href="index.html">Overview</a><a href="startup-configuration.html">Startup configuration</a><a href="open-a-shared-desk.html">Open a shared desk</a><a href="publish-and-read.html" class="active">Publish and read</a><a href="run-the-session-loop.html">Run the session loop</a><a href="prepare-an-order.html">Prepare an order</a><a href="match-on-the-paper-venue.html">Match on the paper venue</a><a href="names-signals-and-the-counter.html">Names, signals, and the counter</a><a href="helpers.html">Helpers</a><a href="caller-owned-helpers.html">Caller-owned helpers</a><a href="frames-pacing-and-snapshots.html">Frames, pacing, and snapshots</a><a href="cycles-and-fixed-low-latency-tables.html">Cycles and fixed low-latency tables</a><a href="one-order-sheet.html">One order sheet</a><a href="research-and-a-caller-decision.html">Research and a caller decision</a><a href="a-price-window-a-slot-pool-and-two-charges.html">A price window, a slot pool, and two charges</a><a href="where-the-calls-live.html">Where the calls live</a>
+    </nav>
+  </aside>
+  <main class="main">
+    <div class="meta">Static API guide · open a section from the left</div>
+    <h1>Publish and read</h1>
+<p><code>Desk</code> contains eight rings: <code>intents</code>, <code>reports</code>, <code>quotes</code>, <code>algos</code>, <code>controls</code>, <code>pulses</code>, <code>prints</code>, and <code>queries</code>. Their compile-time capacities are <code>kIntentCap</code> 1024, <code>kReportCap</code> 1024, <code>kQuoteCap</code> 2048, <code>kAlgoCap</code> 256, <code>kControlCap</code> 256, <code>kPulseCap</code> 512, <code>kPrintCap</code> 512, and <code>kQueryCap</code> 256. Soft capacity after <code>desk_apply_conf</code> / <code>FanRing::tune</code> is at most that size and is reported by <code>capacity()</code>. Cash and positions occupy <code>cash</code> and <code>hold</code>, 256 rows each.</p>
+<p><code>publish</code> takes the message and a reader mask. A mask of 0 means the first reader to acknowledge the slot claims it. Any other mask lists the readers that must acknowledge before the slot can be reused. Reader numbers are 0 through 63. The session loop is reader 7, <code>kLoopReader</code>.</p>
+<pre><code class="language-cpp">
+pitlane::Intent in{};
+in.tag = 1;
+in.name = 1;
+in.acct = 2;
+in.px = 100;
+in.qty = 5;
+in.stamp_us = 1;
+in.side = static_cast&lt;uint8_t&gt;(pitlane::Side::Buy);
+in.act = static_cast&lt;uint8_t&gt;(pitlane::Act::Enter);
+in.style = static_cast&lt;uint8_t&gt;(pitlane::Style::Day);
+
+const uint64_t readers = 1ull &lt;&lt; pitlane::kLoopReader;
+if (!desk-&gt;intents.publish(in, readers)) {
+    // The ring is full. The new order was not stored.
+}
+</code></pre>
+<p>A reader copies one slot with <code>at</code>. The position is absolute, starting at 0. <code>fresh</code> is true when this reader has not acknowledged it. <code>ack</code> records that acknowledgement. <code>latest</code> copies the newest published item. <code>tail</code> is the next position a writer will use.</p>
+<pre><code class="language-cpp">
+pitlane::Intent got{};
+bool fresh = false;
+if (desk-&gt;intents.at(0, pitlane::kLoopReader, got, &amp;fresh) &amp;&amp; fresh) {
+    desk-&gt;intents.ack(0, pitlane::kLoopReader);
+}
+</code></pre>
+<p><code>Intent</code>, <code>Report</code>, and <code>Quote</code> are defined in <code>desk/types.hpp</code>. The other slot types, <code>AlgoJob</code>, <code>ControlNote</code>, <code>Pulse</code>, <code>TapePrint</code>, and <code>QueryNote</code>, are defined in <code>desk/wire.hpp</code>. A payload larger than those slots uses <code>Parcel&lt;Bytes&gt;</code> on a ring the caller owns. <code>publish_parcel</code> fails when the length is greater than <code>Bytes</code>.</p>
+  </main>
+</div>
+</body>
+</html>

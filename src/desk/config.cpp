@@ -1,0 +1,417 @@
+#include "pitlane/desk/config.hpp"
+
+#include <cstdio>
+#include <cstring>
+
+namespace pitlane {
+namespace {
+
+bool is_space(char c) noexcept { return c == ' ' || c == '\t' || c == '\r' || c == '\n'; }
+
+char* trim(char* s) noexcept {
+    while (*s && is_space(*s)) ++s;
+    if (!*s) return s;
+    char* e = s + std::strlen(s);
+    while (e > s && is_space(e[-1])) --e;
+    *e = 0;
+    return s;
+}
+
+bool parse_u8(const char* s, uint8_t& out) noexcept {
+    if (!s || !*s) return false;
+    unsigned long v = 0;
+    for (const char* p = s; *p; ++p) {
+        if (*p < '0' || *p > '9') return false;
+        v = v * 10u + static_cast<unsigned long>(*p - '0');
+        if (v > 255ul) return false;
+    }
+    out = static_cast<uint8_t>(v);
+    return true;
+}
+
+bool parse_i8(const char* s, int8_t& out) noexcept {
+    if (!s || !*s) return false;
+    int sign = 1;
+    if (*s == '-') {
+        sign = -1;
+        ++s;
+    } else if (*s == '+') {
+        ++s;
+    }
+    long v = 0;
+    if (!*s) return false;
+    for (const char* p = s; *p; ++p) {
+        if (*p < '0' || *p > '9') return false;
+        v = v * 10 + (*p - '0');
+        if (v > 128) return false;
+    }
+    v *= sign;
+    if (v < -128 || v > 127) return false;
+    out = static_cast<int8_t>(v);
+    return true;
+}
+
+bool parse_u32(const char* s, uint32_t& out) noexcept {
+    if (!s || !*s) return false;
+    unsigned long long v = 0;
+    for (const char* p = s; *p; ++p) {
+        if (*p < '0' || *p > '9') return false;
+        v = v * 10ull + static_cast<unsigned long long>(*p - '0');
+        if (v > 0xffffffffull) return false;
+    }
+    out = static_cast<uint32_t>(v);
+    return true;
+}
+
+bool parse_i32(const char* s, int& out) noexcept {
+    if (!s || !*s) return false;
+    int sign = 1;
+    if (*s == '-') {
+        sign = -1;
+        ++s;
+    }
+    long long v = 0;
+    if (!*s) return false;
+    for (const char* p = s; *p; ++p) {
+        if (*p < '0' || *p > '9') return false;
+        v = v * 10 + (*p - '0');
+        if (v > 2147483647ll) return false;
+    }
+    v *= sign;
+    if (v < -2147483648ll || v > 2147483647ll) return false;
+    out = static_cast<int>(v);
+    return true;
+}
+
+bool parse_i64(const char* s, int64_t& out) noexcept {
+    if (!s || !*s) return false;
+    int sign = 1;
+    if (*s == '-') {
+        sign = -1;
+        ++s;
+    }
+    unsigned long long v = 0;
+    if (!*s) return false;
+    for (const char* p = s; *p; ++p) {
+        if (*p < '0' || *p > '9') return false;
+        if (v > 922337203685477580ull) return false;
+        v = v * 10ull + static_cast<unsigned long long>(*p - '0');
+    }
+    if (sign < 0) {
+        if (v > 9223372036854775808ull) return false;
+        out = -static_cast<int64_t>(v);
+    } else {
+        if (v > 9223372036854775807ull) return false;
+        out = static_cast<int64_t>(v);
+    }
+    return true;
+}
+
+bool copy_dir(char* dst, std::size_t cap, const char* src) noexcept {
+    if (!dst || cap < 2 || !src) return false;
+    std::size_t n = 0;
+    for (; src[n]; ++n) {
+        if (n + 1 >= cap) return false;
+        if (static_cast<unsigned char>(src[n]) < 0x20) return false;
+    }
+    for (std::size_t i = 0; i < n; ++i) dst[i] = src[i];
+    dst[n] = 0;
+    return true;
+}
+
+uint32_t floor_pow2(uint32_t v) noexcept {
+    if (v < 2) return 2;
+    uint32_t p = 1;
+    while ((p << 1) && (p << 1) <= v) p <<= 1;
+    return p;
+}
+
+uint32_t clamp_pow2(uint32_t want, uint32_t lo, uint32_t hi, bool& changed) noexcept {
+    uint32_t v = want;
+    if (v < lo) {
+        v = lo;
+        changed = true;
+    }
+    if (v > hi) {
+        v = hi;
+        changed = true;
+    }
+    const uint32_t p = floor_pow2(v);
+    if (p != want) changed = true;
+    return p;
+}
+
+int append_hint(char* hints, int cap, int at, const char* msg) noexcept {
+    if (!hints || cap <= 0 || !msg) return at;
+    const int need = static_cast<int>(std::strlen(msg));
+    if (at < 0) at = 0;
+    if (at >= cap) return at;
+    if (at + need + 1 >= cap) {
+        if (at + 1 < cap) hints[at] = 0;
+        return at;
+    }
+    for (int i = 0; i < need; ++i) hints[at + i] = msg[i];
+    at += need;
+    hints[at++] = '\n';
+    hints[at] = 0;
+    return at;
+}
+
+// 1 applied, 0 unknown key (ignored), -1 bad value.
+int set_key(PitConf& conf, const char* section, const char* key, const char* val) noexcept {
+    if (!key || !val) return -1;
+    const char* sec = section ? section : "";
+    auto ok = [](bool b) { return b ? 1 : -1; };
+    if (std::strcmp(sec, "map") == 0 || sec[0] == 0) {
+        if (std::strcmp(key, "hugepage") == 0) return ok(parse_u8(val, conf.map_hugepage));
+        if (std::strcmp(key, "lock") == 0) return ok(parse_u8(val, conf.map_lock));
+        if (std::strcmp(key, "prefault") == 0) return ok(parse_u8(val, conf.map_prefault));
+        if (std::strcmp(key, "numa_node") == 0) return ok(parse_i8(val, conf.map_numa_node));
+        if (std::strcmp(key, "hugepage_dir") == 0) return ok(copy_dir(conf.hugepage_dir, sizeof conf.hugepage_dir, val));
+        if (sec[0] == 0) {
+            /* fall through to other sections when unscoped */
+        } else {
+            return 0;
+        }
+    }
+    if (std::strcmp(sec, "arena") == 0 || sec[0] == 0) {
+        if (std::strcmp(key, "hugepage") == 0 && std::strcmp(sec, "arena") == 0) return ok(parse_u8(val, conf.arena_hugepage));
+        if (std::strcmp(key, "lock") == 0 && std::strcmp(sec, "arena") == 0) return ok(parse_u8(val, conf.arena_lock));
+        if (std::strcmp(key, "prefault") == 0 && std::strcmp(sec, "arena") == 0) return ok(parse_u8(val, conf.arena_prefault));
+        if (std::strcmp(key, "numa_node") == 0 && std::strcmp(sec, "arena") == 0) return ok(parse_i8(val, conf.arena_numa_node));
+    }
+    if (std::strcmp(sec, "desk") == 0 || sec[0] == 0) {
+        if (std::strcmp(key, "intent_cap") == 0) return ok(parse_u32(val, conf.intent_cap));
+        if (std::strcmp(key, "report_cap") == 0) return ok(parse_u32(val, conf.report_cap));
+        if (std::strcmp(key, "quote_cap") == 0) return ok(parse_u32(val, conf.quote_cap));
+        if (std::strcmp(key, "algo_cap") == 0) return ok(parse_u32(val, conf.algo_cap));
+        if (std::strcmp(key, "control_cap") == 0) return ok(parse_u32(val, conf.control_cap));
+        if (std::strcmp(key, "pulse_cap") == 0) return ok(parse_u32(val, conf.pulse_cap));
+        if (std::strcmp(key, "print_cap") == 0) return ok(parse_u32(val, conf.print_cap));
+        if (std::strcmp(key, "query_cap") == 0) return ok(parse_u32(val, conf.query_cap));
+        if (std::strcmp(key, "cash_cap") == 0) return ok(parse_u32(val, conf.cash_cap));
+        if (std::strcmp(key, "hold_cap") == 0) return ok(parse_u32(val, conf.hold_cap));
+    }
+    if (std::strcmp(sec, "broker") == 0 || sec[0] == 0) {
+        if (std::strcmp(key, "max_qty") == 0) return ok(parse_i64(val, conf.max_qty));
+        if (std::strcmp(key, "max_notional") == 0) return ok(parse_i64(val, conf.max_notional));
+        if (std::strcmp(key, "max_live") == 0) return ok(parse_i32(val, conf.max_live));
+        if (std::strcmp(key, "ack_limit_us") == 0) return ok(parse_i64(val, conf.ack_limit_us));
+        if (std::strcmp(key, "life_limit_us") == 0) return ok(parse_i64(val, conf.life_limit_us));
+        if (std::strcmp(key, "pull_limit_us") == 0) return ok(parse_i64(val, conf.pull_limit_us));
+        if (std::strcmp(key, "watch_cap") == 0) return ok(parse_i32(val, conf.broker_watch_cap));
+    }
+    if (std::strcmp(sec, "query") == 0 || sec[0] == 0) {
+        if (std::strcmp(key, "engines") == 0) return ok(parse_u32(val, conf.query_engines));
+        if (std::strcmp(key, "accounts") == 0) return ok(parse_u32(val, conf.query_accounts));
+        if (std::strcmp(key, "queue") == 0) return ok(parse_u32(val, conf.query_queue));
+        if (std::strcmp(key, "kinds") == 0) return ok(parse_u32(val, conf.query_kinds));
+    }
+    return 0;
+}
+
+}  // namespace
+
+void conf_defaults(PitConf& conf) noexcept { conf = PitConf{}; }
+
+bool conf_load(const char* path, PitConf& conf) noexcept {
+    conf_defaults(conf);
+    if (!path || !path[0]) return true;
+    FILE* f = std::fopen(path, "r");
+    if (!f) return true;  // missing file → defaults
+    char line[512];
+    char section[64]{};
+    int nline = 0;
+    while (std::fgets(line, sizeof line, f)) {
+        ++nline;
+        char* p = trim(line);
+        if (!*p || *p == '#' || *p == ';') continue;
+        if (*p == '[') {
+            char* end = std::strchr(p, ']');
+            if (!end) {
+                std::fclose(f);
+                return false;
+            }
+            *end = 0;
+            char* name = trim(p + 1);
+            if (std::strlen(name) >= sizeof section) {
+                std::fclose(f);
+                return false;
+            }
+            std::snprintf(section, sizeof section, "%s", name);
+            continue;
+        }
+        char* eq = std::strchr(p, '=');
+        if (!eq) {
+            std::fclose(f);
+            return false;
+        }
+        *eq = 0;
+        char* key = trim(p);
+        char* val = trim(eq + 1);
+        if (!*key) {
+            std::fclose(f);
+            return false;
+        }
+        if (!*val) continue;  // empty → keep default
+        const int rc = set_key(conf, section, key, val);
+        if (rc < 0) {
+            std::fclose(f);
+            return false;
+        }
+        (void)nline;
+    }
+    std::fclose(f);
+    return true;
+}
+
+int conf_normalize(PitConf& conf, char* hints, int hints_cap) noexcept {
+    if (hints && hints_cap > 0) hints[0] = 0;
+    int at = 0;
+    int n = 0;
+    char msg[192];
+
+    auto fix_ring = [&](uint32_t& field, uint32_t hi, const char* name) {
+        bool ch = false;
+        const uint32_t before = field;
+        field = clamp_pow2(field, 2, hi, ch);
+        if (ch) {
+            std::snprintf(msg, sizeof msg, "desk.%s: %u -> %u (power-of-two, max %u)", name, before, field, hi);
+            at = append_hint(hints, hints_cap, at, msg);
+            ++n;
+        }
+    };
+
+    fix_ring(conf.intent_cap, kIntentCap, "intent_cap");
+    fix_ring(conf.report_cap, kReportCap, "report_cap");
+    fix_ring(conf.quote_cap, kQuoteCap, "quote_cap");
+    fix_ring(conf.algo_cap, kAlgoCap, "algo_cap");
+    fix_ring(conf.control_cap, kControlCap, "control_cap");
+    fix_ring(conf.pulse_cap, kPulseCap, "pulse_cap");
+    fix_ring(conf.print_cap, kPrintCap, "print_cap");
+    fix_ring(conf.query_cap, kQueryCap, "query_cap");
+
+    auto fix_rows = [&](uint32_t& field, uint32_t hi, const char* name) {
+        const uint32_t before = field;
+        if (field < 1) {
+            field = 1;
+        }
+        if (field > hi) field = hi;
+        if (field != before) {
+            std::snprintf(msg, sizeof msg, "desk.%s: %u -> %u (max %u)", name, before, field, hi);
+            at = append_hint(hints, hints_cap, at, msg);
+            ++n;
+        }
+    };
+    fix_rows(conf.cash_cap, kCashCap, "cash_cap");
+    fix_rows(conf.hold_cap, kHoldCap, "hold_cap");
+
+    if (conf.map_hugepage > 1) {
+        conf.map_hugepage = 1;
+        at = append_hint(hints, hints_cap, at, "map.hugepage: clamped to 0|1");
+        ++n;
+    }
+    if (conf.map_lock > 1) {
+        conf.map_lock = 1;
+        at = append_hint(hints, hints_cap, at, "map.lock: clamped to 0|1");
+        ++n;
+    }
+    if (conf.map_prefault > 1) {
+        conf.map_prefault = 1;
+        at = append_hint(hints, hints_cap, at, "map.prefault: clamped to 0|1");
+        ++n;
+    }
+    if (conf.hugepage_dir[0] == 0) {
+        std::snprintf(conf.hugepage_dir, sizeof conf.hugepage_dir, "/dev/hugepages");
+        // silent fill — empty dir is the same as the built-in default
+    }
+
+    if (conf.arena_hugepage > 1) conf.arena_hugepage = 1;
+    if (conf.arena_lock > 1) conf.arena_lock = 1;
+    if (conf.arena_prefault > 1) conf.arena_prefault = 1;
+
+    if (conf.max_qty < 0) {
+        conf.max_qty = 0;
+        at = append_hint(hints, hints_cap, at, "broker.max_qty: negative -> 0 (off)");
+        ++n;
+    }
+    if (conf.max_notional < 0) {
+        conf.max_notional = 0;
+        at = append_hint(hints, hints_cap, at, "broker.max_notional: negative -> 0 (off)");
+        ++n;
+    }
+    if (conf.max_live < 0) {
+        conf.max_live = 0;
+        at = append_hint(hints, hints_cap, at, "broker.max_live: negative -> 0 (off)");
+        ++n;
+    }
+    if (conf.max_live > BrokerWatch::kCap) {
+        conf.max_live = BrokerWatch::kCap;
+        std::snprintf(msg, sizeof msg, "broker.max_live: clamped to %d", BrokerWatch::kCap);
+        at = append_hint(hints, hints_cap, at, msg);
+        ++n;
+    }
+    if (conf.ack_limit_us < 0) conf.ack_limit_us = 0;
+    if (conf.life_limit_us < 0) conf.life_limit_us = 0;
+    if (conf.pull_limit_us < 0) conf.pull_limit_us = 0;
+
+    if (conf.broker_watch_cap != BrokerWatch::kCap) {
+        std::snprintf(msg, sizeof msg, "broker.watch_cap: %d ignored (compile-time %d)", conf.broker_watch_cap,
+                      BrokerWatch::kCap);
+        conf.broker_watch_cap = BrokerWatch::kCap;
+        at = append_hint(hints, hints_cap, at, msg);
+        ++n;
+    }
+    if (conf.query_engines != QueryFold::kEngines || conf.query_accounts != QueryFold::kAccounts ||
+        conf.query_queue != QueryFold::kQueue || conf.query_kinds != QueryFold::kKinds) {
+        at = append_hint(hints, hints_cap, at,
+                         "query.* sizes are compile-time; requested values restored to library defaults");
+        conf.query_engines = QueryFold::kEngines;
+        conf.query_accounts = QueryFold::kAccounts;
+        conf.query_queue = QueryFold::kQueue;
+        conf.query_kinds = QueryFold::kKinds;
+        ++n;
+    }
+    return n;
+}
+
+MapOpt conf_map_opt(const PitConf& conf) noexcept {
+    MapOpt opt{};
+    opt.hugepage = conf.map_hugepage ? 1 : 0;
+    opt.lock = conf.map_lock ? 1 : 0;
+    opt.prefault = conf.map_prefault ? 1 : 0;
+    opt.numa_node = conf.map_numa_node;
+    opt.hugepage_dir = conf.hugepage_dir;
+    return opt;
+}
+
+ArenaOpt conf_arena_opt(const PitConf& conf) noexcept {
+    ArenaOpt opt{};
+    opt.hugepage = conf.arena_hugepage ? 1 : 0;
+    opt.lock = conf.arena_lock ? 1 : 0;
+    opt.prefault = conf.arena_prefault ? 1 : 0;
+    opt.numa_node = conf.arena_numa_node;
+    return opt;
+}
+
+RiskCaps conf_risk_caps(const PitConf& conf) noexcept {
+    RiskCaps caps{};
+    caps.max_qty = conf.max_qty;
+    caps.max_notional = conf.max_notional;
+    caps.max_live = conf.max_live;
+    return caps;
+}
+
+bool desk_apply_conf(Desk& desk, const PitConf& conf) noexcept {
+    if (!desk.intents.tune(conf.intent_cap)) return false;
+    if (!desk.reports.tune(conf.report_cap)) return false;
+    if (!desk.quotes.tune(conf.quote_cap)) return false;
+    if (!desk.algos.tune(conf.algo_cap)) return false;
+    if (!desk.controls.tune(conf.control_cap)) return false;
+    if (!desk.pulses.tune(conf.pulse_cap)) return false;
+    if (!desk.prints.tune(conf.print_cap)) return false;
+    if (!desk.queries.tune(conf.query_cap)) return false;
+    return true;
+}
+
+}  // namespace pitlane

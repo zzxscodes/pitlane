@@ -23,13 +23,25 @@ public:
 
     FanRing() = default;
 
+    // Startup-only soft capacity. cap must be a power of two in [2, Cap].
+    // Fails when the ring has already published (tail != 0) or a claim is open.
+    bool tune(uint32_t cap) noexcept {
+        if (cap < 2u || cap > Cap || (cap & (cap - 1u)) != 0u) return false;
+        if (tail_.load(std::memory_order_relaxed) != 0 || claimed_ >= 0) return false;
+        cap_ = cap;
+        mask_ = cap - 1u;
+        return true;
+    }
+
+    uint32_t capacity() const noexcept { return cap_; }
+
     // Reserves the next slot for in-place fill. Returns null when the ring is full.
     // Call publish_claimed after writing the body. One claim may be outstanding.
     PITLANE_HOT T* claim(uint64_t need) noexcept {
         if (unlikely(claimed_ >= 0)) return nullptr;
         const uint64_t pos = tail_.load(std::memory_order_relaxed);
         if (unlikely(blocked(pos))) return nullptr;
-        Slot& s = slots_[pos & kMask];
+        Slot& s = slots_[pos & mask_];
         s.state.store(0, std::memory_order_relaxed);
         s.ack.store(0, std::memory_order_relaxed);
         s.need = need;
@@ -42,7 +54,7 @@ public:
     PITLANE_HOT bool publish_claimed() noexcept {
         if (PITLANE_UNLIKELY(claimed_ < 0)) return false;
         const uint64_t pos = static_cast<uint64_t>(claimed_);
-        Slot& s = slots_[pos & kMask];
+        Slot& s = slots_[pos & mask_];
         s.state.store(1, std::memory_order_release);
         tail_.store(pos + 1u, std::memory_order_release);
         claimed_ = -1;
@@ -57,16 +69,16 @@ public:
     }
 
     // Writes n slots, then advances the tail once. Returns 0 when any slot is still busy,
-    // and leaves the ring unchanged. n must be from 1 through Cap.
+    // and leaves the ring unchanged. n must be from 1 through capacity().
     PITLANE_HOT int publish_batch(const T* items, int n, uint64_t need) noexcept {
-        if (unlikely(claimed_ >= 0 || !items || n <= 0 || static_cast<uint32_t>(n) > Cap)) return 0;
+        if (unlikely(claimed_ >= 0 || !items || n <= 0 || static_cast<uint32_t>(n) > cap_)) return 0;
         const uint64_t pos = tail_.load(std::memory_order_relaxed);
         for (int i = 0; i < n; ++i) {
             if (unlikely(blocked(pos + static_cast<uint64_t>(i)))) return 0;
         }
         for (int i = 0; i < n; ++i) {
             const uint64_t at = pos + static_cast<uint64_t>(i);
-            if (i + 1 < n) prefetch_w(&slots_[(at + 1u) & kMask]);
+            if (i + 1 < n) prefetch_w(&slots_[(at + 1u) & mask_]);
             write_at(at, items[i], need);
         }
         tail_.store(pos + static_cast<uint64_t>(n), std::memory_order_release);
@@ -78,7 +90,7 @@ public:
     // Returns a pointer to the published body without copying. Valid until the slot is reused.
     PITLANE_HOT const T* view(uint64_t pos, unsigned reader, bool* fresh) const noexcept {
         if (unlikely(reader >= 64u || pos >= tail_.load(std::memory_order_acquire))) return nullptr;
-        const Slot& s = slots_[pos & kMask];
+        const Slot& s = slots_[pos & mask_];
         if (unlikely(s.state.load(std::memory_order_acquire) != 1u)) return nullptr;
         if (unlikely(s.seq != pos + 1u)) return nullptr;
         const uint64_t bit = 1ull << reader;
@@ -109,7 +121,7 @@ public:
 
     PITLANE_HOT bool ack(uint64_t pos, unsigned reader) noexcept {
         if (unlikely(reader >= 64u)) return false;
-        Slot& s = slots_[pos & kMask];
+        Slot& s = slots_[pos & mask_];
         if (unlikely(s.state.load(std::memory_order_acquire) != 1u || s.seq != pos + 1u)) return false;
         const uint64_t bit = 1ull << reader;
         if (s.need == 0) {
@@ -129,7 +141,7 @@ public:
         for (int i = 0; i < n; ++i) {
             if (unlikely(pos > UINT64_MAX - static_cast<uint64_t>(i))) break;
             const uint64_t at = pos + static_cast<uint64_t>(i);
-            if (i + 1 < n) prefetch_w(&slots_[(at + 1u) & kMask]);
+            if (i + 1 < n) prefetch_w(&slots_[(at + 1u) & mask_]);
             if (unlikely(!ack(at, reader))) break;
             ++done;
         }
@@ -137,11 +149,9 @@ public:
     }
 
 private:
-    static constexpr uint32_t kMask = Cap - 1u;
-
     PITLANE_INLINE bool blocked(uint64_t pos) const noexcept {
-        if (likely(pos < Cap)) return false;
-        const Slot& s = slots_[pos & kMask];
+        if (likely(pos < cap_)) return false;
+        const Slot& s = slots_[pos & mask_];
         const uint64_t st = s.state.load(std::memory_order_acquire);
         if (unlikely(st != 1u)) return false;
         const uint64_t ack = s.ack.load(std::memory_order_acquire);
@@ -150,7 +160,7 @@ private:
     }
 
     PITLANE_INLINE void write_at(uint64_t pos, const T& item, uint64_t need) noexcept {
-        Slot& s = slots_[pos & kMask];
+        Slot& s = slots_[pos & mask_];
         s.state.store(0, std::memory_order_relaxed);
         s.ack.store(0, std::memory_order_relaxed);
         s.need = need;
@@ -169,6 +179,8 @@ private:
 
     Slot slots_[Cap];
     alignas(kCacheLine) std::atomic<uint64_t> tail_{0};
+    uint32_t cap_{Cap};
+    uint32_t mask_{Cap - 1u};
     int64_t claimed_{-1};
 };
 

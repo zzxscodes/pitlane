@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <new>
 #include <unistd.h>
 #include <sys/wait.h>
 
@@ -416,10 +417,55 @@ static void check_session() {
     pitlane::map_release(&map);
 }
 
+static void check_conf() {
+    pitlane::PitConf conf{};
+    pitlane::conf_defaults(conf);
+    expect(conf.intent_cap == pitlane::kIntentCap, "default intent");
+    conf.intent_cap = 1000;
+    conf.quote_cap = 3000;
+    conf.max_live = -1;
+    conf.query_engines = 9;
+    char hints[1024]{};
+    const int n = pitlane::conf_normalize(conf, hints, 1024);
+    expect(n >= 1 && conf.intent_cap == 512 && conf.quote_cap == pitlane::kQuoteCap, "normalize rings");
+    expect(conf.max_live == 0 && conf.query_engines == pitlane::QueryFold::kEngines, "normalize broker query");
+    expect(hints[0] != 0, "hints");
+
+    const char* path = "pitlane_test.conf";
+    FILE* f = std::fopen(path, "w");
+    expect(f != nullptr, "conf file");
+    if (f) {
+        std::fputs("[desk]\nintent_cap=256\nquote_cap=512\n\n[map]\nhugepage=0\nlock=\n", f);
+        std::fclose(f);
+    }
+    pitlane::PitConf loaded{};
+    expect(pitlane::conf_load(path, loaded), "load");
+    expect(loaded.intent_cap == 256 && loaded.quote_cap == 512 && loaded.map_hugepage == 0, "loaded values");
+    expect(loaded.map_lock == 1, "empty keeps default");
+    ::unlink(path);
+
+    pitlane::MapOpt mop = pitlane::conf_map_opt(loaded);
+    expect(mop.hugepage == 0 && mop.lock == 1, "map opt");
+
+    alignas(64) unsigned char raw[sizeof(pitlane::Desk)]{};
+    auto* desk = new (raw) pitlane::Desk();
+    loaded.intent_cap = 256;
+    loaded.report_cap = 256;
+    loaded.quote_cap = 512;
+    loaded.algo_cap = 128;
+    loaded.control_cap = 128;
+    loaded.pulse_cap = 128;
+    loaded.print_cap = 128;
+    loaded.query_cap = 128;
+    expect(pitlane::conf_normalize(loaded, nullptr, 0) >= 0, "norm again");
+    expect(pitlane::desk_apply_conf(*desk, loaded) && desk->intents.capacity() == 256, "desk tune");
+}
+
 int main() {
-    expect(pitlane::kVersionMajor == 2 && pitlane::kVersionMinor == 10 && pitlane::kVersionPatch == 0, "release");
-    expect(std::strcmp(pitlane::kVersion, "2.10.0") == 0, "release text");
+    expect(pitlane::kVersionMajor == 2 && pitlane::kVersionMinor == 11 && pitlane::kVersionPatch == 0, "release");
+    expect(std::strcmp(pitlane::kVersion, "2.11.0") == 0, "release text");
     expect(pitlane::kDeskVersion == 3, "desk layout");
+    check_conf();
     check_ring();
     check_batch();
     check_ids();

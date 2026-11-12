@@ -10,11 +10,45 @@ Include one header:
 
 Everything is in the namespace `pitlane`. Link `libpitlane.a`, or link the shared library with `-lpitlane`. The shared library's soname is `libpitlane.so.1`. The headers are the same for both.
 
-The release is `kVersion`, currently 2.10.0, also split into `kVersionMajor`, `kVersionMinor`, and `kVersionPatch`. `kDeskVersion` is the mapping-file layout and is currently 3. A new library release can leave the layout number where it is.
+The release is `kVersion`, currently 2.11.0, also split into `kVersionMajor`, `kVersionMinor`, and `kVersionPatch`. `kDeskVersion` is the mapping-file layout and is currently 3. A new library release can leave the layout number where it is.
+
+A browsable static site with a left-hand section list is generated into `doc/site/` (`python3 doc/gen_site.py`). Open `doc/site/index.html`. Startup settings are covered under **Startup configuration**.
 
 Headers live under `pitlane/desk/`, `pitlane/book/`, `pitlane/order/`, `pitlane/time/`, `pitlane/study/`, `pitlane/util/`, and `pitlane/host/`. `version.hpp` stays beside `pitlane.hpp`. The table below names the area in the path.
 
 Prices and quantities are integers. Timestamps are microseconds. A side value of 1 buys and 2 sells. Most calls report failure by a `false`, a negative count, or a `Why` other than `Why::None`. They do not throw for ordinary rejects. A full ring or a full queue fails the write and leaves the previous contents in place.
+
+## Startup configuration
+
+All tunables that the library accepts at process start live in an optional INI-like file (see `examples/pitlane.conf`). Defaults are the member initializers on `PitConf` in `desk/config.hpp`. Omit a key, or leave the value empty, to keep that default. Unknown keys are ignored. Hard parse errors (truncated line, non-numeric where a number is required) make `conf_load` return false.
+
+`conf_normalize` runs once after load. It clamps ring capacities to a power of two in `[2, compile-time Cap]`, restores compile-time-only sizes (`QueryFold`, `BrokerWatch::kCap`) with a hint, and writes one human-readable line per adjustment into a caller buffer. Print those lines at startup. The hot path never opens the file again.
+
+```cpp
+pitlane::PitConf conf{};
+if (!pitlane::conf_load("/etc/pitlane.conf", conf)) return 1;
+char hints[1024]{};
+if (pitlane::conf_normalize(conf, hints, sizeof hints) > 0) {
+    std::fputs(hints, stderr);
+}
+
+pitlane::MapOpt mop = pitlane::conf_map_opt(conf);
+pitlane::MapInfo map{};
+if (pitlane::map_create("desk.bin", pitlane::desk_bytes(), &map, mop) != 0) return 1;
+pitlane::Desk* desk = pitlane::desk_view(&map, 1);
+if (!desk) return 1;
+if (!pitlane::desk_apply_conf(*desk, conf)) return 1;  // FanRing::tune, empty desk only
+```
+
+`conf_map_opt` / `conf_arena_opt` / `conf_risk_caps` copy the normalized fields into the option structs used by map, arena, and risk helpers. `desk_apply_conf` calls `FanRing::tune` on each desk ring while the ring is still empty. Soft capacity never grows past the compile-time slot array; the on-disk `Desk` layout stays `kDeskVersion`.
+
+| Section | Keys (summary) |
+| --- | --- |
+| `[map]` | `hugepage`, `lock`, `prefault`, `numa_node`, `hugepage_dir` |
+| `[arena]` | `hugepage`, `lock`, `prefault`, `numa_node` |
+| `[desk]` | `intent_cap` … `query_cap`, `cash_cap`, `hold_cap` |
+| `[broker]` | `max_qty`, `max_notional`, `max_live`, `*_limit_us`, `watch_cap` (hint-only) |
+| `[query]` | `engines`, `accounts`, `queue`, `kinds` (hint-only; compile-time) |
 
 ## Open a shared desk
 
@@ -35,7 +69,7 @@ Another process attaches with `map_attach` and passes 0 to `desk_view` (same log
 
 ## Publish and read
 
-`Desk` contains eight rings: `intents`, `reports`, `quotes`, `algos`, `controls`, `pulses`, `prints`, and `queries`. Their capacities are `kIntentCap` 1024, `kReportCap` 1024, `kQuoteCap` 2048, `kAlgoCap` 256, `kControlCap` 256, `kPulseCap` 512, `kPrintCap` 512, and `kQueryCap` 256. Cash and positions occupy `cash` and `hold`, 256 rows each.
+`Desk` contains eight rings: `intents`, `reports`, `quotes`, `algos`, `controls`, `pulses`, `prints`, and `queries`. Their compile-time capacities are `kIntentCap` 1024, `kReportCap` 1024, `kQuoteCap` 2048, `kAlgoCap` 256, `kControlCap` 256, `kPulseCap` 512, `kPrintCap` 512, and `kQueryCap` 256. Soft capacity after `desk_apply_conf` / `FanRing::tune` is at most that size and is reported by `capacity()`. Cash and positions occupy `cash` and `hold`, 256 rows each.
 
 `publish` takes the message and a reader mask. A mask of 0 means the first reader to acknowledge the slot claims it. Any other mask lists the readers that must acknowledge before the slot can be reused. Reader numbers are 0 through 63. The session loop is reader 7, `kLoopReader`.
 
@@ -330,6 +364,7 @@ These calls do not open a socket, do not send an order, and do not start a threa
 | `desk/broker.hpp` | `BrokerWatch`, `QueryFold`, and `QueryWant` |
 | `desk/risk.hpp` | `risk_merge` and `AcctRiskTab` |
 | `desk/cash.hpp` | Cash/hold boards and `cash_enough` |
+| `desk/config.hpp` | Startup `PitConf` load, normalize, and apply |
 | `desk/codec.hpp` | Symbol class, offset, and direction |
 | `desk/feed.hpp` | Subscription mask, price scale, and raw ticks |
 | `desk/ids.hpp` | `IdMint` |

@@ -10,11 +10,45 @@
 
 所有名字都在命名空间 `pitlane` 里。链接 `libpitlane.a`，或者用 `-lpitlane` 链接动态库。动态库的 soname 是 `libpitlane.so.1`。两种链接方式使用同一套头文件。
 
-发行版本是 `kVersion`，当前是 2.10.0，并拆成 `kVersionMajor`、`kVersionMinor` 和 `kVersionPatch`。`kDeskVersion` 是映射文件的布局版本，当前是 3。库的一次新发行可以保持布局版本不动。
+发行版本是 `kVersion`，当前是 2.11.0，并拆成 `kVersionMajor`、`kVersionMinor` 和 `kVersionPatch`。`kDeskVersion` 是映射文件的布局版本，当前是 3。库的一次新发行可以保持布局版本不动。
+
+带左侧分节导航的静态网页在 `doc/site/`（`python3 doc/gen_site.py` 生成）。打开 `doc/site/index.html`。启动期设置见 **启动配置**。
 
 头文件分在 `pitlane/desk/`、`pitlane/book/`、`pitlane/order/`、`pitlane/time/`、`pitlane/study/`、`pitlane/util/` 和 `pitlane/host/` 下面。`version.hpp` 与 `pitlane.hpp` 同一层。下面的表在路径里写了区域。
 
 价格和数量是整数。时间是微秒。方向 1 是买入，2 是卖出。普通拒绝通过 `false`、负数，或不是 `Why::None` 的 `Why` 表示。这些情况不抛异常。环或队列写满时，这次写入失败，已有内容保持不变。
+
+## 启动配置
+
+库在进程启动时接受的可调项，都放在可选的 INI 风格文件里（见 `examples/pitlane.conf`）。默认值是 `desk/config.hpp` 里 `PitConf` 的成员初值。省略某个键，或把值留空，就保留该默认值。未知键忽略。硬解析错误（截断行、该写数字却写了别的）时 `conf_load` 返回 false。
+
+`conf_normalize` 在加载后只跑一次。它把环容量压到 `[2, 编译期 Cap]` 内的 2 的幂，把仅编译期定长的尺寸（`QueryFold`、`BrokerWatch::kCap`）恢复并写提示，并把每条调整写成一行可读文字放进调用方缓冲。启动时打印这些行。热路径不再打开配置文件。
+
+```cpp
+pitlane::PitConf conf{};
+if (!pitlane::conf_load("/etc/pitlane.conf", conf)) return 1;
+char hints[1024]{};
+if (pitlane::conf_normalize(conf, hints, sizeof hints) > 0) {
+    std::fputs(hints, stderr);
+}
+
+pitlane::MapOpt mop = pitlane::conf_map_opt(conf);
+pitlane::MapInfo map{};
+if (pitlane::map_create("desk.bin", pitlane::desk_bytes(), &map, mop) != 0) return 1;
+pitlane::Desk* desk = pitlane::desk_view(&map, 1);
+if (!desk) return 1;
+if (!pitlane::desk_apply_conf(*desk, conf)) return 1;  // FanRing::tune，仅空环
+```
+
+`conf_map_opt` / `conf_arena_opt` / `conf_risk_caps` 把纠偏后的字段拷进映射、arena 与风控用的选项结构。`desk_apply_conf` 在环仍为空时对每条 desk 环调用 `FanRing::tune`。软容量不会超过编译期槽数组；磁盘上的 `Desk` 布局仍是 `kDeskVersion`。
+
+| 节 | 键（摘要） |
+| --- | --- |
+| `[map]` | `hugepage`、`lock`、`prefault`、`numa_node`、`hugepage_dir` |
+| `[arena]` | `hugepage`、`lock`、`prefault`、`numa_node` |
+| `[desk]` | `intent_cap` … `query_cap`、`cash_cap`、`hold_cap` |
+| `[broker]` | `max_qty`、`max_notional`、`max_live`、`*_limit_us`、`watch_cap`（仅提示） |
+| `[query]` | `engines`、`accounts`、`queue`、`kinds`（仅提示；编译期定长） |
 
 ## 打开共享区
 
@@ -35,7 +69,7 @@ if (!desk) return 1;
 
 ## 发布和读取
 
-`Desk` 有八条环：`intents`、`reports`、`quotes`、`algos`、`controls`、`pulses`、`prints` 和 `queries`。容量分别是 `kIntentCap` 1024、`kReportCap` 1024、`kQuoteCap` 2048、`kAlgoCap` 256、`kControlCap` 256、`kPulseCap` 512、`kPrintCap` 512 和 `kQueryCap` 256。资金和持仓在 `cash` 和 `hold` 里，各 256 行。
+`Desk` 有八条环：`intents`、`reports`、`quotes`、`algos`、`controls`、`pulses`、`prints` 和 `queries`。编译期容量分别是 `kIntentCap` 1024、`kReportCap` 1024、`kQuoteCap` 2048、`kAlgoCap` 256、`kControlCap` 256、`kPulseCap` 512、`kPrintCap` 512 和 `kQueryCap` 256。经 `desk_apply_conf` / `FanRing::tune` 后的软容量不超过该上限，由 `capacity()` 报告。资金和持仓在 `cash` 和 `hold` 里，各 256 行。
 
 `publish` 接收一条消息和一个读者掩码。掩码为 0 时，第一个确认的读者取走这个槽。其他掩码列出必须确认的读者，这些读者都确认之后槽才能再次使用。读者编号从 0 到 63。会话循环是读者 7，也就是 `kLoopReader`。
 
@@ -330,6 +364,7 @@ book.apply(edits, 1);
 | `desk/broker.hpp` | `BrokerWatch`、`QueryFold` 与 `QueryWant` |
 | `desk/risk.hpp` | `risk_merge` 与 `AcctRiskTab` |
 | `desk/cash.hpp` | 资金/持仓板与 `cash_enough` |
+| `desk/config.hpp` | 启动期 `PitConf` 加载、纠偏与应用 |
 | `desk/codec.hpp` | 品种、开平和方向 |
 | `desk/feed.hpp` | 订阅掩码、价格缩放和原始行情 |
 | `desk/ids.hpp` | `IdMint` |

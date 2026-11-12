@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Caller-owned helpers — pitlane API</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="side">
+    <h1>pitlane API</h1>
+    <div class="lang">
+      <a href="#" class="active">English</a>
+      <a href="../zh/调用方自己保管的辅助函数.html">中文</a>
+    </div>
+    <nav>
+      <a href="index.html">Overview</a><a href="startup-configuration.html">Startup configuration</a><a href="open-a-shared-desk.html">Open a shared desk</a><a href="publish-and-read.html">Publish and read</a><a href="run-the-session-loop.html">Run the session loop</a><a href="prepare-an-order.html">Prepare an order</a><a href="match-on-the-paper-venue.html">Match on the paper venue</a><a href="names-signals-and-the-counter.html">Names, signals, and the counter</a><a href="helpers.html">Helpers</a><a href="caller-owned-helpers.html" class="active">Caller-owned helpers</a><a href="frames-pacing-and-snapshots.html">Frames, pacing, and snapshots</a><a href="cycles-and-fixed-low-latency-tables.html">Cycles and fixed low-latency tables</a><a href="one-order-sheet.html">One order sheet</a><a href="research-and-a-caller-decision.html">Research and a caller decision</a><a href="a-price-window-a-slot-pool-and-two-charges.html">A price window, a slot pool, and two charges</a><a href="where-the-calls-live.html">Where the calls live</a>
+    </nav>
+  </aside>
+  <main class="main">
+    <div class="meta">Static API guide · open a section from the left</div>
+    <h1>Caller-owned helpers</h1>
+<p>These calls do not attach to the desk. The caller keeps the storage, passes the numbers, and decides what to do with the result.</p>
+<p><code>IdSlip::issue</code> returns the next id. <code>undo</code> returns that id only while it is still the latest one and <code>keep</code> has not been called. <code>WireMold::seal</code> copies a prefix into the caller&#x27;s buffer. <code>put_u64</code> and <code>put_i64</code> write little-endian bytes at an offset inside that prefix. <code>read_block</code> accepts a block at least <code>know</code> bytes long and rejects a shorter one. <code>block_end</code> steps past the declared block, including bytes this build does not read.</p>
+<p><code>StayShed::drop</code> uses the caller&#x27;s time unit. A stay below the target clears drop mode. The first stay at or above the target starts the window and is kept. After the window, a late item is dropped. A stay below the target leaves drop mode.</p>
+<p><code>floor_chunk</code> moves a negative tick away from zero to the block start. <code>ChunkMap&lt;Ticks,Blocks&gt;</code> keeps quantity in blocks of <code>Ticks</code> prices, with at most <code>Blocks</code> blocks. <code>Ticks</code> is 8 to 256 and a multiple of 64. <code>Blocks</code> is 1 to 64. A quantity of 0 clears a tick. A new block is taken only for a positive quantity. A full directory fails and leaves the old quantities in place. <code>chain_link</code> appends a caller-owned node and returns a slot plus its reuse count. <code>chain_unlink</code> fails when the reuse count does not match. <code>chain_zero</code> leaves the node linked with quantity 0. <code>chain_take</code> reduces that quantity.</p>
+<p><code>ticket_pull</code> and <code>ticket_amend</code> run only from <code>Working</code> or <code>Partial</code>. Each one stores the previous ticket and bumps the revision. <code>ticket_rewind</code> restores that snapshot only while the revision is still the one written by the command. <code>ticket_fill</code> also bumps the revision, so a fill blocks a pending rewind. A fill during <code>PullWait</code> stays in <code>PullWait</code>.</p>
+<p><code>slice_open</code> divides a parent quantity by the number of intervals in the horizon, at most one million cuts. When one cut would be below the lot and the total still covers one lot, the plan becomes a single cut. The last cut receives the remainder. <code>slice_poll</code> waits until the due time. <code>slice_restore</code> returns an unfinished child to the pool. <code>slice_late</code> adds the fill, takes what it can from the pool, and returns how much was removed from children already scheduled. <code>basket_make</code> accepts <code>Create</code>, <code>Pause</code>, <code>Resume</code>, <code>Stop</code>, and <code>Update</code>. The kind is at most 15 characters. A byte count above <code>max_bytes</code> fails. The payload itself is not stored.</p>
+<p><code>recon_fill</code> applies one venue fill id once. An unknown order is built from <code>size</code> and reported as an acknowledgement, then a fill. Quantity past the order increments <code>over</code> and is not added to <code>filled</code>. A repeated id emits <code>Dup</code> and does not change the order. <code>recon_cancel</code> marks a known, unfinished order cancelled.</p>
+<p><code>FlightQueue&lt;Cap&gt;</code> holds 2 to 64 commands, ordered by due time. <code>push</code> fails when the queue is full, or when the tag or the instrument is 0. <code>take</code> removes only commands for that instrument whose due time has arrived.</p>
+<p><code>BarFold</code> ignores a tick the caller marks as not tradable, a non-positive price, a negative quantity, or a negative timestamp. The bucket is the timestamp minus its remainder modulo the span. A later bucket closes the current bar. An older tick is rejected and the bar stays. Empty spans are not created. <code>seal</code> emits the bar that is still open.</p>
+<p><code>act_mul</code> uses <code>jump_den / jump_num</code> as the price multiplier. A cash dividend changes that factor only when <code>income</code> is set, and only when the previous close is above the dividend. <code>mul_fold</code> multiplies actions whose <code>ymd</code> is at or before the as-of date. <code>scale_px</code> truncates toward zero. <code>traded_move</code> returns the price change after the raw jump is removed. A 1-into-2 split uses jump <code>1/2</code>. When the ex price is exactly half of the previous close, the traded move is 0.</p>
+  </main>
+</div>
+</body>
+</html>

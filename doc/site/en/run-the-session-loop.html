@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Run the session loop — pitlane API</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="side">
+    <h1>pitlane API</h1>
+    <div class="lang">
+      <a href="#" class="active">English</a>
+      <a href="../zh/跑会话循环.html">中文</a>
+    </div>
+    <nav>
+      <a href="index.html">Overview</a><a href="startup-configuration.html">Startup configuration</a><a href="open-a-shared-desk.html">Open a shared desk</a><a href="publish-and-read.html">Publish and read</a><a href="run-the-session-loop.html" class="active">Run the session loop</a><a href="prepare-an-order.html">Prepare an order</a><a href="match-on-the-paper-venue.html">Match on the paper venue</a><a href="names-signals-and-the-counter.html">Names, signals, and the counter</a><a href="helpers.html">Helpers</a><a href="caller-owned-helpers.html">Caller-owned helpers</a><a href="frames-pacing-and-snapshots.html">Frames, pacing, and snapshots</a><a href="cycles-and-fixed-low-latency-tables.html">Cycles and fixed low-latency tables</a><a href="one-order-sheet.html">One order sheet</a><a href="research-and-a-caller-decision.html">Research and a caller decision</a><a href="a-price-window-a-slot-pool-and-two-charges.html">A price window, a slot pool, and two charges</a><a href="where-the-calls-live.html">Where the calls live</a>
+    </nav>
+  </aside>
+  <main class="main">
+    <div class="meta">Static API guide · open a section from the left</div>
+    <h1>Run the session loop</h1>
+<p><code>DeskLoop</code> drains the rings as reader 7, fires timers, and stops when it sees a control message whose <code>kind</code> is 1. <code>beat</code> returns immediately once the loop has stopped. A timer id of 0 is rejected. A timer with <code>every_us</code> of 0 fires once. There are 32 timer slots.</p>
+<pre><code class="language-cpp">
+void on_quote(void*, const pitlane::Quote&amp;) {}
+
+pitlane::DeskLoop loop;
+loop.add_timer(1, /*when_us=*/1000, /*every_us=*/0);
+pitlane::LoopHooks hooks{};
+hooks.on_quote = on_quote;
+loop.beat(*desk, /*now_us=*/1000, hooks);
+</code></pre>
+<p>The hooks are function pointers: <code>on_quote</code>, <code>on_report</code>, <code>on_pulse</code>, <code>on_print</code>, <code>on_algo</code>, <code>on_query</code>, <code>on_control</code>, and <code>on_timer</code>. Only the hooks you set are called. Messages published for this loop must include reader bit 7, or use a mask of 0.</p>
+  </main>
+</div>
+</body>
+</html>

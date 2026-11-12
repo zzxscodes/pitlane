@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Prepare an order — pitlane API</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="side">
+    <h1>pitlane API</h1>
+    <div class="lang">
+      <a href="#" class="active">English</a>
+      <a href="../zh/准备一张委托.html">中文</a>
+    </div>
+    <nav>
+      <a href="index.html">Overview</a><a href="startup-configuration.html">Startup configuration</a><a href="open-a-shared-desk.html">Open a shared desk</a><a href="publish-and-read.html">Publish and read</a><a href="run-the-session-loop.html">Run the session loop</a><a href="prepare-an-order.html" class="active">Prepare an order</a><a href="match-on-the-paper-venue.html">Match on the paper venue</a><a href="names-signals-and-the-counter.html">Names, signals, and the counter</a><a href="helpers.html">Helpers</a><a href="caller-owned-helpers.html">Caller-owned helpers</a><a href="frames-pacing-and-snapshots.html">Frames, pacing, and snapshots</a><a href="cycles-and-fixed-low-latency-tables.html">Cycles and fixed low-latency tables</a><a href="one-order-sheet.html">One order sheet</a><a href="research-and-a-caller-decision.html">Research and a caller decision</a><a href="a-price-window-a-slot-pool-and-two-charges.html">A price window, a slot pool, and two charges</a><a href="where-the-calls-live.html">Where the calls live</a>
+    </nav>
+  </aside>
+  <main class="main">
+    <div class="meta">Static API guide · open a section from the left</div>
+    <h1>Prepare an order</h1>
+<p><code>IdMint</code> builds a restart-safe id. The fields are site, kind, the last digit of the trading day, a ten-second slot, and a serial number, packed into one 64-bit integer. The kind is defined by the caller.</p>
+<pre><code class="language-cpp">
+pitlane::IdMint mint(/*site=*/1, /*kind=*/1);
+uint64_t tag = mint.next(/*day_index=*/4, /*sec_of_day=*/10 * 3600);
+</code></pre>
+<p><code>normalize_gate</code> fixes offset and direction before an order is stored. Cash products are forced to open. On SHFE and INE a plain close becomes close-yesterday. On the other futures exchanges, close-today and close-yesterday become a plain close. Wire sides 0, 2, 5, and 6 are long. Wire sides 1, 3, 4, and 7 are short. A limit price of 0 is rejected. <code>Why</code> on the result says why.</p>
+<pre><code class="language-cpp">
+pitlane::GateForm form{};
+std::snprintf(form.symbol, sizeof form.symbol, &quot;rb2410.SHF&quot;);
+form.side = static_cast&lt;uint8_t&gt;(pitlane::Side::Sell);
+form.off = static_cast&lt;int8_t&gt;(pitlane::Off::Close);
+form.px_mode = static_cast&lt;int8_t&gt;(pitlane::PxMode::Limit);
+form.px = 3500;
+form.qty = 2;
+pitlane::GateResult gate = pitlane::normalize_gate(form);
+</code></pre>
+<p><code>split_lots</code> turns one futures quantity into slices. The modes are <code>TodayThenYdayThenOpen</code>, <code>CloseOnly</code>, and <code>YdayThenStop</code>. Any other mode returns -1. A slice above the maximum lot is cut, and a slice below the minimum lot is dropped.</p>
+<p><code>commodity_plan</code> and <code>index_plan</code> each return one next order toward a target. Where today and yesterday are split, yesterday is closed first. <code>index_plan</code> uses yesterday equal to position minus quantity opened today. <code>plan_px</code> uses the ask for a buy and the bid for a sell.</p>
+<p><code>lock_future</code> and <code>lock_cash_sell</code> freeze the quantity a close or a stock sell needs. <code>book_fill</code> applies a fill back onto today, yesterday, and the total.</p>
+  </main>
+</div>
+</body>
+</html>

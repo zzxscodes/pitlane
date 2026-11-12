@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Research and a caller decision — pitlane API</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="side">
+    <h1>pitlane API</h1>
+    <div class="lang">
+      <a href="#" class="active">English</a>
+      <a href="../zh/研究-以及调用方自己的决定.html">中文</a>
+    </div>
+    <nav>
+      <a href="index.html">Overview</a><a href="startup-configuration.html">Startup configuration</a><a href="open-a-shared-desk.html">Open a shared desk</a><a href="publish-and-read.html">Publish and read</a><a href="run-the-session-loop.html">Run the session loop</a><a href="prepare-an-order.html">Prepare an order</a><a href="match-on-the-paper-venue.html">Match on the paper venue</a><a href="names-signals-and-the-counter.html">Names, signals, and the counter</a><a href="helpers.html">Helpers</a><a href="caller-owned-helpers.html">Caller-owned helpers</a><a href="frames-pacing-and-snapshots.html">Frames, pacing, and snapshots</a><a href="cycles-and-fixed-low-latency-tables.html">Cycles and fixed low-latency tables</a><a href="one-order-sheet.html">One order sheet</a><a href="research-and-a-caller-decision.html" class="active">Research and a caller decision</a><a href="a-price-window-a-slot-pool-and-two-charges.html">A price window, a slot pool, and two charges</a><a href="where-the-calls-live.html">Where the calls live</a>
+    </nav>
+  </aside>
+  <main class="main">
+    <div class="meta">Static API guide · open a section from the left</div>
+    <h1>Research and a caller decision</h1>
+<p><code>feat_of</code> reads the top of a book the caller already holds. It returns the spread, the mid, the imbalance, and a microprice. The microprice weights each price by the size on the other side and divides with a wide product, so the quotient is a whole price. A book with no size on either side uses the mid. A bid that is missing, or an ask below the bid, is refused.</p>
+<p><code>horizon_ticks</code> turns up to four later prices into whole ticks, truncated toward zero. A negative later price is unset and is written as zero, which is also the result of a flat move. The caller knows which horizons were filled. A buy gains when the later price is higher. A sell gains when it is lower.</p>
+<p><code>RelBook</code> stores one underlying for each name, up to 64 names. A later bind for the same name replaces the underlying. <code>related</code> copies the names that point at one underlying until the buffer is full. <code>FactorBoard</code> stores four latest values for each of 64 names. A later put replaces that slot. <code>Replay</code> walks a table the caller already holds. It does not open a file.</p>
+<p><code>study_step</code> applies one quote batch, then fills the feature from the new top. The book is updated before the feature is judged. A null choice, or a choice that returns false, leaves the sheet unchanged. A choice that returns an order is checked with <code>gate_ask</code> when a gate is present, and then staged on the sheet when a sheet is present. A refused order leaves the sheet unchanged. A local id of zero is refused when a sheet is present. The call does not send the order. The function the caller passes is the place a strategy is written. The library does not choose the side or the price.</p>
+  </main>
+</div>
+</body>
+</html>

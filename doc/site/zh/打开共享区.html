@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>打开共享区 — pitlane API</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="side">
+    <h1>pitlane API</h1>
+    <div class="lang">
+      <a href="../en/open-a-shared-desk.html">English</a>
+      <a href="#" class="active">中文</a>
+    </div>
+    <nav>
+      <a href="index.html">概述</a><a href="启动配置.html">启动配置</a><a href="打开共享区.html" class="active">打开共享区</a><a href="发布和读取.html">发布和读取</a><a href="跑会话循环.html">跑会话循环</a><a href="准备一张委托.html">准备一张委托</a><a href="在纸面场所撮合.html">在纸面场所撮合</a><a href="合约-信号和柜台.html">合约、信号和柜台</a><a href="辅助函数.html">辅助函数</a><a href="调用方自己保管的辅助函数.html">调用方自己保管的辅助函数</a><a href="组帧-节奏和快照.html">组帧、节奏和快照</a><a href="周期计数和定长低延迟表.html">周期计数和定长低延迟表</a><a href="一张委托单.html">一张委托单</a><a href="研究-以及调用方自己的决定.html">研究，以及调用方自己的决定</a><a href="价格窗口-槽池和两笔费用.html">价格窗口、槽池和两笔费用</a><a href="调用所在的头文件.html">调用所在的头文件</a>
+    </nav>
+  </aside>
+  <main class="main">
+    <div class="meta">Static API guide · open a section from the left</div>
+    <h1>打开共享区</h1>
+<p>一块文件映射就是整个工作区。写入进程创建它，其他进程挂到同一路径。</p>
+<pre><code class="language-cpp">
+pitlane::MapInfo map{};
+if (pitlane::map_create(&quot;desk.bin&quot;, pitlane::desk_bytes(), &amp;map) != 0) return 1;
+pitlane::Desk* desk = pitlane::desk_view(&amp;map, 1);
+if (!desk) return 1;
+</code></pre>
+<p><code>map_create</code> 创建或扩展文件，不会清掉已经存在的映射。默认 <code>MapOpt</code> 走显式大页：长度按 Hugepagesize 对齐，优先在 hugetlbfs（默认 <code>/dev/hugepages</code>，逻辑名映射为 <code>pitlane_&lt;基名&gt;</code>）建文件；路径本身已在 hugetlbfs 上则直接使用。不用 THP / <code>MADV_HUGEPAGE</code>。显式大页不可用时回退到调用方路径并置 <code>MapInfo::fallback</code>。默认尝试 <code>mlock</code>，<code>numa_node &gt;= 0</code> 时对该区间做 <code>MPOL_BIND</code>。只有魔数是 <code>PITLANE1</code> 且布局版本是 <code>kDeskVersion</code> 时，<code>desk_view</code> 才返回工作区。当前布局版本是 3。第二个参数非 0 时，才会初始化一份仍然空白的文件。魔数不对的文件保持原样，调用返回空指针。魔数写上以后不要再次初始化。</p>
+<p>其他进程用 <code>map_attach</code> 挂上，再把 0 传给 <code>desk_view</code>（须与创建时同一逻辑路径，以便解析到同一 hugetlbfs 文件）。<code>map_release</code> 解除映射；若曾 <code>mlock</code> 则先 <code>munlock</code>，再关闭文件。每条环只有一个写入者。读者不要共用一个读取位置。</p>
+<p><code>desk-&gt;clock_us</code> 是会话时钟，单位是微秒。<code>DeskLoop::beat</code> 把当次传入的时间写到这里。</p>
+  </main>
+</div>
+</body>
+</html>
