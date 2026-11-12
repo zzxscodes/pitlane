@@ -19,6 +19,12 @@
 #include <immintrin.h>
 #endif
 
+#if defined(__GNUC__) && !defined(__clang__)
+#define PITLANE_IVDEP _Pragma("GCC ivdep")
+#else
+#define PITLANE_IVDEP
+#endif
+
 namespace pitlane {
 
 #if defined(__AVX2__)
@@ -45,12 +51,12 @@ PITLANE_HOT inline void zero_i64(int64_t* __restrict dst, int n) noexcept {
 #if defined(__AVX2__)
     const __m256i z256 = _mm256_setzero_si256();
     if (aligned32(dst)) {
-#pragma GCC ivdep
+PITLANE_IVDEP
         for (; i + 3 < n; i += 4) {
             _mm256_store_si256(reinterpret_cast<__m256i*>(dst + i), z256);
         }
     } else {
-#pragma GCC ivdep
+PITLANE_IVDEP
         for (; i + 3 < n; i += 4) {
             _mm256_storeu_si256(reinterpret_cast<__m256i*>(dst + i), z256);
         }
@@ -62,18 +68,18 @@ PITLANE_HOT inline void zero_i64(int64_t* __restrict dst, int n) noexcept {
 #if defined(__SSE2__)
     const __m128i z = _mm_setzero_si128();
     if (aligned16(dst)) {
-#pragma GCC ivdep
+PITLANE_IVDEP
         for (; i + 1 < n; i += 2) {
             _mm_store_si128(reinterpret_cast<__m128i*>(dst + i), z);
         }
     } else {
-#pragma GCC ivdep
+PITLANE_IVDEP
         for (; i + 1 < n; i += 2) {
             _mm_storeu_si128(reinterpret_cast<__m128i*>(dst + i), z);
         }
     }
 #endif
-#pragma GCC ivdep
+PITLANE_IVDEP
     for (; i + 3 < n; i += kUnroll4) {
         dst[i] = 0;
         dst[i + 1] = 0;
@@ -95,7 +101,7 @@ PITLANE_HOT inline void zero_i64_stream(int64_t* __restrict dst, int n) noexcept
     if (aligned16(dst) && n >= 16) {
         const __m128i z = _mm_setzero_si128();
         int i = 0;
-#pragma GCC ivdep
+PITLANE_IVDEP
         for (; i + 1 < n; i += 2) {
             _mm_stream_si128(reinterpret_cast<__m128i*>(dst + i), z);
         }
@@ -128,7 +134,7 @@ PITLANE_HOT inline void copy_bytes(void* __restrict dst, const void* __restrict 
     const auto* s = static_cast<const unsigned char*>(src);
     std::size_t i = 0;
 #if defined(__AVX2__)
-#pragma GCC ivdep
+PITLANE_IVDEP
     for (; i + 32 <= n; i += 32) {
         const __m256i v = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(s + i));
         _mm256_storeu_si256(reinterpret_cast<__m256i*>(d + i), v);
@@ -138,13 +144,13 @@ PITLANE_HOT inline void copy_bytes(void* __restrict dst, const void* __restrict 
 #endif
 #endif
 #if defined(__SSE2__)
-#pragma GCC ivdep
+PITLANE_IVDEP
     for (; i + 16 <= n; i += 16) {
         const __m128i v = _mm_loadu_si128(reinterpret_cast<const __m128i*>(s + i));
         _mm_storeu_si128(reinterpret_cast<__m128i*>(d + i), v);
     }
 #endif
-#pragma GCC ivdep
+PITLANE_IVDEP
     for (; i + 4 <= n; i += 4) {
         d[i] = s[i];
         d[i + 1] = s[i + 1];

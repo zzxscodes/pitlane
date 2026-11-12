@@ -50,9 +50,7 @@ inline int numa_node_of_cpu(int cpu) noexcept {
     if (std::snprintf(path, sizeof path, "/sys/devices/system/cpu/cpu%d", cpu) >= static_cast<int>(sizeof path)) {
         return -1;
     }
-    // Resolve cpuN/node* symlink directory entries.
-    char link[256];
-    if (std::snprintf(link, sizeof link, "%s/node%%d", path) >= static_cast<int>(sizeof link)) return -1;
+    // Probe cpuN/node* directory entries under sysfs.
     for (int n = 0; n < 64; ++n) {
         char node_path[192];
         if (std::snprintf(node_path, sizeof node_path, "%s/node%d", path, n) >= static_cast<int>(sizeof node_path)) {
