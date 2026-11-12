@@ -63,7 +63,16 @@ if (!pitlane::desk_apply_conf(*desk, conf)) return 1;  // FanRing::tune，仅空
 <td><code>[query]</code></td>
 <td><code>engines</code>、<code>accounts</code>、<code>queue</code>、<code>kinds</code>（仅提示；编译期定长）</td>
 </tr>
+<tr>
+<td><code>[host]</code></td>
+<td><code>cpu</code>、<code>policy</code>、<code>priority</code>、<code>nice</code> / <code>set_nice</code>、<code>hugepages</code>、<code>thp_disable</code>、<code>mlockall</code>、<code>numa_node</code>、<code>irq_list</code></td>
+</tr>
+<tr>
+<td><code>[shed]</code> / <code>[pace]</code></td>
+<td>StayShed / TokenBook–GCRA 默认值，由调用方构造</td>
+</tr>
 </tbody></table>
+<p><code>conf_load_ex</code> 回报失败行号（从 1 起）。<code>conf_apply_host</code> 尽最大努力。<code>cash_apply_conf</code> / <code>hold_apply_conf</code> 软调行表上限。</p>
   </main>
 </div>
 </body>

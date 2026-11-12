@@ -1,6 +1,7 @@
 #pragma once
 
 #include "pitlane/desk/broker.hpp"
+#include "pitlane/desk/cash.hpp"
 #include "pitlane/desk/region.hpp"
 #include "pitlane/util/arena.hpp"
 #include "pitlane/util/hint.hpp"
@@ -29,8 +30,7 @@ struct PitConf {
     uint8_t arena_prefault{1};
     int8_t arena_numa_node{-1};
 
-    // [desk] ring / row caps — must be powers of two where rings require it;
-    // values above compile-time maxima are clamped down.
+    // [desk] ring / row caps
     uint32_t intent_cap{kIntentCap};
     uint32_t report_cap{kReportCap};
     uint32_t quote_cap{kQuoteCap};
@@ -42,39 +42,63 @@ struct PitConf {
     uint32_t cash_cap{kCashCap};
     uint32_t hold_cap{kHoldCap};
 
-    // [broker] soft limits (0 = axis off), used as RiskCaps / expire defaults
+    // [broker]
     int64_t max_qty{0};
     int64_t max_notional{0};
     int max_live{0};
     int64_t ack_limit_us{0};
     int64_t life_limit_us{0};
     int64_t pull_limit_us{0};
+    int broker_watch_cap{BrokerWatch::kCap};
 
-    // [query] informational — compile-time QueryFold sizes; mismatch only warns
+    // [query] compile-time informational
     uint32_t query_engines{QueryFold::kEngines};
     uint32_t query_accounts{QueryFold::kAccounts};
     uint32_t query_queue{QueryFold::kQueue};
     uint32_t query_kinds{QueryFold::kKinds};
 
-    // [broker_watch]
-    int broker_watch_cap{BrokerWatch::kCap};
+    // [host] applied once via conf_apply_host (best-effort; may need privileges)
+    int host_cpu{-1};             // pin calling thread; <0 skip
+    int host_policy{0};           // 0=skip, 1=FIFO, 2=RR
+    int host_priority{0};         // SCHED_* priority when policy set
+    int host_nice{0};             // set only when host_set_nice=1
+    uint8_t host_set_nice{0};
+    int64_t host_hugepages{-1};   // nr_hugepages ensure; <0 skip
+    uint8_t host_thp_disable{0};  // 1 → thp_disable()
+    uint8_t host_mlockall{0};     // 1 → mem_lock_all()
+    int host_numa_node{-1};       // informational / for map default; -1 skip
+    char host_irq_list[96]{};     // empty skip; else written to chosen irq via conf (caller supplies irq)
+
+    // [shed] StayShed defaults (caller constructs StayShed with these)
+    int64_t shed_target{0};
+    int64_t shed_window{0};
+
+    // [pace] TokenBook / Gcra defaults
+    int64_t pace_burst{0};
+    int64_t pace_rate{0};
+    int64_t pace_per{1};
+    int64_t pace_idle{0};
+    int64_t gcra_interval{0};
+    int64_t gcra_tolerance{0};
 };
 
-// Fills conf with built-in defaults (same as struct member initializers).
 void conf_defaults(PitConf& conf) noexcept;
 
-// Load key=value / [section] file. Missing file or empty path leaves defaults.
-// Returns false only on hard parse failure (truncated buffer, forbidden control chars).
+// err_line receives 1-based line on hard failure when non-null.
 bool conf_load(const char* path, PitConf& conf) noexcept;
+bool conf_load_ex(const char* path, PitConf& conf, int* err_line) noexcept;
 
-// Clamp / round to safe values. Appends hint lines into hints (cap bytes). Returns hint count.
 int conf_normalize(PitConf& conf, char* hints, int hints_cap) noexcept;
 
 MapOpt conf_map_opt(const PitConf& conf) noexcept;
 ArenaOpt conf_arena_opt(const PitConf& conf) noexcept;
 RiskCaps conf_risk_caps(const PitConf& conf) noexcept;
 
-// Apply desk ring soft capacities (startup only, empty desk). Returns false if tune fails.
 bool desk_apply_conf(Desk& desk, const PitConf& conf) noexcept;
+bool cash_apply_conf(CashBoard& board, const PitConf& conf) noexcept;
+bool hold_apply_conf(HoldBoard& board, const PitConf& conf) noexcept;
+
+// Best-effort host apply. Returns number of successful actions; writes hints for skips/fails.
+int conf_apply_host(const PitConf& conf, char* hints, int hints_cap) noexcept;
 
 }  // namespace pitlane

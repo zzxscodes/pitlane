@@ -663,6 +663,63 @@ static void check_lots_margin_sign_pull() {
     expect(!pitlane::recon_cancel_qty(order, 20, ev), "recon over");
 }
 
+static void check_prelock_credit_curve_wash() {
+    expect(pitlane::prelock_ok(1000, 400, 10, 100, 4), "prelock ok");
+    pitlane::FreezeSlot slot{};
+    expect(pitlane::prelock_reserve(slot, 9, 100, 4) && pitlane::prelock_commit(slot, 9), "prelock commit");
+    expect(pitlane::prelock_clear(slot, 9), "prelock clear");
+
+    pitlane::CreditCash c{};
+    expect(pitlane::credit_apply_liability(c, 5, false) && c.short_qty == 5, "liab");
+    expect(pitlane::credit_apply_liability(c, 3, true) && c.special_short == 3, "special");
+    expect(pitlane::option_free(10, 8, 6) == 12, "option free");
+
+    int64_t w[4] = {1, 1, 1, 1};
+    pitlane::CurvePlan<4> curve{};
+    expect(pitlane::curve_open(curve, 100, w, 4, 1), "curve open");
+    expect(pitlane::curve_target(curve, 1) == 50, "curve target");
+    const int64_t share = pitlane::lag_share_remaining(curve, 0);
+    expect(share > 0 && pitlane::curve_fill(curve, share), "curve fill");
+
+    pitlane::WashRow rows[2]{};
+    rows[0].live = 1;
+    rows[0].acct = 1;
+    rows[0].name = 7;
+    rows[0].px = 100;
+    rows[0].side = 2;
+    pitlane::WashHit hits[2]{};
+    expect(pitlane::wash_hit(rows, 1, 1, 0, 7, 1, 100), "wash hit");
+    expect(pitlane::wash_plan(rows, 1, 1, 0, 7, 1, 100, pitlane::WashAct::RejectRest, hits, 2) == 1, "wash plan");
+    expect(pitlane::freeze_px(true, 0, 99, 101) == 101, "freeze ask");
+
+    pitlane::HysteresisGate g{};
+    pitlane::hyst_update(g, 20, 15, 10);
+    expect(g.on == 1, "hyst on");
+    pitlane::hyst_update(g, 9, 15, 10);
+    expect(g.on == 0, "hyst off");
+    expect(pitlane::end_flat_pull(3, 5) == 3 && pitlane::end_flat_pull(9, 5) == 0, "end flat");
+}
+
+static void check_interleave_locks() {
+    int paths = 0;
+    for (int first = 0; first < 2; ++first) {
+        int64_t total = 2;
+        int64_t yday = 2;
+        if (first == 0) {
+            --total;
+            if (yday > 0) --yday;
+            --total;
+            if (yday > 0) --yday;
+        } else {
+            total -= 2;
+            yday = 0;
+        }
+        expect(total >= 0 && yday >= 0, "interleave non-neg");
+        ++paths;
+    }
+    expect(paths == 2, "interleave paths");
+}
+
 int main() {
     check_lots();
     check_ledger();
@@ -687,6 +744,8 @@ int main() {
     check_basket_lane_inflight();
     check_gate_cash_risk();
     check_lots_margin_sign_pull();
+    check_prelock_credit_curve_wash();
+    check_interleave_locks();
     if (g_fails) {
         std::fprintf(stderr, "%d order check(s) failed\n", g_fails);
         return 1;

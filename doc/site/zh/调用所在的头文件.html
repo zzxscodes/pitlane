@@ -91,7 +91,23 @@
 </tr>
 <tr>
 <td><code>desk/config.hpp</code></td>
-<td>启动期 <code>PitConf</code> 加载、纠偏与应用</td>
+<td>启动期 <code>PitConf</code> 加载、纠偏、host 应用、资金/持仓软上限</td>
+</tr>
+<tr>
+<td><code>order/prelock.hpp</code></td>
+<td>两阶段冻结 reserve / commit</td>
+</tr>
+<tr>
+<td><code>order/credit.hpp</code></td>
+<td>负债空头池与 <code>option_free</code></td>
+</tr>
+<tr>
+<td><code>study/fair.hpp</code></td>
+<td>整数公允价、盘口偏置、压力分</td>
+</tr>
+<tr>
+<td><code>util/breach.hpp</code></td>
+<td>首次越界粘滞标志与池水位</td>
 </tr>
 <tr>
 <td><code>desk/codec.hpp</code></td>
