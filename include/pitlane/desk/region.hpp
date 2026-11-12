@@ -19,7 +19,7 @@ namespace pitlane {
 // that mount. Ordinary mounts never get MADV_HUGEPAGE / THP. If explicit pages
 // are unavailable the mapping falls back to the caller path and sets fallback.
 // Optional mlock and NUMA bind apply after a successful map. Desk layout is
-// unchanged; kDeskVersion stays put.
+// FanRing claim state bumps the on-disk layout; kDeskVersion is 3.
 
 inline constexpr uint32_t kIntentCap = 1024;
 inline constexpr uint32_t kReportCap = 1024;
@@ -31,7 +31,7 @@ inline constexpr uint32_t kControlCap = 256;
 inline constexpr uint32_t kPulseCap = 512;
 inline constexpr uint32_t kPrintCap = 512;
 inline constexpr uint32_t kQueryCap = 256;
-inline constexpr uint32_t kDeskVersion = 2;
+inline constexpr uint32_t kDeskVersion = 3;
 
 struct alignas(64) Desk {
     FanRing<Intent, kIntentCap> intents;

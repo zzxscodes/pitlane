@@ -1,0 +1,71 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [g++, clang++]
+        sanitize: ["OFF", "ON"]
+        exclude:
+          - compiler: clang++
+            sanitize: "ON"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        env:
+          CXX: ${{ matrix.compiler }}
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DPITLANE_NATIVE=OFF \
+            -DPITLANE_LTO=OFF \
+            -DPITLANE_SANITIZE=${{ matrix.sanitize }} \
+            -DPITLANE_BUILD_SHARED=ON \
+            -DPITLANE_BUILD_TESTS=ON \
+            -DPITLANE_BUILD_EXAMPLES=ON
+      - name: Build
+        run: cmake --build build -j$(nproc)
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+
+  package:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure install tree
+        run: |
+          cmake -S . -B build-pkg \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DPITLANE_NATIVE=OFF \
+            -DPITLANE_LTO=OFF \
+            -DPITLANE_BUILD_TESTS=OFF \
+            -DPITLANE_BUILD_EXAMPLES=OFF \
+            -DCMAKE_INSTALL_PREFIX=$PWD/prefix
+      - name: Install
+        run: cmake --build build-pkg -j$(nproc) --target install
+      - name: find_package smoke
+        run: |
+          cat > /tmp/consume.cpp <<'EOF'
+          #include <pitlane/version.hpp>
+          int main() { return pitlane::kVersionMajor >= 2 ? 0 : 1; }
+          EOF
+          cat > /tmp/CMakeLists.txt <<'EOF'
+          cmake_minimum_required(VERSION 3.16)
+          project(consume LANGUAGES CXX)
+          find_package(pitlane REQUIRED)
+          add_executable(consume /tmp/consume.cpp)
+          target_link_libraries(consume PRIVATE pitlane::pitlane)
+          EOF
+          cmake -S /tmp -B /tmp/build -DCMAKE_PREFIX_PATH=$PWD/prefix
+          cmake --build /tmp/build
+          /tmp/build/consume

@@ -10,7 +10,7 @@ Include one header:
 
 Everything is in the namespace `pitlane`. Link `libpitlane.a`, or link the shared library with `-lpitlane`. The shared library's soname is `libpitlane.so.1`. The headers are the same for both.
 
-The release is `kVersion`, currently 2.5.0, also split into `kVersionMajor`, `kVersionMinor`, and `kVersionPatch`. `kDeskVersion` is the mapping-file layout and is currently 2. A new library release can leave the layout number where it is.
+The release is `kVersion`, currently 2.6.0, also split into `kVersionMajor`, `kVersionMinor`, and `kVersionPatch`. `kDeskVersion` is the mapping-file layout and is currently 3. A new library release can leave the layout number where it is.
 
 Headers live under `pitlane/desk/`, `pitlane/book/`, `pitlane/order/`, `pitlane/time/`, `pitlane/study/`, `pitlane/util/`, and `pitlane/host/`. `version.hpp` stays beside `pitlane.hpp`. The table below names the area in the path.
 
@@ -27,7 +27,7 @@ pitlane::Desk* desk = pitlane::desk_view(&map, 1);
 if (!desk) return 1;
 ```
 
-`map_create` creates or extends the file and does not wipe an existing mapping. The default `MapOpt` uses explicit huge pages only: length rounds to Hugepagesize, and the file is placed on hugetlbfs (default `/dev/hugepages` as `pitlane_<basename>`), or at the caller path when that path is already on hugetlbfs. THP / `MADV_HUGEPAGE` are never used. When explicit pages are unavailable the mapping falls back to the caller path and sets `MapInfo::fallback`. `mlock` is attempted by default; `numa_node >= 0` binds the range with `MPOL_BIND`. `desk_view` returns the desk only when the magic is `PITLANE1` and the layout version is `kDeskVersion`, which is 2. The second argument formats a still-blank file when it is non-zero. A file with the wrong magic is left untouched and the call returns null. After the magic is written, do not format the mapping again.
+`map_create` creates or extends the file and does not wipe an existing mapping. The default `MapOpt` uses explicit huge pages only: length rounds to Hugepagesize, and the file is placed on hugetlbfs (default `/dev/hugepages` as `pitlane_<basename>`), or at the caller path when that path is already on hugetlbfs. THP / `MADV_HUGEPAGE` are never used. When explicit pages are unavailable the mapping falls back to the caller path and sets `MapInfo::fallback`. `mlock` is attempted by default; `numa_node >= 0` binds the range with `MPOL_BIND`. `desk_view` returns the desk only when the magic is `PITLANE1` and the layout version is `kDeskVersion`, which is 3. The second argument formats a still-blank file when it is non-zero. A file with the wrong magic is left untouched and the call returns null. After the magic is written, do not format the mapping again.
 
 Another process attaches with `map_attach` and passes 0 to `desk_view` (same logical path so both sides resolve the same hugetlbfs file). `map_release` unmaps; if the mapping was locked it calls `munlock` first, then closes the file. Each ring has one writer. Readers do not share a cursor.
 
@@ -379,6 +379,7 @@ These calls do not open a socket, do not send an order, and do not start a threa
 | `util/arena.hpp` | Fixed-capacity arena with default explicit huge pages |
 | `util/batch.hpp` | Adaptive micro-batch size from backlog |
 | `util/bound.hpp` | One-compare bounds and a walk budget |
+| `util/corebank.hpp` | Caller-owned per-core fixed-stride bank |
 | `util/chunk.hpp` | Sparse price blocks and cancel handles |
 | `util/drill.hpp` | Clocks, budgets, ladders, and plain records for tests |
 | `util/fillring.hpp` | A slot filled in place |
@@ -388,6 +389,7 @@ These calls do not open a socket, do not send an order, and do not start a threa
 | `util/hint.hpp` | Branch tips, hot and cold placement, and prefetch |
 | `util/mix64.hpp` | A split mix |
 | `util/mold.hpp` | Prepared frames, block length, and an id that can be returned |
+| `util/objpool.hpp` | Thread-private fixed freelist pool |
 | `util/numeric.hpp` | Wide products used by the checks |
 | `util/page.hpp` | Ordinary and huge page sizes; byte round-up |
 | `util/pace.hpp` | Token buckets and theoretical arrival times |
@@ -402,6 +404,8 @@ These calls do not open a socket, do not send an order, and do not start a threa
 | `util/spin.hpp` | A TTAS spin lock on its own line |
 | `util/stage.hpp` | A ring finished in claim order |
 | `util/stream.hpp` | Frame checksums and byte-stream reassembly |
+| `util/sticky.hpp` | Wait-free sticky counter |
 | `util/stride.hpp` | The address of one core's slot |
 | `util/textbuf.hpp` | A fixed text buffer |
-| `util/touch.hpp` | A read of each cache line in a caller buffer |
+| `util/touch.hpp` | Prefetch and load by cache line |
+| `util/wirepx.hpp` | Mantissa/exponent wire price helpers |

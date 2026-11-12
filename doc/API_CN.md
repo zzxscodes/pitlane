@@ -10,7 +10,7 @@
 
 所有名字都在命名空间 `pitlane` 里。链接 `libpitlane.a`，或者用 `-lpitlane` 链接动态库。动态库的 soname 是 `libpitlane.so.1`。两种链接方式使用同一套头文件。
 
-发行版本是 `kVersion`，当前是 2.5.0，并拆成 `kVersionMajor`、`kVersionMinor` 和 `kVersionPatch`。`kDeskVersion` 是映射文件的布局版本，当前是 2。库的一次新发行可以保持布局版本不动。
+发行版本是 `kVersion`，当前是 2.6.0，并拆成 `kVersionMajor`、`kVersionMinor` 和 `kVersionPatch`。`kDeskVersion` 是映射文件的布局版本，当前是 3。库的一次新发行可以保持布局版本不动。
 
 头文件分在 `pitlane/desk/`、`pitlane/book/`、`pitlane/order/`、`pitlane/time/`、`pitlane/study/`、`pitlane/util/` 和 `pitlane/host/` 下面。`version.hpp` 与 `pitlane.hpp` 同一层。下面的表在路径里写了区域。
 
@@ -27,7 +27,7 @@ pitlane::Desk* desk = pitlane::desk_view(&map, 1);
 if (!desk) return 1;
 ```
 
-`map_create` 创建或扩展文件，不会清掉已经存在的映射。默认 `MapOpt` 走显式大页：长度按 Hugepagesize 对齐，优先在 hugetlbfs（默认 `/dev/hugepages`，逻辑名映射为 `pitlane_<基名>`）建文件；路径本身已在 hugetlbfs 上则直接使用。不用 THP / `MADV_HUGEPAGE`。显式大页不可用时回退到调用方路径并置 `MapInfo::fallback`。默认尝试 `mlock`，`numa_node >= 0` 时对该区间做 `MPOL_BIND`。只有魔数是 `PITLANE1` 且布局版本是 `kDeskVersion` 时，`desk_view` 才返回工作区。当前布局版本是 2。第二个参数非 0 时，才会初始化一份仍然空白的文件。魔数不对的文件保持原样，调用返回空指针。魔数写上以后不要再次初始化。
+`map_create` 创建或扩展文件，不会清掉已经存在的映射。默认 `MapOpt` 走显式大页：长度按 Hugepagesize 对齐，优先在 hugetlbfs（默认 `/dev/hugepages`，逻辑名映射为 `pitlane_<基名>`）建文件；路径本身已在 hugetlbfs 上则直接使用。不用 THP / `MADV_HUGEPAGE`。显式大页不可用时回退到调用方路径并置 `MapInfo::fallback`。默认尝试 `mlock`，`numa_node >= 0` 时对该区间做 `MPOL_BIND`。只有魔数是 `PITLANE1` 且布局版本是 `kDeskVersion` 时，`desk_view` 才返回工作区。当前布局版本是 3。第二个参数非 0 时，才会初始化一份仍然空白的文件。魔数不对的文件保持原样，调用返回空指针。魔数写上以后不要再次初始化。
 
 其他进程用 `map_attach` 挂上，再把 0 传给 `desk_view`（须与创建时同一逻辑路径，以便解析到同一 hugetlbfs 文件）。`map_release` 解除映射；若曾 `mlock` 则先 `munlock`，再关闭文件。每条环只有一个写入者。读者不要共用一个读取位置。
 
@@ -379,6 +379,7 @@ book.apply(edits, 1);
 | `util/arena.hpp` | 默认显式大页的固定容量字节竞技场 |
 | `util/batch.hpp` | 按积压自适应的微批大小 |
 | `util/bound.hpp` | 单次比较的边界检查和行走预算 |
+| `util/corebank.hpp` | 调用方自持的每核固定步长银行 |
 | `util/chunk.hpp` | 稀疏价位块和撤单句柄 |
 | `util/drill.hpp` | 测试用的时钟、预算、档位和普通记录 |
 | `util/fillring.hpp` | 就地填入的槽 |
@@ -388,6 +389,7 @@ book.apply(edits, 1);
 | `util/hint.hpp` | 分支提示、冷热段布局和预取 |
 | `util/mix64.hpp` | 分裂混合 |
 | `util/mold.hpp` | 预备报文、块长度和可以退回的编号 |
+| `util/objpool.hpp` | 线程私有定容对象池 |
 | `util/numeric.hpp` | 检查用的宽乘积 |
 | `util/page.hpp` | 普通页与 Hugepagesize、按字节向上对齐 |
 | `util/pace.hpp` | 令牌桶和理论到达时间 |
@@ -402,6 +404,8 @@ book.apply(edits, 1);
 | `util/spin.hpp` | 独占缓存行的 TTAS 自旋锁 |
 | `util/stage.hpp` | 按占槽顺序完成的环 |
 | `util/stream.hpp` | 帧校验和字节流重组 |
+| `util/sticky.hpp` | wait-free 粘性计数器 |
 | `util/stride.hpp` | 某一个核那一槽的地址 |
 | `util/textbuf.hpp` | 定长文本 |
-| `util/touch.hpp` | 读调用方缓冲区里的每一条缓存行 |
+| `util/touch.hpp` | 按缓存行预取并加载 |
+| `util/wirepx.hpp` | 尾数指数价格与定点换算 |

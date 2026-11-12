@@ -92,10 +92,12 @@ int map_fd_at(const char* path, std::size_t need, MapInfo* out, bool create, boo
         ::close(fd);
         return -1;
     }
+    const bool grew = static_cast<std::size_t>(st.st_size) < need;
     std::size_t map_bytes = need;
-    if (static_cast<std::size_t>(st.st_size) < need) {
+    if (grew) {
         if (!create || ::ftruncate(fd, static_cast<off_t>(need)) != 0) {
             ::close(fd);
+            if (create) ::unlink(path);
             return -1;
         }
     } else {
@@ -104,6 +106,7 @@ int map_fd_at(const char* path, std::size_t need, MapInfo* out, bool create, boo
     void* addr = ::mmap(nullptr, map_bytes, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (addr == MAP_FAILED) {
         ::close(fd);
+        if (create && grew) ::unlink(path);
         return -1;
     }
     out->addr = addr;
@@ -129,10 +132,12 @@ int map_fd(const char* path, std::size_t bytes, MapInfo* out, bool create, MapOp
         if (need < bytes) return -1;
         const long want_pages = static_cast<long>((need + huge - 1) / huge);
         (void)hugepage_count_ensure(want_pages);  // best-effort; may lack privilege
+        long free_pages = 0;
+        const bool have_free = hugepage_free_get(free_pages) && free_pages >= want_pages;
 
-        if (path_on_hugetlbfs(path)) {
+        if (have_free && path_on_hugetlbfs(path)) {
             if (map_fd_at(path, need, out, create, true, opt) == 0) return 0;
-        } else {
+        } else if (have_free) {
             const char* dir = opt.hugepage_dir ? opt.hugepage_dir : "/dev/hugepages";
             char huge_path[512];
             if (dir_is_hugetlbfs(dir) && huge_path_for(huge_path, sizeof huge_path, dir, path)) {

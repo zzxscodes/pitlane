@@ -24,6 +24,24 @@ inline bool hugepage_count_get(long& out) noexcept {
     return true;
 }
 
+inline bool hugepage_free_get(long& out) noexcept {
+    std::FILE* f = std::fopen("/proc/meminfo", "r");
+    if (!f) return false;
+    char line[256];
+    bool ok = false;
+    while (std::fgets(line, static_cast<int>(sizeof line), f)) {
+        if (std::strncmp(line, "HugePages_Free:", 15) != 0) continue;
+        long val = 0;
+        if (std::sscanf(line + 15, "%ld", &val) == 1) {
+            out = val;
+            ok = true;
+        }
+        break;
+    }
+    std::fclose(f);
+    return ok;
+}
+
 inline bool hugepage_count_set(long n) noexcept {
     if (unlikely(n < 0)) return false;
     std::FILE* f = std::fopen("/proc/sys/vm/nr_hugepages", "w");
