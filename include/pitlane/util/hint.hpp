@@ -33,6 +33,26 @@ inline constexpr std::size_t kCacheLine = 64;
 PITLANE_INLINE bool likely(bool cond) noexcept { return PITLANE_LIKELY(cond); }
 PITLANE_INLINE bool unlikely(bool cond) noexcept { return PITLANE_UNLIKELY(cond); }
 
+template <class T>
+PITLANE_INLINE T* assume_aligned(T* p, std::size_t align) noexcept {
+#if defined(__GNUC__) || defined(__clang__)
+    return static_cast<T*>(__builtin_assume_aligned(p, align));
+#else
+    (void)align;
+    return p;
+#endif
+}
+
+template <class T>
+PITLANE_INLINE const T* assume_aligned(const T* p, std::size_t align) noexcept {
+#if defined(__GNUC__) || defined(__clang__)
+    return static_cast<const T*>(__builtin_assume_aligned(p, align));
+#else
+    (void)align;
+    return p;
+#endif
+}
+
 // Read-intent prefetch. locality 3 keeps the line as long as the hardware allows.
 PITLANE_INLINE void prefetch_r(const void* p) noexcept {
 #if defined(__GNUC__) || defined(__clang__)

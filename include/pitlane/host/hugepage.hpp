@@ -78,23 +78,37 @@ inline bool hugepage_size_kB(long& out) noexcept {
     return ok;
 }
 
-// Writes "never" to transparent_hugepage/enabled. Library mappings never use THP.
-inline bool thp_disable() noexcept {
-    std::FILE* f = std::fopen("/sys/kernel/mm/transparent_hugepage/enabled", "w");
+namespace detail {
+
+inline bool thp_write_never(const char* path) noexcept {
+    std::FILE* f = std::fopen(path, "w");
     if (!f) return false;
     const int wrote = std::fprintf(f, "never\n");
     std::fclose(f);
     return wrote > 0;
 }
 
-inline bool thp_is_never() noexcept {
-    std::FILE* f = std::fopen("/sys/kernel/mm/transparent_hugepage/enabled", "r");
+inline bool thp_read_never(const char* path) noexcept {
+    std::FILE* f = std::fopen(path, "r");
     if (!f) return false;
     char buf[128]{};
     const char* got = std::fgets(buf, static_cast<int>(sizeof buf), f);
     std::fclose(f);
     if (!got) return false;
     return std::strstr(buf, "[never]") != nullptr;
+}
+
+}  // namespace detail
+
+// Writes "never" to transparent_hugepage enabled and defrag. Library mappings never use THP.
+inline bool thp_disable() noexcept {
+    const bool enabled = detail::thp_write_never("/sys/kernel/mm/transparent_hugepage/enabled");
+    (void)detail::thp_write_never("/sys/kernel/mm/transparent_hugepage/defrag");
+    return enabled;
+}
+
+inline bool thp_is_never() noexcept {
+    return detail::thp_read_never("/sys/kernel/mm/transparent_hugepage/enabled");
 }
 
 // Reads the kernel command line for isolcpus= / nohz_full= tokens into out (NUL-terminated).

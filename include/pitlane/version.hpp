@@ -6,9 +6,9 @@ namespace pitlane {
 // kDeskVersion is the on-disk layout of a mapping file, and it moves on its own.
 
 #define PITLANE_VERSION_MAJOR 2
-#define PITLANE_VERSION_MINOR 6
+#define PITLANE_VERSION_MINOR 7
 #define PITLANE_VERSION_PATCH 0
-#define PITLANE_VERSION_STRING "2.6.0"
+#define PITLANE_VERSION_STRING "2.7.0"
 
 inline constexpr int kVersionMajor = PITLANE_VERSION_MAJOR;
 inline constexpr int kVersionMinor = PITLANE_VERSION_MINOR;

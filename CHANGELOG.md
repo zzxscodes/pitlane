@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.7.0] - 2026-11-12
+
+### Added
+
+- `SendJoinRing` multi-producer fail-full send ring with generation-packed tail
+- `SlotGate` resync gate beside `OwnPair` (`need_seed` / `on_drop` / `seeded`)
+- `SigBook::find4` with dual-bucket prefetch; SSE2 signature vector compare
+- `assume_aligned` in `hint.hpp`; `-mprefer-vector-width=256 -mno-avx512f` under `PITLANE_NATIVE`
+- Host hardenings: `mem_raise_limit` / `mem_lock_range`, `set_fifo_thread` / `set_rr_thread`, `pin_process_mask`, `numa_local_node`, THP `defrag=never`
+
+### Changed
+
+- Library release version is 2.7.0
+- `ByteArena` uses `numa_bind_range` (STRICT) and `hugepage_count_ensure` like desk maps
+
 ## [2.6.0] - 2026-11-12
 
 ### Added

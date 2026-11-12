@@ -8,6 +8,7 @@
 #include <cstring>
 
 #include <linux/mempolicy.h>
+#include <sched.h>
 #include <sys/syscall.h>
 #include <unistd.h>
 
@@ -59,6 +60,13 @@ inline int numa_node_of_cpu(int cpu) noexcept {
         if (::access(node_path, F_OK) == 0) return n;
     }
     return -1;
+}
+
+// NUMA node of the CPU currently running this thread, or -1.
+inline int numa_local_node() noexcept {
+    const int cpu = ::sched_getcpu();
+    if (cpu < 0) return -1;
+    return numa_node_of_cpu(cpu);
 }
 
 inline bool numa_bind_range(void* addr, std::size_t bytes, int node) noexcept {

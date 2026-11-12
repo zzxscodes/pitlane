@@ -4,6 +4,7 @@
 #include "pitlane/desk/ring.hpp"
 #include "pitlane/desk/types.hpp"
 #include "pitlane/desk/wire.hpp"
+#include "pitlane/util/hint.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -78,7 +79,7 @@ int map_attach(const char* path, std::size_t bytes, MapInfo* out, MapOpt opt = {
 void map_release(MapInfo* io) noexcept;
 
 // Placement-constructs a fresh desk. Call this only on a zeroed or abandoned mapping.
-void desk_format(Desk* desk) noexcept;
+PITLANE_COLD void desk_format(Desk* desk) noexcept;
 
 // Returns the desk inside the mapping.
 // create_if_empty formats the region when the magic is still zero.
