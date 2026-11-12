@@ -510,6 +510,85 @@ static void check_auction_est_maker() {
     expect(hit.kind == pitlane::Arrival::Drop, "maker drop cross");
 }
 
+static pitlane::MapOpt map_opt_tmp() noexcept {
+    pitlane::MapOpt opt{};
+    opt.hugepage = 0;
+    opt.lock = 0;
+    opt.prefault = 1;
+    return opt;
+}
+
+static int g_reports = 0;
+static void on_rep(void*, const pitlane::Report&) { ++g_reports; }
+
+static void check_framework() {
+    char path[64];
+    std::snprintf(path, sizeof path, "/tmp/pitlane-lane-%d.bin", static_cast<int>(::getpid()));
+    ::unlink(path);
+    pitlane::MapInfo map{};
+    expect(pitlane::map_create(path, pitlane::desk_bytes(), &map, map_opt_tmp()) == 0, "lane map");
+    pitlane::Desk* desk = pitlane::desk_view(&map, 1);
+    expect(desk != nullptr, "lane desk");
+
+    pitlane::VenueCfg cfg{};
+    cfg.lot = 1;
+    pitlane::PaperVenue venue(cfg);
+    const pitlane::Rung asks[] = {{100, 5}};
+    venue.set_levels(1, nullptr, 0, asks, 1);
+    venue.set_band(1, 90, 110);
+
+    pitlane::DrillBook drills;
+    expect(drills.set(42, pitlane::DrillCue::FillAll, 100, 0), "drill set");
+    expect(drills.set(43, pitlane::DrillCue::Warn), "drill warn");
+
+    pitlane::TradeLane lane{};
+    lane.venue = &venue;
+    lane.drills = &drills;
+    lane.intent_reader = 0;
+    lane.report_mask = 0;
+
+    pitlane::StratHook hook{};
+    hook.on_report = on_rep;
+    const pitlane::LoopHooks loop = pitlane::strat_bind_loop(hook);
+    expect(loop.on_report == on_rep, "strat bind");
+
+    const int64_t stamp = (9 * 60 + 40) * 60 * 1000000ll;
+    pitlane::Intent in{};
+    in.tag = 42;
+    in.name = 1;
+    in.acct = 1;
+    in.px = 100;
+    in.qty = 2;
+    in.stamp_us = stamp;
+    in.side = 1;
+    in.act = static_cast<uint8_t>(pitlane::Act::Enter);
+    in.style = 1;
+    expect(pitlane::strat_stage_enter(*desk, in, 0), "stage enter");
+    const int n = pitlane::lane_beat(lane, *desk, stamp);
+    expect(n >= 1, "lane beat drill fill");
+
+    pitlane::Report r{};
+    bool fresh = false;
+    uint64_t cur = 0;
+    expect(desk->reports.at(cur, 0, r, &fresh) && fresh, "report present");
+    expect(r.phase == static_cast<uint8_t>(pitlane::Phase::Filled) ||
+               r.phase == static_cast<uint8_t>(pitlane::Phase::Partial) ||
+               r.phase == static_cast<uint8_t>(pitlane::Phase::Working) ||
+               r.phase == static_cast<uint8_t>(pitlane::Phase::Staged),
+           "report phase");
+
+    pitlane::FeedHub hub{};
+    hub.desk = desk;
+    pitlane::Quote q{};
+    q.name = 1;
+    q.bid_px = 99;
+    q.ask_px = 101;
+    expect(pitlane::feed_push_mark(hub, 1, pitlane::YardMark{}, &q), "feed quote desk");
+
+    pitlane::map_release(&map);
+    ::unlink(path);
+}
+
 int main() {
     check_steps();
     check_books();
@@ -517,6 +596,7 @@ int main() {
     check_venue();
     check_calendar();
     check_quote();
+    check_framework();
     check_walk();
     check_bar();
     check_window();

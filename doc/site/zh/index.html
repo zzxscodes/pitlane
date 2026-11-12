@@ -27,7 +27,7 @@
 #include &quot;pitlane/pitlane.hpp&quot;
 </code></pre>
 <p>所有名字都在命名空间 <code>pitlane</code> 里。链接 <code>libpitlane.a</code>，或者用 <code>-lpitlane</code> 链接动态库。动态库的 soname 是 <code>libpitlane.so.1</code>。两种链接方式使用同一套头文件。</p>
-<p>发行版本是 <code>kVersion</code>，当前是 2.14.0，并拆成 <code>kVersionMajor</code>、<code>kVersionMinor</code> 和 <code>kVersionPatch</code>。<code>kDeskVersion</code> 是 desk 映射文件的布局版本，当前是 3。<code>kYardVersion</code> 是独立的标的/行情池布局版本，当前是 2。库的一次新发行可以保持任一布局版本不动。</p>
+<p>发行版本是 <code>kVersion</code>，当前是 2.15.0，并拆成 <code>kVersionMajor</code>、<code>kVersionMinor</code> 和 <code>kVersionPatch</code>。<code>kDeskVersion</code> 是 desk 映射文件的布局版本，当前是 3。<code>kYardVersion</code> 是独立的标的/行情池布局版本，当前是 2。库的一次新发行可以保持任一布局版本不动。</p>
 <p>带左侧分节导航的静态网页在 <code>doc/site/</code>（<code>python3 doc/gen_site.py</code> 生成）。打开<strong>本地</strong> <code>doc/site/index.html</code> 或 GitHub Pages；在 <code>github.com/.../blob/...</code> 里打开只会看到源码。启动期设置见 <strong>启动配置</strong>。</p>
 <p>头文件分在 <code>pitlane/desk/</code>、<code>pitlane/book/</code>、<code>pitlane/order/</code>、<code>pitlane/time/</code>、<code>pitlane/study/</code>、<code>pitlane/util/</code> 和 <code>pitlane/host/</code> 下面。<code>version.hpp</code> 与 <code>pitlane.hpp</code> 同一层。下面的表在路径里写了区域。</p>
 <p>价格和数量是整数。时间是微秒。方向 1 是买入，2 是卖出。普通拒绝通过 <code>false</code>、负数，或不是 <code>Why::None</code> 的 <code>Why</code> 表示。这些情况不抛异常。环或队列写满时，这次写入失败，已有内容保持不变。</p>

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "pitlane/book/venue.hpp"
 #include "pitlane/desk/broker.hpp"
 #include "pitlane/desk/cash.hpp"
 #include "pitlane/desk/region.hpp"
@@ -108,6 +109,18 @@ struct PitConf {
     uint32_t study_sample_depth{100};
     uint32_t study_factor_depth{20};
     uint32_t study_nonstruct_depth{10};
+
+    // [venue] paper match (paper matcher match.ini role; delays in µs)
+    int64_t venue_go_us[9]{};
+    int64_t venue_pull_us[9]{};
+    int64_t venue_rigid_extra{0};
+    int64_t venue_lot{1};
+    int64_t venue_notional_cap{0};
+    int venue_rate_cap{0};
+    int64_t venue_cancel_pow_x1000{1000}; // 1000 → cancel_pow 1.0
+    uint8_t venue_trade_open{1};
+    uint8_t venue_tape_first{0}; // Match.use_ext
+    uint8_t venue_rigid{1};     // Ext.rigid_rule
 };
 
 struct StudyPlan {
@@ -133,6 +146,7 @@ ArenaOpt conf_arena_opt(const PitConf& conf) noexcept;
 RiskCaps conf_risk_caps(const PitConf& conf) noexcept;
 YardPlan conf_yard_plan(const PitConf& conf) noexcept;
 StudyPlan conf_study_plan(const PitConf& conf) noexcept;
+VenueCfg conf_venue_cfg(const PitConf& conf) noexcept;
 
 bool desk_apply_conf(Desk& desk, const PitConf& conf) noexcept;
 bool cash_apply_conf(CashBoard& board, const PitConf& conf) noexcept;

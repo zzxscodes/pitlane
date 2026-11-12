@@ -10,7 +10,7 @@ Include one header:
 
 Everything is in the namespace `pitlane`. Link `libpitlane.a`, or link the shared library with `-lpitlane`. The shared library's soname is `libpitlane.so.1`. The headers are the same for both.
 
-The release is `kVersion`, currently 2.14.0, also split into `kVersionMajor`, `kVersionMinor`, and `kVersionPatch`. `kDeskVersion` is the desk mapping-file layout and is currently 3. `kYardVersion` is the separate symbol/quote yard layout and is currently 2. A new library release can leave either layout number where it is.
+The release is `kVersion`, currently 2.15.0, also split into `kVersionMajor`, `kVersionMinor`, and `kVersionPatch`. `kDeskVersion` is the desk mapping-file layout and is currently 3. `kYardVersion` is the separate symbol/quote yard layout and is currently 2. A new library release can leave either layout number where it is.
 
 A browsable static site with a left-hand section list is generated into `doc/site/` (`python3 doc/gen_site.py`). Open a local `doc/site/index.html` or the GitHub Pages deployment — viewing the file on `github.com/.../blob/...` shows source only. Startup settings are covered under **Startup configuration**.
 
@@ -188,7 +188,11 @@ pitlane::Report reps[4]{};
 pitlane::VenueOut out = venue.admit(in, in.stamp_us, reps, 4);
 ```
 
-`admit` writes reports into the caller buffer and sets `out.why`. With `VenueCfg::trade_open=0`, new enters fail with `Why::Closed`. `on_clock` promotes staged orders whose delay has elapsed and completes cancels that are due (skipped while `hang` sticky). `on_print` and `on_tape` reduce the quantity ahead of a resting order; `tape_keep` drops same-side aggressor prints. `force_fill` / `force_pull` / `force_deny` / `drill_apply` cover `paper matcher` forced fill-style injects via `DrillCue` (pitlane names). `TouchMode` / `resolve_px` resolve opp/own/last/mid/best5 prices. Pass 0 as the aggressor to keep every print. `on_shown` applies a later change in displayed size without counting the same trade twice.
+`admit` writes reports into the caller buffer and sets `out.why`. With `VenueCfg::trade_open=0`, new enters fail with `Why::Closed`. `on_clock` promotes staged orders whose delay has elapsed and completes cancels that are due (skipped while `hang` sticky). `on_print` and `on_tape` reduce the quantity ahead of a resting order; `tape_keep` drops same-side aggressor prints when `VenueCfg::rigid` is set. `force_fill` / `force_pull` / `force_deny` / `drill_apply` cover `paper matcher` forced fill-style injects via `DrillCue` (pitlane names; `Warn` is a no-op). `TouchMode` / `resolve_px` resolve opp/own/last/mid/best5 prices. Pass 0 as the aggressor to keep every print. `on_shown` applies a later change in displayed size without counting the same trade twice.
+
+PitConf `[venue]` mirrors `paper matcher` `match.ini`: nine go/pull lags (`go_usN` / `pull_usN`, or fractional-second `delayN` / `cancel_delayN` / `go_secN` / `pull_secN`), `rigid_rule`→`rigid`, `use_ext`→`tape_first`, `rigid_extra`, `trade_open`, `lot`, `rate_cap`, `notional_cap`, `cancel_pow_x1000`. `conf_venue_cfg` copies into `VenueCfg`.
+
+`FeedHub` fans marks/prints/ticks into `Yard` and Desk rings (local MD hub). `TradeLane::lane_beat` drains intents through `PaperVenue` (+ optional `DrillBook`) and publishes reports (local TD lane). `StratHook` / `strat_bind_loop` / `strat_stage_enter` / `strat_stage_pull` bind strategy callbacks onto `DeskLoop` and stage intents. `seed_cash` / `seed_hold` apply startup cash/position rows (simulator account/position seed role). Hot path stays allocation-free; startup may allocate.
 
 `Style::Day` fills the whole remainder at its limit, even past the size shown there. `Style::Passive` expires if it would cross. `Style::Immediate` keeps only the shown size. `Style::All` expires the whole order when the shown size is short. A self-trade against the same account stops the order.
 
@@ -387,11 +391,15 @@ These calls do not open a socket, do not send an order, and do not start a threa
 | `book/steps.hpp` | Tick bands, price walks, and `TickGrid` with a cached band cursor |
 | `study/factorcal.hpp` | Fixed-depth factor calendar series and named rings (notes §22) |
 | `book/venue.hpp` | `PaperVenue` |
+| `book/tradelane.hpp` | Local TD `TradeLane` / `lane_beat` |
+| `book/drill.hpp` | `DrillCue` / `DrillBook` |
 | `desk/acct.hpp` | Trader→accounts table and `acct_idle` |
 | `desk/broker.hpp` | `BrokerWatch`, `QueryFold`, and `QueryWant` |
 | `desk/risk.hpp` | `risk_merge` and `AcctRiskTab` |
 | `desk/cash.hpp` | Cash/hold boards and `cash_enough` |
-| `desk/config.hpp` | Startup `PitConf` load, normalize, host apply, cash/hold soft tune, `conf_yard_plan` |
+| `desk/config.hpp` | Startup `PitConf` load, normalize, host apply, cash/hold soft tune, `conf_yard_plan` / `conf_venue_cfg` |
+| `desk/feedhub.hpp` | Local MD `FeedHub` / `feed_push_*` |
+| `desk/seed.hpp` | Startup `CashSeed` / `HoldSeed` |
 | `desk/yard.hpp` | Startup symbol/quote yard (`YardPlan`, claim/bind/publish/latest) |
 | `order/prelock.hpp` | Two-phase freeze reserve / commit |
 | `order/credit.hpp` | Liability short pools and `option_free` |
@@ -441,6 +449,7 @@ These calls do not open a socket, do not send an order, and do not start a threa
 | `study/extreme.hpp` | High and low over the last fixed run of prices |
 | `study/plan.hpp` | A grey-black factor order and a fixed act list |
 | `study/study.hpp` | Book features, markouts, relations, factors, replay, and one research step |
+| `study/strathook.hpp` | Strategy façade `StratHook` / `strat_stage_*` |
 | `time/clock.hpp` | A published cycle scale and wall time |
 | `time/cut.hpp` | Solo versus split path choice from measured gaps |
 | `time/cycle.hpp` | Cycle reads, an integer scale, and a cached microsecond |

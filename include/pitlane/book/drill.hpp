@@ -19,7 +19,8 @@ enum class DrillCue : uint8_t {
     HangEnter = 6,   // stay staged/working; on_clock skips
     HangPull = 7,    // stay in PullWait; on_clock skips
     DropFill = 8,    // apply fill qty without Report
-    Closed = 9       // treat as session closed (caller may also set VenueCfg)
+    Closed = 9,      // treat as session closed (caller may also set VenueCfg)
+    Warn = 10        // no state change (session state warn role); returns 0
 };
 
 struct DrillRow {

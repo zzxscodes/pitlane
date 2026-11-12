@@ -18,7 +18,8 @@ struct VenueCfg {
     int rate_cap{0};         // admits per name per second, 0 disables
     int64_t notional_cap{0}; // px * qty ceiling, 0 disables
     uint8_t trade_open{1};   // 0 → admit Enter fails Why::Closed (NotTrading role)
-    uint8_t tape_first{0};   // informational; caller may prefer on_tape before quote cross
+    uint8_t tape_first{0};   // Match.use_ext; caller may prefer on_tape before quote cross
+    uint8_t rigid{1};        // Ext.rigid_rule; same-side aggressor skip via tape_keep
 };
 
 struct VenueOut {

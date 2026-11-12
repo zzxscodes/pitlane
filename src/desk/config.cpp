@@ -139,6 +139,84 @@ bool parse_i64(const char* s, int64_t& out) noexcept {
     return true;
 }
 
+// Fractional seconds (match.ini delayN) → microseconds. No locale.
+bool parse_sec_to_us(const char* s, int64_t& out_us) noexcept {
+    if (!s || !*s)
+        return false;
+    int sign = 1;
+    if (*s == '-') {
+        sign = -1;
+        ++s;
+    } else if (*s == '+') {
+        ++s;
+    }
+    if (!*s)
+        return false;
+    unsigned long long whole = 0;
+    const char* p = s;
+    for (; *p && *p != '.'; ++p) {
+        if (*p < '0' || *p > '9')
+            return false;
+        whole = whole * 10ull + static_cast<unsigned long long>(*p - '0');
+        if (whole > 9223372036854ull)
+            return false;
+    }
+    unsigned long long frac = 0;
+    int digits = 0;
+    if (*p == '.') {
+        ++p;
+        for (; *p && digits < 6; ++p, ++digits) {
+            if (*p < '0' || *p > '9')
+                return false;
+            frac = frac * 10ull + static_cast<unsigned long long>(*p - '0');
+        }
+        for (; *p; ++p) {
+            if (*p < '0' || *p > '9')
+                return false;
+        }
+        while (digits < 6) {
+            frac *= 10ull;
+            ++digits;
+        }
+    }
+    const unsigned long long us = whole * 1000000ull + frac;
+    if (sign < 0) {
+        if (us > 9223372036854775808ull)
+            return false;
+        out_us = -static_cast<int64_t>(us);
+    } else {
+        if (us > 9223372036854775807ull)
+            return false;
+        out_us = static_cast<int64_t>(us);
+    }
+    return true;
+}
+
+// 1 applied, 0 not this key, -1 bad value.
+int try_indexed_us(const char* key, const char* prefix, const char* val, int64_t* arr9) noexcept {
+    if (!key || !prefix || !arr9)
+        return 0;
+    const std::size_t n = std::strlen(prefix);
+    if (std::strncmp(key, prefix, n) != 0)
+        return 0;
+    const char* num = key + n;
+    if (!*num || num[1] != 0 || *num < '1' || *num > '9')
+        return 0;
+    return parse_i64(val, arr9[*num - '1']) ? 1 : -1;
+}
+
+int try_indexed_sec(const char* key, const char* prefix, const char* val, int64_t* arr9) noexcept {
+    if (!key || !prefix || !arr9)
+        return 0;
+    const std::size_t n = std::strlen(prefix);
+    if (std::strncmp(key, prefix, n) != 0)
+        return 0;
+    const char* num = key + n;
+    if (!*num || num[1] != 0 || *num < '1' || *num > '9')
+        return 0;
+    return parse_sec_to_us(val, arr9[*num - '1']) ? 1 : -1;
+}
+
 bool copy_dir(char* dst, std::size_t cap, const char* src) noexcept {
     if (!dst || cap < 2 || !src)
         return false;
@@ -367,6 +445,38 @@ int set_key(PitConf& conf, const char* section, const char* key, const char* val
             return ok(parse_u32(val, conf.study_factor_depth));
         if (std::strcmp(key, "nonstruct_depth") == 0)
             return ok(parse_u32(val, conf.study_nonstruct_depth));
+    }
+    if (std::strcmp(sec, "venue") == 0 || sec[0] == 0) {
+        // µs keys (pitlane native) and sec keys (match.ini delayN / Cancel.delayN).
+        if (const int r = try_indexed_us(key, "go_us", val, conf.venue_go_us))
+            return r;
+        if (const int r = try_indexed_us(key, "pull_us", val, conf.venue_pull_us))
+            return r;
+        if (const int r = try_indexed_sec(key, "go_sec", val, conf.venue_go_us))
+            return r;
+        if (const int r = try_indexed_sec(key, "pull_sec", val, conf.venue_pull_us))
+            return r;
+        // match.ini [Match] delayN / [Cancel] delayN aliases
+        if (const int r = try_indexed_sec(key, "delay", val, conf.venue_go_us))
+            return r;
+        if (const int r = try_indexed_sec(key, "cancel_delay", val, conf.venue_pull_us))
+            return r;
+        if (std::strcmp(key, "rigid_extra") == 0)
+            return ok(parse_i64(val, conf.venue_rigid_extra));
+        if (std::strcmp(key, "lot") == 0)
+            return ok(parse_i64(val, conf.venue_lot));
+        if (std::strcmp(key, "notional_cap") == 0)
+            return ok(parse_i64(val, conf.venue_notional_cap));
+        if (std::strcmp(key, "rate_cap") == 0)
+            return ok(parse_i32(val, conf.venue_rate_cap));
+        if (std::strcmp(key, "cancel_pow_x1000") == 0)
+            return ok(parse_i64(val, conf.venue_cancel_pow_x1000));
+        if (std::strcmp(key, "trade_open") == 0)
+            return ok(parse_u8(val, conf.venue_trade_open));
+        if (std::strcmp(key, "tape_first") == 0 || std::strcmp(key, "use_ext") == 0)
+            return ok(parse_u8(val, conf.venue_tape_first));
+        if (std::strcmp(key, "rigid") == 0 || std::strcmp(key, "rigid_rule") == 0)
+            return ok(parse_u8(val, conf.venue_rigid));
     }
     return 0;
 }
@@ -650,6 +760,41 @@ int conf_normalize(PitConf& conf, char* hints, int hints_cap) noexcept {
     clamp_study(conf.study_sample_depth, 2, 4096u, "sample_depth");
     clamp_study(conf.study_factor_depth, 2, 1024u, "factor_depth");
     clamp_study(conf.study_nonstruct_depth, 2, 1024u, "nonstruct_depth");
+
+    for (int i = 0; i < 9; ++i) {
+        if (conf.venue_go_us[i] < 0) {
+            conf.venue_go_us[i] = 0;
+            at = append_hint(hints, hints_cap, at, "venue.go_us*: negative -> 0");
+            ++n;
+        }
+        if (conf.venue_pull_us[i] < 0) {
+            conf.venue_pull_us[i] = 0;
+            at = append_hint(hints, hints_cap, at, "venue.pull_us*: negative -> 0");
+            ++n;
+        }
+    }
+    if (conf.venue_lot < 1) {
+        conf.venue_lot = 1;
+        at = append_hint(hints, hints_cap, at, "venue.lot: <1 -> 1");
+        ++n;
+    }
+    if (conf.venue_notional_cap < 0)
+        conf.venue_notional_cap = 0;
+    if (conf.venue_rate_cap < 0)
+        conf.venue_rate_cap = 0;
+    if (conf.venue_cancel_pow_x1000 < 1) {
+        conf.venue_cancel_pow_x1000 = 1000;
+        at = append_hint(hints, hints_cap, at, "venue.cancel_pow_x1000: <1 -> 1000");
+        ++n;
+    }
+    if (conf.venue_trade_open > 1)
+        conf.venue_trade_open = 1;
+    if (conf.venue_tape_first > 1)
+        conf.venue_tape_first = 1;
+    if (conf.venue_rigid > 1)
+        conf.venue_rigid = 1;
+    if (conf.venue_rigid_extra < 0)
+        conf.venue_rigid_extra = 0;
     return n;
 }
 
@@ -708,6 +853,23 @@ StudyPlan conf_study_plan(const PitConf& conf) noexcept {
     p.factor_depth = conf.study_factor_depth;
     p.nonstruct_depth = conf.study_nonstruct_depth;
     return p;
+}
+
+VenueCfg conf_venue_cfg(const PitConf& conf) noexcept {
+    VenueCfg cfg{};
+    for (int i = 0; i < 9; ++i) {
+        cfg.lag.go_us[i] = conf.venue_go_us[i];
+        cfg.lag.pull_us[i] = conf.venue_pull_us[i];
+    }
+    cfg.rigid_extra = conf.venue_rigid_extra;
+    cfg.lot = conf.venue_lot;
+    cfg.cancel_pow = static_cast<double>(conf.venue_cancel_pow_x1000) / 1000.0;
+    cfg.rate_cap = conf.venue_rate_cap;
+    cfg.notional_cap = conf.venue_notional_cap;
+    cfg.trade_open = conf.venue_trade_open ? 1 : 0;
+    cfg.tape_first = conf.venue_tape_first ? 1 : 0;
+    cfg.rigid = conf.venue_rigid ? 1 : 0;
+    return cfg;
 }
 
 bool desk_apply_conf(Desk& desk, const PitConf& conf) noexcept {
