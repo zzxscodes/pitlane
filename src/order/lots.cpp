@@ -51,4 +51,51 @@ int split_lots(int64_t want, LotPos pos, LotPend pend, int64_t max_lot, int64_t 
     return n;
 }
 
+int split_against(LotPos opp, LotPend pend, CloseStyle rule, int64_t want, int64_t max_lot, int64_t min_lot,
+                  LotSlice* out, int cap) noexcept {
+    if (want <= 0 || !out || cap <= 0) return 0;
+    if (rule != CloseStyle::Plain && rule != CloseStyle::SplitYday) return -1;
+    int n = 0;
+    int64_t left = want;
+    int64_t today_free = opp.today > pend.close_today ? opp.today - pend.close_today : 0;
+    const int64_t yday = opp.total > opp.today ? opp.total - opp.today : 0;
+    int64_t yday_free = yday > pend.close_yday ? yday - pend.close_yday : 0;
+    if (today_free > opp.total) today_free = opp.total;
+    if (rule == CloseStyle::SplitYday) {
+        while (left > 0 && today_free > 0 && n < cap) {
+            const int64_t room = today_free < left ? today_free : left;
+            const int64_t chunk = clip_lot(room, max_lot, min_lot);
+            if (chunk <= 0) break;
+            n = push_slice(out, cap, n, Off::CloseToday, chunk);
+            left -= chunk;
+            today_free -= chunk;
+        }
+        while (left > 0 && yday_free > 0 && n < cap) {
+            const int64_t room = yday_free < left ? yday_free : left;
+            const int64_t chunk = clip_lot(room, max_lot, min_lot);
+            if (chunk <= 0) break;
+            n = push_slice(out, cap, n, Off::CloseYday, chunk);
+            left -= chunk;
+            yday_free -= chunk;
+        }
+    } else {
+        int64_t plain = today_free + yday_free;
+        while (left > 0 && plain > 0 && n < cap) {
+            const int64_t room = plain < left ? plain : left;
+            const int64_t chunk = clip_lot(room, max_lot, min_lot);
+            if (chunk <= 0) break;
+            n = push_slice(out, cap, n, Off::Close, chunk);
+            left -= chunk;
+            plain -= chunk;
+        }
+    }
+    while (left > 0 && n < cap) {
+        const int64_t chunk = clip_lot(left, max_lot, min_lot);
+        if (chunk <= 0) break;
+        n = push_slice(out, cap, n, Off::Open, chunk);
+        left -= chunk;
+    }
+    return n;
+}
+
 }  // namespace pitlane

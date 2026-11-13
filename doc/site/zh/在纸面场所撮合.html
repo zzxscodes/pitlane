@@ -32,6 +32,7 @@ venue.set_levels(1, nullptr, 0, asks, 1);
 pitlane::Report reps[4]{};
 pitlane::VenueOut out = venue.admit(in, in.stamp_us, reps, 4);
 </code></pre>
+<p><code>on_ext</code> 用序号和买卖委托号去对未完成的挂单。<code>print_hits</code> 要求成交不早于该单；<code>rigid</code> 打开时价格必须严格穿过滑点后的限价。<code>same_side_print</code> 在该方向的委托号更晚时为真。同向成交仍然计入这张挂单，成交价用逐笔价。另一方向计入时用委托价。<code>match_quote</code> 是主动路径：买价打到卖盘、卖价打到买盘时，按可见量成交。一笔逐笔的数量在多张挂单之间共用。</p>
 <p><code>admit</code> 把回报写入调用方缓冲区并设置 <code>out.why</code>。<code>trade_open=0</code> 时新开仓得到 <code>Why::Closed</code>。<code>on_clock</code> 在延迟到期后推进 staged 单并完成到期撤单（<code>hang</code> 时跳过）。<code>on_print</code> / <code>on_tape</code> 削减队列前方数量；打开 <code>rigid</code> 时 <code>tape_keep</code> 丢掉同向主动成交。<code>force_*</code> / <code>drill_apply</code> 对齐模拟器 forced fill 注入（<code>DrillCue::Closed</code> = 10，即 <code>NotTrading</code>）。<code>TouchMode</code> / <code>resolve_px</code> 解析对手/本方/最新/中间/五档。主动方为 0 时保留每笔成交。</p>
 <p>PitConf <code>[venue]</code> 对齐模拟器 <code>match.ini</code>：九段 go/pull 延迟、<code>rigid_rule</code>→<code>rigid</code>、<code>use_ext</code>→<code>tape_first</code>，以及 lot/rate/notional 等。用 <code>conf_venue_cfg</code> 得到 <code>VenueCfg</code>。</p>
 <p><code>Center::step</code> 是交易中心循环（trading center / paper matcher 的进程角色）：可选 <code>TapeMd</code> 或实盘 <code>MdEngine</code>，行情顶档写入 <code>PaperVenue</code>，再跑 <code>StratEngine</code>，然后是已就绪的 <code>TdEngine</code> 或 <code>TradeLane</code>。<code>RouteAllow</code> 位图为 0 表示不过滤。心跳往 <code>Pulse</code> 环写主题 <code>hb</code>。<code>TapeMd</code> 重放调用方持有的行情数组。</p>

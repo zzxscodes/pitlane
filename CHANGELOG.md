@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.20.0] - 2026-11-13
+
+### Added
+- Print matching on the paper venue: `print_hits`, `same_side_print`, `ext_match_one`, `match_quote`, and `PaperVenue::on_ext`. A same-direction print still counts, at the print price; the other direction counts at the order price. Quote crosses are the active bid and ask paths.
+- `split_against` closes the opposite book first. Shanghai and INE keep today and yesterday apart; other venues use one close. The shortfall opens, cut by the maximum lot.
+- `Cause::NoYday`. A limit enter with `fee_den` set freezes notional plus the class fee through `prelock_ok`.
+- `apply_open_fill`, `apply_close_fill`, and `roll_session` show how today, yesterday, and the total move. `add_session_us` walks only continuous sessions.
+- `price_at_quote_vwap`, `pre_px`, `post_px`, and `chasing_px` return a price from the book and the tick. `next_child_qty` cuts the next child when the parent is too far ahead once in-flight quantity is counted, and shares a lag by the completion rate.
+
+### Notes
+- Library release version is 2.20.0. Desk layout stays `kDeskVersion` 4.
+
 ## [2.19.0] - 2026-11-13
 
 ### Added

@@ -98,6 +98,7 @@ enum class Cause : uint16_t {
     NoCash = 40,
     NoPos = 41,
     NoToday = 42,
+    NoYday = 43,
     Blocked = 70,
     CashCap = 71,
     OrderCap = 72,
@@ -133,6 +134,7 @@ inline const char* cause_text(Cause cause) noexcept {
         case Cause::NoCash: return "cash";
         case Cause::NoPos: return "pos";
         case Cause::NoToday: return "today";
+        case Cause::NoYday: return "yday";
         case Cause::Blocked: return "blocked";
         case Cause::CashCap: return "cash cap";
         case Cause::OrderCap: return "order cap";

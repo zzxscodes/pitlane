@@ -10,7 +10,7 @@ Include one header:
 
 Everything is in the namespace `pitlane`. Link `libpitlane.a`, or link the shared library with `-lpitlane`. The shared library's soname is `libpitlane.so.1`. The headers are the same for both.
 
-The release is `kVersion`, currently 2.19.0, also split into `kVersionMajor`, `kVersionMinor`, and `kVersionPatch`. `kDeskVersion` is the desk mapping-file layout and is currently 4. `kYardVersion` is the separate symbol/quote yard layout and is currently 2. A new library release can leave either layout number where it is.
+The release is `kVersion`, currently 2.20.0, also split into `kVersionMajor`, `kVersionMinor`, and `kVersionPatch`. `kDeskVersion` is the desk mapping-file layout and is currently 4. `kYardVersion` is the separate symbol/quote yard layout and is currently 2. A new library release can leave either layout number where it is.
 
 A browsable static site with a left-hand section list is generated into `doc/site/` (`python3 doc/gen_site.py`). Open a local `doc/site/index.html` or the GitHub Pages deployment — viewing the file on `github.com/.../blob/...` shows source only. Startup settings are covered under **Startup configuration**.
 
@@ -167,11 +167,11 @@ form.qty = 2;
 pitlane::GateResult gate = pitlane::normalize_gate(form);
 ```
 
-`split_lots` turns one futures quantity into slices. The modes are `TodayThenYdayThenOpen`, `CloseOnly`, and `YdayThenStop`. Any other mode returns -1. A slice above the maximum lot is cut, and a slice below the minimum lot is dropped.
+`split_lots` turns one futures quantity into slices. The modes are `TodayThenYdayThenOpen`, `CloseOnly`, and `YdayThenStop`. Any other mode returns -1. A slice above the maximum lot is cut, and a slice below the minimum lot is dropped. `split_against` closes the opposite book first. `CloseStyle::SplitYday` (SHF, INE) separates today and yesterday. `Plain` uses one close. Quantity that those closes cannot cover opens, still cut by the maximum lot.
 
-`commodity_plan` and `index_plan` each return one next order toward a target. Where today and yesterday are split, yesterday is closed first. `index_plan` uses yesterday equal to position minus quantity opened today. `plan_px` uses the ask for a buy and the bid for a sell.
+`commodity_plan` and `index_plan` each return one next order toward a target. Where today and yesterday are split, yesterday is closed first. `index_plan` uses yesterday equal to position minus quantity opened today. `plan_px` uses the ask for a buy and the bid for a sell. `next_child_qty` sizes the next child from the completion curve. A lag is shared by `share_ppm`. Once the parent is ahead by about a tenth, counting quantity already in flight, the next child is zero. `price_at_quote_vwap` is the touch VWAP, or one rung on the side the order would take, aligned to the tick. `pre_px`, `post_px`, and `chasing_px` return a price from that book only.
 
-`lock_future` and `lock_cash_sell` freeze the quantity a close or a stock sell needs. `book_fill` applies a fill back onto today, yesterday, and the total.
+`lock_future` and `lock_cash_sell` freeze the quantity a close or a stock sell needs. `book_fill` applies a fill back onto today, yesterday, and the total. `apply_open_fill` increases the total and leaves yesterday unchanged, so the new quantity is today. `apply_close_fill` reduces the total; a plain close consumes free yesterday first, and a close-today leaves yesterday alone. `roll_session` moves the whole remaining book into yesterday. `add_session_us` adds time only inside continuous sessions.
 
 ## Match on the paper venue
 
@@ -187,6 +187,8 @@ venue.set_levels(1, nullptr, 0, asks, 1);
 pitlane::Report reps[4]{};
 pitlane::VenueOut out = venue.admit(in, in.stamp_us, reps, 4);
 ```
+
+`on_ext` matches resting orders to prints that carry a sequence and bid/ask order numbers. `print_hits` requires the print to be at or after the order, and strictly through the slipped limit when `rigid` is set. `same_side_print` is true when that side's order number is the later one. A same-direction print still counts, filled at the print price. The other direction counts at the order price. `match_quote` is the active path: a buy that reaches the ask, or a sell that reaches the bid, takes shown size. One print's quantity is shared across resting orders.
 
 `admit` writes reports into the caller buffer and sets `out.why`. With `VenueCfg::trade_open=0`, new enters fail with `Why::Closed`. `on_clock` promotes staged orders whose delay has elapsed and completes cancels that are due (skipped while `hang` sticky). `on_print` and `on_tape` reduce the quantity ahead of a resting order; with `VenueCfg::rigid` set, `tape_keep` drops same-side aggressor prints. `force_fill` / `force_pull` / `force_deny` / `drill_apply` cover simulator forced fill-style injects via `DrillCue` (`Closed` = 10, `NotTrading`). `TouchMode` / `resolve_px` pick opp/own/last/mid/best5. Aggressor 0 keeps every print. `on_shown` applies later displayed-size changes without double-counting a trade.
 
@@ -340,7 +342,7 @@ These calls do not open a socket, do not send an order, and do not start a threa
 
 `sheet_apply` moves the sheet through the life table. An event the table refuses leaves every field unchanged. A fill larger than the quantity still open is refused the same way. A fill that takes the whole remainder lands on partial, with nothing left. Finish is a separate event. Reject stores the cause the caller passes. The first non-negative stamp is kept for send, accept, and the finishing events. A negative stamp does not write. `sheet_ack_ns` and `sheet_done_ns` subtract those stamps. `sheet_line` replaces a text buffer with one line of id, side, phase, cause, quantity, filled, and left. A local id that does not fit a signed 64-bit value is refused, and the previous line stays.
 
-`gate_ask` runs the checks for one enter or one pull and returns the first cause. A null list, rule, wash table, cash row, lot book, risk caps, watch, or flow window is skipped. An enter with a limit price requires a positive price and quantity. A symbol on the list is blocked. A channel that refuses a pull returns the pull-cap cause. A channel that refuses the price mode returns the price cause. Any other channel refusal is blocked. Deviation runs for a limit enter when the cap is zero or positive. Wash runs for an enter when the table is present. When `cash` and `cash_need` are set, `cash_enough` must hold. When `lots` and `lock_qty` are set, inventory is checked read-only (`lock_future_ok` or `lock_cash_sell_ok`). When `risk` is set, qty / notional / live caps are applied (via `BrokerWatch::screen` when `watch` is set). The flow window is updated only after those checks pass; any earlier failure leaves the flow window and inflight side state unchanged. A window that is already at the limit returns the order-flow cause, or the pull-flow cause for a pull, and is left unchanged. The call does not send the order.
+`gate_ask` runs the checks for one enter or one pull and returns the first cause. A null list, rule, wash table, cash row, lot book, risk caps, watch, or flow window is skipped. An enter with a limit price requires a positive price and quantity. A symbol on the list is blocked. A channel that refuses a pull returns the pull-cap cause. A channel that refuses the price mode returns the price cause. Any other channel refusal is blocked. Deviation runs for a limit enter when the cap is zero or positive. Wash runs for an enter when the table is present. When `cash` and `cash_need` are set, `cash_enough` must hold. When `lots` and `lock_qty` are set, inventory is checked read-only (`lock_future_ok` or `lock_cash_sell_ok`). A short today book returns `NoToday`. A short yesterday book returns `NoYday`. A short total returns `NoPos`. The name list is the block list. When `fee_den` is positive on a limit enter, the freeze is notional plus the class fee (`prelock_ok`). When `risk` is set, qty / notional / live caps are applied (via `BrokerWatch::screen` when `watch` is set). The flow window is updated only after those checks pass; any earlier failure leaves the flow window and inflight side state unchanged. A window that is already at the limit returns the order-flow cause, or the pull-flow cause for a pull, and is left unchanged. The call does not send the order.
 
 `risk_merge` takes the stricter positive limit on each axis (zero means that axis is off). `AcctRiskTab` stores per-account caps; a miss is fail-closed. `sign_begin(need)` resets a slip and sets how many modules must `sign_pass` before `sign_ready` (typical need=3 for global / account / lane). A reject sticks until reset.
 
@@ -392,6 +394,7 @@ These calls do not open a socket, do not send an order, and do not start a threa
 | `book/quote.hpp` | Quote batches, ordered apply, the print log, and minute rolls |
 | `book/steps.hpp` | Tick bands, price walks, and `TickGrid` with a cached band cursor |
 | `study/factorcal.hpp` | Fixed-depth factor calendar series and named rings (notes §22) |
+| `book/extprint.hpp` | Print match by order number, active quote path |
 | `book/venue.hpp` | `PaperVenue` |
 | `book/tradelane.hpp` | Local TD `TradeLane` / `lane_beat` |
 | `book/drill.hpp` | `DrillCue` / `DrillBook` |
@@ -440,7 +443,8 @@ These calls do not open a socket, do not send an order, and do not start a threa
 | `order/life.hpp` | Order transitions and phase names |
 | `order/line.hpp` | Arrival order of ids at one price |
 | `order/lots.hpp` | Lot split, board-lot, and margin quantity helpers |
-| `order/parent.hpp` | Parent time slices and a basket control header |
+| `order/parent.hpp` | Parent time slices, child quantity, and a basket control header |
+| `order/quoteprice.hpp` | Book-only pre, post, and chase prices |
 | `order/plan.hpp` | The next order, resting room, slices, and chase prices |
 | `order/pool.hpp` | Fixed slots found by id |
 | `order/recon.hpp` | Local and counter fill alignment |

@@ -37,9 +37,9 @@ form.px = 3500;
 form.qty = 2;
 pitlane::GateResult gate = pitlane::normalize_gate(form);
 </code></pre>
-<p><code>split_lots</code> 把一笔期货手数拆成几段。模式是 <code>TodayThenYdayThenOpen</code>、<code>CloseOnly</code> 和 <code>YdayThenStop</code>。其他模式返回 -1。超过最大手数的一段会被切开，小于最小手数的一段会被丢掉。</p>
-<p><code>commodity_plan</code> 和 <code>index_plan</code> 各自给出推向目标仓的下一张单。今仓和昨仓分开时，先平昨。<code>index_plan</code> 里的昨仓等于持仓减去当日已经开出的数量。<code>plan_px</code> 对买入取卖一，对卖出取买一。</p>
-<p><code>lock_future</code> 和 <code>lock_cash_sell</code> 冻结平仓或股票卖出需要的数量。<code>book_fill</code> 按成交写回今仓、昨仓和总仓。</p>
+<p><code>split_lots</code> 把一笔期货手数拆成几段。模式是 <code>TodayThenYdayThenOpen</code>、<code>CloseOnly</code> 和 <code>YdayThenStop</code>。其他模式返回 -1。超过最大手数的一段会被切开，小于最小手数的一段会被丢掉。<code>split_against</code> 先平对手仓。<code>CloseStyle::SplitYday</code>（上期所、能源中心）把今仓和昨仓分开。<code>Plain</code> 合成一笔平仓。平不够的数量再按最大手数拆成开仓。</p>
+<p><code>commodity_plan</code> 和 <code>index_plan</code> 各自给出推向目标仓的下一张单。今仓和昨仓分开时，先平昨。<code>index_plan</code> 里的昨仓等于持仓减去当日已经开出的数量。<code>plan_px</code> 对买入取卖一，对卖出取买一。<code>next_child_qty</code> 按完成率曲线给出下一笔数量。落后量按 <code>share_ppm</code> 分摊。领先达到母单大约一成，再算上在途量，下一笔数量为 0。<code>price_at_quote_vwap</code> 是盘口一档的量加权价，或是主动一侧的某一档，再按最小变动价位对齐。<code>pre_px</code>、<code>post_px</code>、<code>chasing_px</code> 只根据这份盘口返回价格。</p>
+<p><code>lock_future</code> 和 <code>lock_cash_sell</code> 冻结平仓或股票卖出需要的数量。<code>book_fill</code> 按成交写回今仓、昨仓和总仓。<code>apply_open_fill</code> 增加总仓、昨仓不动，新增的部分就是今仓。<code>apply_close_fill</code> 减少总仓；普通平仓先吃还没冻住的昨仓，平今不动昨仓。<code>roll_session</code> 把剩余持仓全部记成昨仓。<code>add_session_us</code> 只在连续竞价时段里加时间。</p>
   </main>
 </div>
 </body>

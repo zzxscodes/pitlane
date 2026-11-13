@@ -700,6 +700,105 @@ static void check_prelock_credit_curve_wash() {
     expect(pitlane::end_flat_pull(3, 5) == 3 && pitlane::end_flat_pull(9, 5) == 0, "end flat");
 }
 
+static void check_align_220() {
+    pitlane::LotSlice slices[8]{};
+    const int n = pitlane::split_against(pitlane::LotPos{10, 4}, pitlane::LotPend{}, pitlane::CloseStyle::SplitYday, 12, 3,
+                                          1, slices, 8);
+    expect(n == 5, "against slices");
+    expect(slices[0].off == pitlane::Off::CloseToday && slices[0].qty == 3, "close today cap");
+    expect(slices[1].off == pitlane::Off::CloseToday && slices[1].qty == 1, "close today rest");
+    expect(slices[2].off == pitlane::Off::CloseYday && slices[2].qty == 3, "close yday cap");
+    expect(slices[3].off == pitlane::Off::CloseYday && slices[3].qty == 3, "close yday rest");
+    expect(slices[4].off == pitlane::Off::Open && slices[4].qty == 2, "open the shortfall");
+    const int plain = pitlane::split_against(pitlane::LotPos{10, 4}, {}, pitlane::CloseStyle::Plain, 12, 3, 1, slices, 8);
+    expect(plain == 5 && slices[0].off == pitlane::Off::Close && slices[4].off == pitlane::Off::Open, "plain close then open");
+
+    expect(pitlane::same_side_print(true, 5, 3) && !pitlane::same_side_print(true, 3, 5), "same side");
+    expect(pitlane::print_hits(true, 100, 100, 0, false, 10, 10) && !pitlane::print_hits(true, 100, 100, 0, true, 10, 10),
+           "rigid equal");
+    expect(pitlane::print_hits(true, 100, 99, 0, true, 10, 10) && !pitlane::print_hits(true, 100, 99, 0, true, 10, 9),
+           "through and seq");
+    pitlane::ExtPrint same{};
+    same.seq = 10;
+    same.bid_no = 9;
+    same.ask_no = 2;
+    same.px = 98;
+    same.qty = 3;
+    pitlane::PathFill hit = pitlane::ext_match_one(true, 100, 4, 0, false, 10, same);
+    expect(hit.same == 1 && hit.px == 98 && hit.qty == 3 && hit.path == pitlane::MatchPath::PassiveBid, "same print");
+    pitlane::ExtPrint opp = same;
+    opp.bid_no = 1;
+    opp.ask_no = 8;
+    opp.qty = 10;
+    hit = pitlane::ext_match_one(true, 100, 4, 0, false, 10, opp);
+    expect(hit.same == 0 && hit.px == 100 && hit.qty == 4 && hit.path == pitlane::MatchPath::PassiveBid, "passive at order");
+    const pitlane::Rung asks[] = {{100, 2}, {104, 10}};
+    hit = pitlane::match_quote(true, 105, 5, asks, 2);
+    expect(hit.path == pitlane::MatchPath::ActiveBid && hit.qty == 5 && hit.px == 100, "active bid");
+    expect(pitlane::match_quote(true, 90, 5, asks, 2).path == pitlane::MatchPath::None, "no cross");
+
+    expect(pitlane::next_child_qty(1000, 200, 0, 100000, 200000, 500000, 1, false) == 0, "too far ahead");
+    expect(pitlane::next_child_qty(1000, 0, 0, 100000, 200000, 1000000, 1, false) == 200, "share the lag");
+    expect(pitlane::next_child_qty(1000, 0, 0, 0, 100000, 0, 100, false) == 100, "curve piece");
+
+    pitlane::QuoteTop top{};
+    top.bid[0] = 100;
+    top.ask[0] = 102;
+    top.bid_qty = 1;
+    top.ask_qty = 1;
+    expect(pitlane::price_at_quote_vwap(true, 0, top, 1) == 101, "touch vwap");
+    expect(pitlane::price_at_quote_vwap(true, 1, top, 2) == 102, "ask rung tick");
+    expect(pitlane::pre_px(true, 0, top, true, false) == 102, "pre opposite");
+    top.ask[0] = 0;
+    expect(pitlane::pre_px(true, 0, top, true, false) == 100, "pre reroute");
+    top.ask[0] = 110;
+    top.bid[0] = 100;
+    expect(pitlane::post_px(true, 100, 110, 2, 1) == 102, "post inside");
+    expect(pitlane::chasing_px(true, 0, top, 2, 1) == 112, "chase ask");
+
+    pitlane::LotLock book{};
+    book.total = 4;
+    book.yday_left = 4;
+    book.free_lots = 4;
+    pitlane::apply_open_fill(book, 2);
+    expect(book.total == 6 && book.yday_left == 4, "open grows today");
+    pitlane::apply_close_fill(book, pitlane::Off::Close, pitlane::Off::Close, 1);
+    expect(book.total == 5 && book.yday_left == 3, "plain close eats yesterday");
+    pitlane::roll_session(book);
+    expect(book.yday_left == book.total && book.total == 5, "session roll");
+    const pitlane::SessionSpan spans[] = {{0, 100}, {200, 300}};
+    expect(pitlane::add_session_us(90, 30, spans, 2) == 220, "skip the break");
+
+    pitlane::GateAsk ask{};
+    ask.act = pitlane::Act::Enter;
+    ask.mode = pitlane::PxMode::Limit;
+    ask.px = 10;
+    ask.qty = 5;
+    ask.side = 1;
+    pitlane::LotLock lots{};
+    lots.total = 10;
+    lots.yday_left = 2;
+    lots.free_lots = 10;
+    ask.lots = &lots;
+    ask.lock_qty = 5;
+    ask.off = pitlane::Off::CloseYday;
+    expect(pitlane::gate_ask(ask) == pitlane::Cause::NoYday, "yday short");
+    ask.off = pitlane::Off::CloseToday;
+    lots.yday_left = 8;
+    expect(pitlane::gate_ask(ask) == pitlane::Cause::NoToday, "today short");
+    ask.lock_qty = 0;
+    pitlane::CashLine cash{};
+    cash.free_amt = 50;
+    ask.cash = &cash;
+    ask.fee_product = pitlane::Product::Future;
+    ask.fee_num = 100;
+    ask.fee_den = 1000;
+    expect(pitlane::gate_ask(ask) == pitlane::Cause::NoCash, "fee freeze");
+    cash.free_amt = 55;
+    expect(pitlane::gate_ask(ask) == pitlane::Cause::Ok, "fee fits");
+    expect(std::strcmp(pitlane::cause_text(pitlane::Cause::NoYday), "yday") == 0, "yday text");
+}
+
 static void check_interleave_locks() {
     int paths = 0;
     for (int first = 0; first < 2; ++first) {
@@ -745,6 +844,7 @@ int main() {
     check_gate_cash_risk();
     check_lots_margin_sign_pull();
     check_prelock_credit_curve_wash();
+    check_align_220();
     check_interleave_locks();
     if (g_fails) {
         std::fprintf(stderr, "%d order check(s) failed\n", g_fails);

@@ -38,4 +38,27 @@ PITLANE_HOT inline int tandem_lat(const uint64_t* __restrict arrivals, int n_pkt
     return n_pkt;
 }
 
+// Continuous sessions only. A gap is skipped; a start inside a gap jumps to the next open.
+struct SessionSpan {
+    int64_t begin_us{0};
+    int64_t end_us{0};
+};
+
+inline int64_t add_session_us(int64_t t, int64_t dur, const SessionSpan* cont, int n) noexcept {
+    if (dur <= 0 || n <= 0 || !cont) return t;
+    int i = 0;
+    while (i < n && t >= cont[i].end_us) ++i;
+    if (i == n) return cont[n - 1].end_us;
+    if (t < cont[i].begin_us) t = cont[i].begin_us;
+    while (dur > 0 && i < n) {
+        const int64_t room = cont[i].end_us - t;
+        if (room < 0) return t;
+        if (dur <= room) return t + dur;
+        dur -= room;
+        if (++i == n) return cont[n - 1].end_us;
+        t = cont[i].begin_us;
+    }
+    return t;
+}
+
 }  // namespace pitlane

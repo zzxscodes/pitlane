@@ -10,7 +10,7 @@
 
 所有名字都在命名空间 `pitlane` 里。链接 `libpitlane.a`，或者用 `-lpitlane` 链接动态库。动态库的 soname 是 `libpitlane.so.1`。两种链接方式使用同一套头文件。
 
-发行版本是 `kVersion`，当前是 2.19.0，并拆成 `kVersionMajor`、`kVersionMinor` 和 `kVersionPatch`。`kDeskVersion` 是 desk 映射文件的布局版本，当前是 4。`kYardVersion` 是独立的标的/行情池布局版本，当前是 2。库的一次新发行可以保持任一布局版本不动。
+发行版本是 `kVersion`，当前是 2.20.0，并拆成 `kVersionMajor`、`kVersionMinor` 和 `kVersionPatch`。`kDeskVersion` 是 desk 映射文件的布局版本，当前是 4。`kYardVersion` 是独立的标的/行情池布局版本，当前是 2。库的一次新发行可以保持任一布局版本不动。
 
 带左侧分节导航的静态网页在 `doc/site/`（`python3 doc/gen_site.py` 生成）。打开**本地** `doc/site/index.html` 或 GitHub Pages；在 `github.com/.../blob/...` 里打开只会看到源码。启动期设置见 **启动配置**。
 
@@ -167,11 +167,11 @@ form.qty = 2;
 pitlane::GateResult gate = pitlane::normalize_gate(form);
 ```
 
-`split_lots` 把一笔期货手数拆成几段。模式是 `TodayThenYdayThenOpen`、`CloseOnly` 和 `YdayThenStop`。其他模式返回 -1。超过最大手数的一段会被切开，小于最小手数的一段会被丢掉。
+`split_lots` 把一笔期货手数拆成几段。模式是 `TodayThenYdayThenOpen`、`CloseOnly` 和 `YdayThenStop`。其他模式返回 -1。超过最大手数的一段会被切开，小于最小手数的一段会被丢掉。`split_against` 先平对手仓。`CloseStyle::SplitYday`（上期所、能源中心）把今仓和昨仓分开。`Plain` 合成一笔平仓。平不够的数量再按最大手数拆成开仓。
 
-`commodity_plan` 和 `index_plan` 各自给出推向目标仓的下一张单。今仓和昨仓分开时，先平昨。`index_plan` 里的昨仓等于持仓减去当日已经开出的数量。`plan_px` 对买入取卖一，对卖出取买一。
+`commodity_plan` 和 `index_plan` 各自给出推向目标仓的下一张单。今仓和昨仓分开时，先平昨。`index_plan` 里的昨仓等于持仓减去当日已经开出的数量。`plan_px` 对买入取卖一，对卖出取买一。`next_child_qty` 按完成率曲线给出下一笔数量。落后量按 `share_ppm` 分摊。领先达到母单大约一成，再算上在途量，下一笔数量为 0。`price_at_quote_vwap` 是盘口一档的量加权价，或是主动一侧的某一档，再按最小变动价位对齐。`pre_px`、`post_px`、`chasing_px` 只根据这份盘口返回价格。
 
-`lock_future` 和 `lock_cash_sell` 冻结平仓或股票卖出需要的数量。`book_fill` 按成交写回今仓、昨仓和总仓。
+`lock_future` 和 `lock_cash_sell` 冻结平仓或股票卖出需要的数量。`book_fill` 按成交写回今仓、昨仓和总仓。`apply_open_fill` 增加总仓、昨仓不动，新增的部分就是今仓。`apply_close_fill` 减少总仓；普通平仓先吃还没冻住的昨仓，平今不动昨仓。`roll_session` 把剩余持仓全部记成昨仓。`add_session_us` 只在连续竞价时段里加时间。
 
 ## 在纸面场所撮合
 
@@ -187,6 +187,8 @@ venue.set_levels(1, nullptr, 0, asks, 1);
 pitlane::Report reps[4]{};
 pitlane::VenueOut out = venue.admit(in, in.stamp_us, reps, 4);
 ```
+
+`on_ext` 用序号和买卖委托号去对未完成的挂单。`print_hits` 要求成交不早于该单；`rigid` 打开时价格必须严格穿过滑点后的限价。`same_side_print` 在该方向的委托号更晚时为真。同向成交仍然计入这张挂单，成交价用逐笔价。另一方向计入时用委托价。`match_quote` 是主动路径：买价打到卖盘、卖价打到买盘时，按可见量成交。一笔逐笔的数量在多张挂单之间共用。
 
 `admit` 把回报写入调用方缓冲区并设置 `out.why`。`trade_open=0` 时新开仓得到 `Why::Closed`。`on_clock` 在延迟到期后推进 staged 单并完成到期撤单（`hang` 时跳过）。`on_print` / `on_tape` 削减队列前方数量；打开 `rigid` 时 `tape_keep` 丢掉同向主动成交。`force_*` / `drill_apply` 对齐模拟器 forced fill 注入（`DrillCue::Closed` = 10，即 `NotTrading`）。`TouchMode` / `resolve_px` 解析对手/本方/最新/中间/五档。主动方为 0 时保留每笔成交。
 
@@ -340,7 +342,7 @@ book.apply(edits, 1);
 
 `sheet_apply` 按状态表推进这张单。状态表不允许的事件，所有字段都保持原样。成交数量大于还没完成的数量，同样整张不动。一次成交把剩余做完时，状态停在部分成交，剩余为 0。全部完成要再给一次结束事件。拒绝会记下调用方传入的原因。发送、接受和结束这几类事件只保留第一次非负的时刻。负数时刻不写。`sheet_ack_ns` 和 `sheet_done_ns` 把这些时刻相减。`sheet_line` 用一行替换文本缓冲，里面是编号、方向、状态、原因、数量、已成和剩余。本地编号放不进有符号 64 位时拒绝，原来的那一行留下。
 
-`gate_ask` 对一次下单或一次撤单按顺序做检查，返回第一个原因。名单、通道规则、自成交表、资金行、持仓锁、风控上限、`BrokerWatch` 或流速窗口是空指针时，这一项跳过。限价下单要求价格和数量都是正数。名字在名单上就是拦截。通道不接受撤单时，返回撤单上限这一原因。通道不接受这种价格类型时，返回价格原因。通道的其他拒绝都是拦截。偏离只在限价下单、并且上限大于等于 0 时检查。自成交只在下单、并且表存在时检查。设置了 `cash` 与 `cash_need` 时走 `cash_enough`。设置了 `lots` 与 `lock_qty` 时只读检查持仓（`lock_future_ok` / `lock_cash_sell_ok`）。设置了 `risk` 时检查数量/名义/在途上限（有 `watch` 时走 `BrokerWatch::screen`）。前面这些检查都通过以后，才改流速窗口；任一更早失败都不改流速窗与在途侧状态。窗口已经到达上限时，下单返回流速原因，撤单返回撤单流速原因，窗口保持原样。这次调用不发单。
+`gate_ask` 对一次下单或一次撤单按顺序做检查，返回第一个原因。名单、通道规则、自成交表、资金行、持仓锁、风控上限、`BrokerWatch` 或流速窗口是空指针时，这一项跳过。限价下单要求价格和数量都是正数。名字在名单上就是拦截。通道不接受撤单时，返回撤单上限这一原因。通道不接受这种价格类型时，返回价格原因。通道的其他拒绝都是拦截。偏离只在限价下单、并且上限大于等于 0 时检查。自成交只在下单、并且表存在时检查。设置了 `cash` 与 `cash_need` 时走 `cash_enough`。设置了 `lots` 与 `lock_qty` 时只读检查持仓（`lock_future_ok` / `lock_cash_sell_ok`）。今仓不够返回 `NoToday`，昨仓不够返回 `NoYday`，总仓不够返回 `NoPos`。名单就是黑名单。限价下单的 `fee_den` 大于 0 时，冻结额是名义金额加上品种费用（`prelock_ok`）。设置了 `risk` 时检查数量/名义/在途上限（有 `watch` 时走 `BrokerWatch::screen`）。前面这些检查都通过以后，才改流速窗口；任一更早失败都不改流速窗与在途侧状态。窗口已经到达上限时，下单返回流速原因，撤单返回撤单流速原因，窗口保持原样。这次调用不发单。
 
 `risk_merge` 对每个正上限取更严（更小）的一侧，0 表示该轴关闭。`AcctRiskTab` 存账户级上限，未命中 fail-closed。`sign_begin(need)` 复位 `SignSlip` 并设定模块数，各模块再 `sign_pass` / `sign_reject`，最后 `sign_ready`（常见 need=3：全局/账户/通道）；拒绝一直保持到复位。
 
@@ -392,6 +394,7 @@ book.apply(edits, 1);
 | `book/quote.hpp` | 行情批次、有序 apply、逐笔记录和分钟滚动 |
 | `book/steps.hpp` | 价位档、价格移动，以及带档位游标缓存的 `TickGrid` |
 | `study/factorcal.hpp` | 定长因子日历序列与按名挂载环（笔记 §22） |
+| `book/extprint.hpp` | 按买卖序号的逐笔撮合，以及主动盘口路径 |
 | `book/venue.hpp` | `PaperVenue` |
 | `book/tradelane.hpp` | 本地交易通道 `TradeLane` / `lane_beat` |
 | `book/drill.hpp` | `DrillCue` / `DrillBook` |
@@ -440,7 +443,8 @@ book.apply(edits, 1);
 | `order/life.hpp` | 委托状态迁移和状态名字 |
 | `order/line.hpp` | 同一个价格上编号的到达顺序 |
 | `order/lots.hpp` | 手数拆分、整手校验与两融数量辅助 |
-| `order/parent.hpp` | 母单时间切片和篮子控制头 |
+| `order/parent.hpp` | 母单时间切片、下一笔数量和篮子控制头 |
+| `order/quoteprice.hpp` | 只看盘口的挂单价、被动价和追价 |
 | `order/plan.hpp` | 下一张单、可挂数量、切片和追价 |
 | `order/pool.hpp` | 按编号查找的固定槽 |
 | `order/recon.hpp` | 本地成交和柜台成交对齐 |

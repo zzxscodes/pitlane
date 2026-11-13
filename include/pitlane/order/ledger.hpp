@@ -73,6 +73,39 @@ inline bool lock_cash_sell(LotLock& book, int64_t qty) noexcept {
 
 inline bool basket_transfer(int64_t qty, int64_t px) noexcept { return qty > 0 && px == 0; }
 
+// Open increases the total. Today is total minus yesterday, so yesterday stays put.
+inline void apply_open_fill(LotLock& book, int64_t qty) noexcept {
+    if (qty <= 0 || book.total > INT64_MAX - qty) return;
+    book.total += qty;
+    book.free_lots = book.total - book.locked;
+}
+
+// A plain close eats free yesterday first. A close-yesterday print also releases yesterday's freeze
+// when the request asked for yesterday. A close-today print leaves yesterday alone.
+inline void apply_close_fill(LotLock& book, Off how, Off asked, int64_t qty) noexcept {
+    if (qty <= 0 || how == Off::Open) return;
+    if (qty > book.total) qty = book.total;
+    const int64_t rel = qty < book.locked ? qty : book.locked;
+    book.total -= qty;
+    book.locked -= rel;
+    if (how == Off::Close) {
+        const int64_t free_yd = book.yday_left > book.yday_locked ? book.yday_left - book.yday_locked : 0;
+        if (free_yd > 0) book.yday_left -= free_yd < qty ? free_yd : qty;
+    } else if (how == Off::CloseYday) {
+        book.yday_left = book.yday_left > qty ? book.yday_left - qty : 0;
+        if (asked == Off::CloseYday) book.yday_locked = book.yday_locked > rel ? book.yday_locked - rel : 0;
+    }
+    if (book.yday_left > book.total) book.yday_left = book.total;
+    book.free_lots = book.total - book.locked;
+}
+
+// Session roll: everything still held is yesterday. Locks move with it.
+inline void roll_session(LotLock& book) noexcept {
+    book.yday_left = book.total;
+    book.yday_locked = book.locked;
+    book.free_lots = book.total - book.locked;
+}
+
 struct StopBand {
     int64_t entry{0};
     int64_t stop{0};

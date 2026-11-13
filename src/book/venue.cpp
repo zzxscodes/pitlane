@@ -565,6 +565,33 @@ int PaperVenue::on_tape(uint32_t name, int64_t px, int64_t qty, uint8_t aggresso
     return n;
 }
 
+int PaperVenue::on_ext(uint32_t name, const ExtPrint* prints, int nprints, int64_t now_us, Report* buf, int cap) noexcept {
+    if (name >= kNames || !prints || nprints <= 0) return 0;
+    int n = 0;
+    for (int p = 0; p < nprints; ++p) {
+        ExtPrint print = prints[p];
+        if (print.px > 0) names_[name].last_px = print.px;
+        if (print.qty <= 0) continue;
+        for (uint32_t i = 0; i < kTickets && print.qty > 0; ++i) {
+            Ticket& t = tickets_[i];
+            if (!t.used || t.name != name) continue;
+            const uint8_t phase = t.phase;
+            if (phase != static_cast<uint8_t>(Phase::Working) && phase != static_cast<uint8_t>(Phase::Partial) &&
+                phase != static_cast<uint8_t>(Phase::PullWait))
+                continue;
+            const int64_t leaves = t.qty - t.done;
+            if (leaves <= 0 || t.born_us < 0) continue;
+            const PathFill hit = ext_match_one(buy_side(t.side), t.px, leaves, cfg_.rigid_extra, cfg_.rigid != 0,
+                                               static_cast<uint64_t>(t.born_us), print);
+            if (hit.qty <= 0) continue;
+            n = fill_ticket(static_cast<int>(i), hit.px, hit.qty, now_us, buf, cap, n);
+            print.qty -= hit.qty;
+            if (t.used && t.done >= t.qty) free_ticket(static_cast<int>(i));
+        }
+    }
+    return n;
+}
+
 int PaperVenue::on_shown(uint32_t name, uint8_t side, int64_t px, int64_t prev_qty, int64_t now_qty, int64_t now_us,
                          Report* buf, int cap) noexcept {
     if (name >= kNames || !known_side(side)) return 0;

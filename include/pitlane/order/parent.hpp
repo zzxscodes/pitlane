@@ -1,5 +1,7 @@
 #pragma once
 
+#include "pitlane/util/numeric.hpp"
+
 #include <cstdint>
 
 namespace pitlane {
@@ -161,6 +163,49 @@ inline int64_t lag_share_remaining(const CurvePlan<N>& plan, int minute) noexcep
     const int64_t left = plan.total - plan.done;
     if (share > left) share = left;
     return share;
+}
+
+inline int64_t round_lot_half(int64_t qty, int64_t lot) noexcept {
+    if (qty <= 0) return 0;
+    if (lot <= 1) return qty;
+    return ((qty + lot / 2) / lot) * lot;
+}
+
+// Next child size from the completion curve. A lag is shared by share_ppm.
+// Being ahead by about a tenth of the parent, counting in-flight quantity, sends nothing.
+inline int64_t next_child_qty(int64_t parent, int64_t done, int64_t working, int32_t prev_ppm, int32_t curr_ppm,
+                              int32_t share_ppm, int64_t lot, bool last_slice) noexcept {
+    if (parent <= 0 || lot <= 0 || curr_ppm < prev_ppm || prev_ppm < 0) return 0;
+    auto scale = [](int64_t base, int32_t ppm) noexcept -> int64_t {
+        if (ppm <= 0) return 0;
+        Wide w = mul_wide(static_cast<uint64_t>(base), static_cast<uint64_t>(ppm));
+        uint64_t q = 0;
+        if (!div_wide(w, 1000000ull, q) || q > static_cast<uint64_t>(INT64_MAX)) return -1;
+        return static_cast<int64_t>(q);
+    };
+    const int64_t piece = scale(parent, curr_ppm - prev_ppm);
+    const int64_t target = scale(parent, prev_ppm);
+    if (piece < 0 || target < 0) return 0;
+    const int64_t lag = target - done;
+    int64_t qty = piece;
+    if (lag > 0) {
+        int32_t share = last_slice ? 1000000 : share_ppm;
+        if (share < 0) share = 0;
+        const int64_t add = scale(lag, share);
+        if (add < 0 || qty > INT64_MAX - add) return 0;
+        qty += add;
+        if (working < 0) working = 0;
+        if (piece <= INT64_MAX - lag && lag + piece >= working) {
+            const int64_t room = lag + piece - working;
+            if (room >= lot && qty < lot) qty = lot;
+        }
+    } else {
+        const int64_t ahead = -lag;
+        if (working < 0) working = 0;
+        if (ahead > INT64_MAX - working) return 0;
+        if (ahead + working >= parent / 10) qty = 0;
+    }
+    return round_lot_half(qty, lot);
 }
 
 template <int N>

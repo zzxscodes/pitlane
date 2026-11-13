@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <new>
 #include <unistd.h>
 
 static int g_fails = 0;
@@ -703,6 +704,42 @@ static void check_framework() {
     ::unlink(path);
 }
 
+static void check_ext_match() {
+    pitlane::VenueCfg cfg{};
+    cfg.rigid = 0;
+    auto* venue = new (std::nothrow) pitlane::PaperVenue(cfg);
+    expect(venue != nullptr, "ext venue");
+    if (!venue) return;
+    const pitlane::Rung bids[] = {{100, 20}};
+    const pitlane::Rung asks[] = {{110, 20}};
+    venue->set_levels(1, bids, 1, asks, 1);
+    pitlane::Intent buy{};
+    buy.tag = 21;
+    buy.name = 1;
+    buy.acct = 4;
+    buy.px = 100;
+    buy.qty = 4;
+    buy.stamp_us = 1000;
+    buy.side = 1;
+    buy.act = 1;
+    buy.style = 1;
+    pitlane::Report reps[4]{};
+    pitlane::VenueOut out = venue->admit(buy, 1000, reps, 4);
+    expect(out.why == pitlane::Why::None && reps[0].phase == static_cast<uint8_t>(pitlane::Phase::Working), "ext rests");
+    pitlane::ExtPrint early{};
+    early.seq = 999;
+    early.bid_no = 1;
+    early.ask_no = 8;
+    early.px = 100;
+    early.qty = 4;
+    expect(venue->on_ext(1, &early, 1, 1001, reps, 4) == 0, "print before the order");
+    pitlane::ExtPrint hit = early;
+    hit.seq = 1000;
+    hit.px = 98;
+    expect(venue->on_ext(1, &hit, 1, 1002, reps, 4) == 1 && reps[0].qty == 4 && reps[0].px == 100, "passive fill at order");
+    delete venue;
+}
+
 int main() {
     check_steps();
     check_books();
@@ -721,6 +758,7 @@ int main() {
     check_quote_ordered();
     check_cumtick();
     check_auction_est_maker();
+    check_ext_match();
     if (g_fails) {
         std::fprintf(stderr, "%d book check(s) failed\n", g_fails);
         return 1;

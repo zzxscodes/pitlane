@@ -28,6 +28,11 @@ enum class SplitMode : uint8_t { TodayThenYdayThenOpen = 1, CloseOnly = 2, YdayT
 int split_lots(int64_t want, LotPos pos, LotPend pend, int64_t max_lot, int64_t min_lot, SplitMode mode, LotSlice* out,
                int cap) noexcept;
 
+// Close the opposite book first. SplitYday keeps today and yesterday apart.
+// Plain uses one close. What is left opens, cut by max_lot. A short piece is dropped.
+int split_against(LotPos opp, LotPend pend, CloseStyle rule, int64_t want, int64_t max_lot, int64_t min_lot,
+                  LotSlice* out, int cap) noexcept;
+
 // A-share board lot. Direction still goes through normalize_gate; these are quantity helpers only.
 
 inline bool board_lot_ok(int64_t qty, int64_t lot = 100) noexcept {

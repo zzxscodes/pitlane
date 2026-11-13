@@ -875,8 +875,8 @@ static void check_center() {
 }
 
 int main() {
-    expect(pitlane::kVersionMajor == 2 && pitlane::kVersionMinor == 19 && pitlane::kVersionPatch == 0, "release");
-    expect(std::strcmp(pitlane::kVersion, "2.19.0") == 0, "release text");
+    expect(pitlane::kVersionMajor == 2 && pitlane::kVersionMinor == 20 && pitlane::kVersionPatch == 0, "release");
+    expect(std::strcmp(pitlane::kVersion, "2.20.0") == 0, "release text");
     expect(pitlane::kDeskVersion == 4, "desk layout");
     check_conf();
     check_yard();
