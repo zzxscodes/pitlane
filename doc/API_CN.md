@@ -10,7 +10,7 @@
 
 所有名字都在命名空间 `pitlane` 里。链接 `libpitlane.a`，或者用 `-lpitlane` 链接动态库。动态库的 soname 是 `libpitlane.so.1`。两种链接方式使用同一套头文件。
 
-发行版本是 `kVersion`，当前是 2.21.0，并拆成 `kVersionMajor`、`kVersionMinor` 和 `kVersionPatch`。`kDeskVersion` 是 desk 映射文件的布局版本，当前是 5。`kYardVersion` 是独立的标的/行情池布局版本，当前是 2。库的一次新发行可以保持任一布局版本不动。
+发行版本是 `kVersion`，当前是 2.21.1，并拆成 `kVersionMajor`、`kVersionMinor` 和 `kVersionPatch`。`kDeskVersion` 是 desk 映射文件的布局版本，当前是 5。`kYardVersion` 是独立的标的/行情池布局版本，当前是 2。库的一次新发行可以保持任一布局版本不动。
 
 带左侧分节导航的静态网页在 `doc/site/`（`python3 doc/gen_site.py` 生成）。打开**本地** `doc/site/index.html` 或 GitHub Pages；在 `github.com/.../blob/...` 里打开只会看到源码。启动期设置见 **启动配置**。
 

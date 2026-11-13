@@ -124,16 +124,7 @@ public:
             if (t.every_us > 0) t.when_us += t.every_us;
             else t.live = 0;
         }
-        if (beat_us > 0 && (last_beat_us_ == 0 || now - last_beat_us_ >= beat_us)) {
-            Pulse beat{};
-            beat.stamp_us = now;
-            beat.value = static_cast<int64_t>(beats_ + 1);
-            slot_text(beat.topic, static_cast<int>(sizeof beat.topic), "hb");
-            if (desk_->pulses.publish(beat, beat_mask)) {
-                ++beats_;
-                last_beat_us_ = now;
-            }
-        }
+        if (beat_us > 0 && (last_beat_us_ == 0 || now - last_beat_us_ >= beat_us)) emit_heartbeat(now);
     }
 
     // Blocking run. sleep_ns==0 spins with cpu_relax. The caller owns any extra thread.
@@ -178,6 +169,17 @@ private:
     uint64_t beats_{0};
     uint32_t engine_id_{0};
     char app_name_[32]{};
+
+    // Not inlined: g++ 11 -O3 otherwise treats Pulse padding as uninitialized in copy_bytes.
+    PITLANE_NOINLINE PITLANE_COLD void emit_heartbeat(int64_t now) noexcept {
+        Pulse beat{};
+        beat.stamp_us = now;
+        beat.value = static_cast<int64_t>(beats_ + 1);
+        slot_text(beat.topic, static_cast<int>(sizeof beat.topic), "hb");
+        if (!desk_ || !desk_->pulses.publish(beat, beat_mask)) return;
+        ++beats_;
+        last_beat_us_ = now;
+    }
 };
 
 } // namespace pitlane
