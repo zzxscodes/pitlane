@@ -10,16 +10,12 @@
 <div class="layout">
   <aside class="side">
     <h1>pitlane API</h1>
-    <div class="lang">
-      <a href="../en/frames-pacing-and-snapshots.html">English</a>
-      <a href="#" class="active">中文</a>
-    </div>
     <nav>
       <a href="index.html">概述</a><a href="启动配置.html">启动配置</a><a href="打开共享区.html">打开共享区</a><a href="标的-行情池-yard.html">标的 / 行情池（Yard）</a><a href="发布和读取.html">发布和读取</a><a href="跑会话循环.html">跑会话循环</a><a href="准备一张委托.html">准备一张委托</a><a href="在纸面场所撮合.html">在纸面场所撮合</a><a href="合约-信号和柜台.html">合约、信号和柜台</a><a href="辅助函数.html">辅助函数</a><a href="调用方自己保管的辅助函数.html">调用方自己保管的辅助函数</a><a href="组帧-节奏和快照.html" class="active">组帧、节奏和快照</a><a href="周期计数和定长低延迟表.html">周期计数和定长低延迟表</a><a href="一张委托单.html">一张委托单</a><a href="研究-以及调用方自己的决定.html">研究，以及调用方自己的决定</a><a href="价格窗口-槽池和两笔费用.html">价格窗口、槽池和两笔费用</a><a href="调用所在的头文件.html">调用所在的头文件</a>
     </nav>
   </aside>
   <main class="main">
-    <div class="meta">Static API guide · open a section from the left</div>
+    <div class="meta">从左侧打开一节</div>
     <h1>组帧、节奏和快照</h1>
 <p>这些调用不打开套接字，也不发单。字节、时钟和决定都留在调用方。</p>
 <p><code>digest_of</code> 只覆盖传给它的字节。<code>Sum8</code> 是求和的低 8 位。<code>Crc16</code> 是 CRC-16/CCITT-FALSE。<code>Crc32</code> 是 ISO-HDLC 的 CRC-32。<code>digest_write</code> 把这个值按小端写出去。<code>StreamAsm&lt;Cap&gt;</code> 把字节追加进自己的缓冲，<code>Cap</code> 从 16 到 65536。<code>FrameSpec</code> 在 4 到 32 字节的头里，用 <code>len_off</code> 处的小端长度读取正文。头、正文和校验都到齐，<code>pull</code> 才给出一帧。正文超过 <code>max_body</code>，或者整帧放不进缓冲，返回 <code>BadLen</code>，缓冲保持原样。校验不对时返回 <code>BadDig</code>，丢掉这一帧，后面的字节留下。好帧留在缓冲开头，直到 <code>commit</code>。帧还没取走时，<code>append</code> 失败。</p>

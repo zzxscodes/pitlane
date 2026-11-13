@@ -27,9 +27,6 @@ a:hover { text-decoration: underline; }
 .layout { display: grid; grid-template-columns: 280px 1fr; height: 100%; }
 .side { background: var(--panel); border-right: 1px solid var(--border); overflow: auto; padding: 1rem 0.75rem 2rem; }
 .side h1 { font-size: 1.05rem; margin: 0.25rem 0.5rem 0.75rem; }
-.side .lang { display: flex; gap: 0.5rem; margin: 0 0.5rem 1rem; }
-.side .lang a { font-size: 0.85rem; padding: 0.2rem 0.5rem; border: 1px solid var(--border); border-radius: 4px; color: var(--muted); }
-.side .lang a.active { color: var(--text); border-color: var(--accent); }
 .side nav a { display: block; padding: 0.35rem 0.5rem; color: var(--muted); border-radius: 4px; font-size: 0.9rem; }
 .side nav a:hover, .side nav a.active { background: #243044; color: var(--text); text-decoration: none; }
 .main { overflow: auto; padding: 1.5rem 2rem 3rem; max-width: 920px; }
@@ -177,13 +174,12 @@ def split_sections(md: str) -> list[tuple[str, str]]:
     return sections
 
 
-def page_html(lang: str, title: str, nav: list[tuple[str, str, bool]], body: str, other_href: str) -> str:
+def page_html(lang: str, title: str, nav: list[tuple[str, str, bool]], body: str) -> str:
     nav_html = []
     for href, label, active in nav:
         cls = ' class="active"' if active else ""
         nav_html.append(f'<a href="{href}"{cls}>{html.escape(label)}</a>')
-    en_cls = ' class="active"' if lang == "en" else ""
-    zh_cls = ' class="active"' if lang == "zh" else ""
+    meta = "从左侧打开一节" if lang == "zh" else "Open a section from the left"
     return f"""<!DOCTYPE html>
 <html lang="{lang}">
 <head>
@@ -196,16 +192,12 @@ def page_html(lang: str, title: str, nav: list[tuple[str, str, bool]], body: str
 <div class="layout">
   <aside class="side">
     <h1>pitlane API</h1>
-    <div class="lang">
-      <a href="{other_href if lang == "zh" else "#"}"{en_cls}>English</a>
-      <a href="{other_href if lang == "en" else "#"}"{zh_cls}>中文</a>
-    </div>
     <nav>
       {"".join(nav_html)}
     </nav>
   </aside>
   <main class="main">
-    <div class="meta">Static API guide · open a section from the left</div>
+    <div class="meta">{meta}</div>
     {body}
   </main>
 </div>
@@ -225,20 +217,14 @@ def collect_files(src: Path) -> list[tuple[str, str, str]]:
     return files
 
 
-def write_lang(lang: str, files: list[tuple[str, str, str]], peers: list[str]) -> None:
+def write_lang(lang: str, files: list[tuple[str, str, str]]) -> None:
     out_dir = OUT / lang
     out_dir.mkdir(parents=True, exist_ok=True)
-    other_lang = "zh" if lang == "en" else "en"
-    for idx, (name, title, body) in enumerate(files):
+    for name, title, body in files:
         nav = [(n2, t2, n2 == name) for n2, t2, _ in files]
-        # Pair EN/ZH by section order so the language switch lands on the matching topic.
-        if idx < len(peers):
-            other_href = f"../{other_lang}/{peers[idx]}"
-        else:
-            other_href = f"../{other_lang}/index.html"
         content = f"<h1>{html.escape(title)}</h1>\n" + render_body(body)
         (out_dir / name).write_text(
-            page_html(lang, title, nav, content, other_href), encoding="utf-8"
+            page_html(lang, title, nav, content), encoding="utf-8"
         )
 
 
@@ -246,10 +232,8 @@ def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / "assets").mkdir(exist_ok=True)
     (OUT / "assets" / "style.css").write_text(CSS, encoding="utf-8")
-    en_files = collect_files(ROOT / "API.md")
-    zh_files = collect_files(ROOT / "API_CN.md")
-    write_lang("en", en_files, [n for n, _, _ in zh_files])
-    write_lang("zh", zh_files, [n for n, _, _ in en_files])
+    write_lang("en", collect_files(ROOT / "API.md"))
+    write_lang("zh", collect_files(ROOT / "API_CN.md"))
     (OUT / "index.html").write_text(
         """<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"/>
 <meta http-equiv="refresh" content="0; url=en/index.html"/>
@@ -262,7 +246,7 @@ code{background:#f4f4f4;padding:0.1em 0.35em}
 </style>
 </head>
 <body>
-<p><a href="en/index.html">English</a> · <a href="zh/index.html">中文</a></p>
+<p><a href="en/index.html">pitlane API</a></p>
 <p class="note">Browsing this file on <code>github.com/.../blob/...</code> shows source only.
 GitHub does not run HTML there. Open a local clone (<code>doc/site/index.html</code>),
 an installed <code>share/doc/pitlane/site/</code>, or the GitHub Pages deployment for this repo.</p>

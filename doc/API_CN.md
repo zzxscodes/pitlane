@@ -1,6 +1,6 @@
 # pitlane API
 
-这是调用说明。项目介绍在仓库根目录的 `README_CN.md`。英文说明是本目录的 `API.md`。对外调用有变动时，两份说明一起改。
+这是调用说明。项目介绍在仓库根目录的 `README_CN.md`。
 
 包含一个头文件：
 
@@ -12,7 +12,7 @@
 
 发行版本是 `kVersion`，当前是 2.21.1，并拆成 `kVersionMajor`、`kVersionMinor` 和 `kVersionPatch`。`kDeskVersion` 是 desk 映射文件的布局版本，当前是 5。`kYardVersion` 是独立的标的/行情池布局版本，当前是 2。库的一次新发行可以保持任一布局版本不动。
 
-带左侧分节导航的静态网页在 `doc/site/`（`python3 doc/gen_site.py` 生成）。打开**本地** `doc/site/index.html` 或 GitHub Pages；在 `github.com/.../blob/...` 里打开只会看到源码。启动期设置见 **启动配置**。
+带左侧分节导航的静态网页在 `doc/site/zh/`（`python3 doc/gen_site.py` 生成）。打开本地 `doc/site/zh/index.html` 或 GitHub Pages；在 `github.com/.../blob/...` 里打开只会看到源码。启动期设置见 **启动配置**。
 
 头文件分在 `pitlane/desk/`、`pitlane/book/`、`pitlane/order/`、`pitlane/time/`、`pitlane/study/`、`pitlane/util/` 和 `pitlane/host/` 下面。`version.hpp` 与 `pitlane.hpp` 同一层。下面的表在路径里写了区域。
 

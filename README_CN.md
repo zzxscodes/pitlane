@@ -1,7 +1,5 @@
 # pitlane
 
-English overview: `README.md`.
-
 ### SimNow 闭环示例
 
 `examples/simnow/` 是自包含小项目。其中 `ctp/` 是写在 `MdEngine` 和 `TdClient` 上的 CTP 网关，只在 `PITLANE_BUILD_CTP=ON` 且有 CTP `_se` API 时编进 `pitlane_simnow`。库本身不链接券商 API。原库内演示在 `examples/demo/`。详见 `examples/simnow/README.md`。
@@ -13,9 +11,9 @@ cp -n conf/simnow_7x24.conf.example conf/simnow_7x24.conf   # 填密码
 # 7×24 窗口（交易日 16:00 起）：
 ../../build/pitlane_simnow conf/simnow_7x24.conf
 ```
- Call guide: `doc/API.md` / `doc/API_CN.md`. Static docs with a sidebar live in `doc/site/` — open a local `doc/site/index.html`, an installed `share/doc/pitlane/site/`, or GitHub Pages. Viewing HTML under `github.com/.../blob/...` only shows source. After API changes, update both languages and run `python3 doc/gen_site.py`.
+调用约定见 `doc/API_CN.md`。带侧栏的静态文档在 `doc/site/zh/`：请打开本地 `doc/site/zh/index.html`、安装后的 `share/doc/pitlane/site/zh/`，或仓库的 GitHub Pages。在 `github.com/.../blob/...` 里点开 HTML 只会看到源码。改库时请更新这份说明并执行 `python3 doc/gen_site.py`。
 
-CMake:
+用 CMake 接入：
 
 ```cmake
 find_package(pitlane REQUIRED)

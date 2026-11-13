@@ -10,4 +10,4 @@ pitlane 的 `host/` 只改**当前**进程或线程，不改 GRUB、不停 `irqb
 6. **实时** — `SCHED_FIFO`/`RR` 需权限；与亲和性一起用。
 7. **频率** — performance 调速；避免只靠 AVX-512 的路径（`PITLANE_NATIVE` 下自动向量宽上限 256 位）。
 
-详见笔记 §1–4、§7、§32。英文：`HOST_TUNING.md`。
+详见笔记 §1–4、§7、§32。
