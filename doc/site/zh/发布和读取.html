@@ -48,7 +48,7 @@ if (desk-&gt;intents.at(0, pitlane::kLoopReader, got, &amp;fresh) &amp;&amp; fre
     desk-&gt;intents.ack(0, pitlane::kLoopReader);
 }
 </code></pre>
-<p><code>Intent</code>、<code>Report</code> 和 <code>Quote</code> 在 <code>desk/types.hpp</code>。其余槽类型——<code>AlgoJob</code>、<code>ControlNote</code>、<code>Pulse</code>、<code>TapePrint</code>、<code>QueryNote</code>、<code>PackageNote</code>、<code>LogNote</code>——在 <code>desk/wire.hpp</code>。比这些槽更大的数据，由调用方放在自己的环上，类型是 <code>Parcel&lt;Bytes&gt;</code>。长度大于 <code>Bytes</code> 时，<code>publish_parcel</code> 失败。热路径可用 <code>desk_log_publish</code> 写入 <code>LogNote</code>，冷侧再排空 <code>logs</code> 环。</p>
+<p><code>Intent</code>、<code>Report</code> 和 <code>Quote</code> 在 <code>desk/types.hpp</code>。其余槽类型——<code>AlgoJob</code>、<code>ControlNote</code>、<code>Pulse</code>、<code>TapePrint</code>、<code>QueryNote</code>、<code>PackageNote</code>、<code>LogNote</code>——在 <code>desk/wire.hpp</code>。比这些槽更大的数据，由调用方放在自己的环上，类型是 <code>Parcel&lt;Bytes&gt;</code>。长度大于 <code>Bytes</code> 时，<code>publish_parcel</code> 失败。热路径可用 <code>desk_log_publish</code> 写入 <code>LogNote</code>，冷侧再排空 <code>logs</code> 环。<code>WireLog</code> 对齐笔记里的异步日志：<code>log</code> 把一行打进一个 <code>PackedLine</code>（字面量用 <code>lit</code>，动态串拷进槽，标量 <code>memcpy</code>），满环丢弃该行，热路径不格式化。后台线程或调用方 <code>flush</code> 再把槽写成文本。日志文件放 tmpfs，热路径就不碰块设备。</p>
   </main>
 </div>
 </body>

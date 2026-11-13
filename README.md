@@ -1,6 +1,19 @@
 # pitlane
 
-中文说明见 `README_CN.md`。调用约定见 `doc/API.md` / `doc/API_CN.md`。带侧栏的静态文档在 `doc/site/`：请打开本地 `doc/site/index.html`、安装后的 `share/doc/pitlane/site/`，或仓库的 GitHub Pages。在 `github.com/.../blob/...` 里点开 HTML 只会看到源码。改库时请成对更新中英文并执行 `python3 doc/gen_site.py`。
+中文说明见 `README_CN.md`。
+
+### SimNow closed-loop example
+
+`examples/simnow/` is a self-contained mini-project (conf + run + main). It builds `pitlane_simnow` when `PITLANE_BUILD_CTP=ON` and a CTP `_se` API tree is available. Core demos live under `examples/demo/`. See `examples/simnow/README.md`.
+
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j --target pitlane_simnow
+cd examples/simnow
+cp -n conf/simnow_7x24.conf.example conf/simnow_7x24.conf   # set password
+# after 16:00 (7×24 window):
+../../build/pitlane_simnow conf/simnow_7x24.conf
+```
+调用约定见 `doc/API.md` / `doc/API_CN.md`。带侧栏的静态文档在 `doc/site/`：请打开本地 `doc/site/index.html`、安装后的 `share/doc/pitlane/site/`，或仓库的 GitHub Pages。在 `github.com/.../blob/...` 里点开 HTML 只会看到源码。改库时请成对更新中英文并执行 `python3 doc/gen_site.py`。
 
 用 CMake 接入：
 
@@ -19,11 +32,11 @@ Market data, strategy, and order entry often live in different processes. They m
 
 Include `pitlane/pitlane.hpp` and link `libpitlane.a` (or `libpitlane.so`). Everything is in namespace `pitlane`. This is a same-machine helper with its own types — not a drop-in replace for another live stack.
 
-Release **2.17.0** (`pitlane::kVersion`). Shared-object soname stays `libpitlane.so.1`. Desk file layout is `kDeskVersion` 4. The symbol/quote yard (`Yard`, magic `PITYARD2`, `kYardVersion` 2) is a second map sized like startup pool pools.
+Release **2.18.0** (`pitlane::kVersion`). Shared-object soname stays `libpitlane.so.1`. Desk file layout is `kDeskVersion` 4. The symbol/quote yard (`Yard`, magic `PITYARD2`, `kYardVersion` 2) is a second map sized like startup pool pools.
 
 Roles that other systems put on Mongo or RabbitMQ are covered **locally**: `seed_facts` / `seed_hours` / `seed_holidays` for basic contract and calendar rows; `TopicBus` + `RouteBook` for same-machine topic routing and algo binding. Broker/CTP adapters stay outside the library. Startup may allocate or mmap; the helper hot path does not allocate or tear down resources.
 
-Optional startup INI: `examples/pitlane.conf`. `conf_load` overlays defaults; empty values keep them. `conf_normalize` clamps unsafe values (for example ring depths to a power of two ≤ the compile-time cap) and writes hint lines for you to print. Apply with `conf_map_opt` / `conf_arena_opt` / `desk_apply_conf` / `conf_venue_cfg` once at bring-up — the hot path never reopens the file.
+Optional startup INI: `examples/demo/pitlane.conf`. `conf_load` overlays defaults; empty values keep them. `conf_normalize` clamps unsafe values (for example ring depths to a power of two ≤ the compile-time cap) and writes hint lines for you to print. Apply with `conf_map_opt` / `conf_arena_opt` / `desk_apply_conf` / `conf_venue_cfg` once at bring-up — the hot path never reopens the file.
 
 Headers and sources sit one directory deeper, by area. `desk` holds the shared region and the records on it. `book` holds quotes, the trading day, and paper matching. `order` holds order life, checks, and positions. `time` holds clocks and latency tapes. `study` holds features, markouts, and the caller decision. `util` holds numbers, text, frames, and fixed buffers. `host` holds process-side `sched_setaffinity`, scheduling policy, IRQ affinity, explicit huge-page pool control, `mlockall`, and NUMA membind. Sources for an area live under the same name in `src` when the area has compiled files. Tests for an area live under the same name in `tests`. The latency program is `tests/time/perf.cpp`. A direct include names the area, as in `pitlane/order/sheet.hpp`. `version.hpp` stays next to `pitlane.hpp`.
 
@@ -170,7 +183,7 @@ One build produces the static library `libpitlane.a` and the shared library `lib
 
 Other programs include the same headers. Link the shared library with `-lpitlane`, and make sure `libpitlane.so` can be found in the install directory at run time. The install also places the headers under `include/pitlane`.
 
-`examples/` holds small programs that link the library and check their own result. `demo` writes one buy into a temporary mapping and fills it in the paper matcher. `desk` walks names, cash, a ring batch, and one session beat. `book` walks the quote, the price window, the calendar, and the limit book. `order` walks the gate, the sheet, and the lot split. `study` walks features and a caller-supplied decision. `time` walks the cycle scale, the clock page, and the fill ring. `lane` walks the counter check, a late fill, and the channel. `own` walks caller-owned ids, slices, and a venue fill. `pace` walks framing, a snapshot, and the fixed tables. After the build:
+`examples/demo/` holds small programs that link the library and check their own result. `demo` writes one buy into a temporary mapping and fills it in the paper matcher. `desk` walks names, cash, a ring batch, and one session beat. `book` walks the quote, the price window, the calendar, and the limit book. `order` walks the gate, the sheet, and the lot split. `study` walks features and a caller-supplied decision. `time` walks the cycle scale, the clock page, and the fill ring. `lane` walks the counter check, a late fill, and the channel. `own` walks caller-owned ids, slices, and a venue fill. `pace` walks framing, a snapshot, and the fixed tables. After the build:
 
 ```bash
 ./pitlane/build/pitlane_demo

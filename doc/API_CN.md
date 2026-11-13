@@ -10,7 +10,7 @@
 
 所有名字都在命名空间 `pitlane` 里。链接 `libpitlane.a`，或者用 `-lpitlane` 链接动态库。动态库的 soname 是 `libpitlane.so.1`。两种链接方式使用同一套头文件。
 
-发行版本是 `kVersion`，当前是 2.17.0，并拆成 `kVersionMajor`、`kVersionMinor` 和 `kVersionPatch`。`kDeskVersion` 是 desk 映射文件的布局版本，当前是 4。`kYardVersion` 是独立的标的/行情池布局版本，当前是 2。库的一次新发行可以保持任一布局版本不动。
+发行版本是 `kVersion`，当前是 2.18.0，并拆成 `kVersionMajor`、`kVersionMinor` 和 `kVersionPatch`。`kDeskVersion` 是 desk 映射文件的布局版本，当前是 4。`kYardVersion` 是独立的标的/行情池布局版本，当前是 2。库的一次新发行可以保持任一布局版本不动。
 
 带左侧分节导航的静态网页在 `doc/site/`（`python3 doc/gen_site.py` 生成）。打开**本地** `doc/site/index.html` 或 GitHub Pages；在 `github.com/.../blob/...` 里打开只会看到源码。启动期设置见 **启动配置**。
 
@@ -20,7 +20,7 @@
 
 ## 启动配置
 
-库在进程启动时接受的可调项，都放在可选的 INI 风格文件里（见 `examples/pitlane.conf`）。默认值是 `desk/config.hpp` 里 `PitConf` 的成员初值。省略某个键，或把值留空，就保留该默认值。未知键忽略。硬解析错误（截断行、该写数字却写了别的）时 `conf_load` 返回 false。
+库在进程启动时接受的可调项，都放在可选的 INI 风格文件里（见 `examples/demo/pitlane.conf`）。默认值是 `desk/config.hpp` 里 `PitConf` 的成员初值。省略某个键，或把值留空，就保留该默认值。未知键忽略。硬解析错误（截断行、该写数字却写了别的）时 `conf_load` 返回 false。
 
 `broker` 的 `ack_limit_us` / `life_limit_us` / `pull_limit_us` 默认 `60000000`（60 秒），对齐常见的 `trading center` `HeartBeatIntervalSec`；设为 `0` 关闭该轴。`host` 默认打开 `thp_disable` 与 `mlockall`。Desk FanRing 软容量仍停在编译期上限（`kIntentCap` 等）。十万级标的/行情池在独立的 `[yard]` / `Yard` 映射里（启动期一次建好，热路径不再分配）。Mongo 文档与 RabbitMQ topic 的职责由本地 API 承担（`seed_facts` / `TopicBus` / `RouteBook`），不会把连接串或券商 URI 写进库里。
 
@@ -127,7 +127,7 @@ if (desk->intents.at(0, pitlane::kLoopReader, got, &fresh) && fresh) {
 }
 ```
 
-`Intent`、`Report` 和 `Quote` 在 `desk/types.hpp`。其余槽类型——`AlgoJob`、`ControlNote`、`Pulse`、`TapePrint`、`QueryNote`、`PackageNote`、`LogNote`——在 `desk/wire.hpp`。比这些槽更大的数据，由调用方放在自己的环上，类型是 `Parcel<Bytes>`。长度大于 `Bytes` 时，`publish_parcel` 失败。热路径可用 `desk_log_publish` 写入 `LogNote`，冷侧再排空 `logs` 环。
+`Intent`、`Report` 和 `Quote` 在 `desk/types.hpp`。其余槽类型——`AlgoJob`、`ControlNote`、`Pulse`、`TapePrint`、`QueryNote`、`PackageNote`、`LogNote`——在 `desk/wire.hpp`。比这些槽更大的数据，由调用方放在自己的环上，类型是 `Parcel<Bytes>`。长度大于 `Bytes` 时，`publish_parcel` 失败。热路径可用 `desk_log_publish` 写入 `LogNote`，冷侧再排空 `logs` 环。`WireLog` 对齐笔记里的异步日志：`log` 把一行打进一个 `PackedLine`（字面量用 `lit`，动态串拷进槽，标量 `memcpy`），满环丢弃该行，热路径不格式化。后台线程或调用方 `flush` 再把槽写成文本。日志文件放 tmpfs，热路径就不碰块设备。
 
 ## 跑会话循环
 

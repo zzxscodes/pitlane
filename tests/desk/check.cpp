@@ -799,8 +799,8 @@ static void check_local_shelf_bus() {
 }
 
 int main() {
-    expect(pitlane::kVersionMajor == 2 && pitlane::kVersionMinor == 17 && pitlane::kVersionPatch == 0, "release");
-    expect(std::strcmp(pitlane::kVersion, "2.17.0") == 0, "release text");
+    expect(pitlane::kVersionMajor == 2 && pitlane::kVersionMinor == 18 && pitlane::kVersionPatch == 0, "release");
+    expect(std::strcmp(pitlane::kVersion, "2.18.0") == 0, "release text");
     expect(pitlane::kDeskVersion == 4, "desk layout");
     check_conf();
     check_yard();

@@ -1,6 +1,19 @@
 # pitlane
 
-English overview: `README.md`. Call guide: `doc/API.md` / `doc/API_CN.md`. Static docs with a sidebar live in `doc/site/` — open a local `doc/site/index.html`, an installed `share/doc/pitlane/site/`, or GitHub Pages. Viewing HTML under `github.com/.../blob/...` only shows source. After API changes, update both languages and run `python3 doc/gen_site.py`.
+English overview: `README.md`.
+
+### SimNow 闭环示例
+
+`examples/simnow/` 是自包含小项目（conf + run + main）。`PITLANE_BUILD_CTP=ON` 且有 CTP `_se` API 时编出 `pitlane_simnow`。原库内演示在 `examples/demo/`。详见 `examples/simnow/README.md`。
+
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j --target pitlane_simnow
+cd examples/simnow
+cp -n conf/simnow_7x24.conf.example conf/simnow_7x24.conf   # 填密码
+# 7×24 窗口（交易日 16:00 起）：
+../../build/pitlane_simnow conf/simnow_7x24.conf
+```
+ Call guide: `doc/API.md` / `doc/API_CN.md`. Static docs with a sidebar live in `doc/site/` — open a local `doc/site/index.html`, an installed `share/doc/pitlane/site/`, or GitHub Pages. Viewing HTML under `github.com/.../blob/...` only shows source. After API changes, update both languages and run `python3 doc/gen_site.py`.
 
 CMake:
 
@@ -19,11 +32,11 @@ pitlane 是给**同一台机器**上多个交易进程用的 C++17 辅助库：�
 
 包含 `pitlane/pitlane.hpp`，链接 `libpitlane.a`（或 `libpitlane.so`）。类型都在命名空间 `pitlane`。这是本机辅助接口，不是拿来热替换另一套在跑系统的兼容层。
 
-发行版 **2.17.0**（`pitlane::kVersion`）。动态库 soname 仍是 `libpitlane.so.1`。desk 布局版本 `kDeskVersion` 为 4。标的/行情池 `Yard`（魔数 `PITYARD2`，`kYardVersion` 2）是另一块启动期映射，体量对齐 startup pool。
+发行版 **2.18.0**（`pitlane::kVersion`）。动态库 soname 仍是 `libpitlane.so.1`。desk 布局版本 `kDeskVersion` 为 4。标的/行情池 `Yard`（魔数 `PITYARD2`，`kYardVersion` 2）是另一块启动期映射，体量对齐 startup pool。
 
 别处用 Mongo / RabbitMQ 承担的职责，在这里用**本地实现**对齐：`seed_facts` / `seed_hours` / `seed_holidays` / `load_facts` / `load_hours` / `load_holidays` 写入合约与日历；`TopicBus` + `RouteBook` 做本机 topic 分发与算法路由。真正留在库外的是券商/CTP 等外部柜台接入。启动期可以分配或 mmap；辅助热路径不分配、不销毁资源。
 
-启动配置是可选 INI（`examples/pitlane.conf`）。`conf_load` 叠到默认值上，空值保留默认；`conf_normalize` 把不安全取值压进合法范围（例如环深取不超过编译期上限的 2 的幂），并写出提示行。用 `conf_map_opt` / `conf_arena_opt` / `desk_apply_conf` / `conf_venue_cfg` 在建图时应用一次即可，热路径不再读文件。
+启动配置是可选 INI（`examples/demo/pitlane.conf`）。`conf_load` 叠到默认值上，空值保留默认；`conf_normalize` 把不安全取值压进合法范围（例如环深取不超过编译期上限的 2 的幂），并写出提示行。用 `conf_map_opt` / `conf_arena_opt` / `desk_apply_conf` / `conf_venue_cfg` 在建图时应用一次即可，热路径不再读文件。
 
 头文件和源文件按区域再分一层目录。`desk` 放共享区和上面的记录。`book` 放行情、交易日和纸面撮合。`order` 放委托生命周期、检查和持仓。`time` 放时钟和延迟记录。`study` 放特征、事后偏移和调用方决策辅助。`util` 放数值、文本、组帧和定长缓冲。`host` 放进程侧的 `sched_setaffinity`、调度策略、IRQ 亲和性、显式大页池、`mlockall` 与 NUMA membind。某个区域若有编译单元，源文件在 `src` 下的同名目录里。某个区域的测试在 `tests` 下的同名目录里。延迟程序是 `tests/time/perf.cpp`。单独包含某个头文件时写上区域，例如 `pitlane/order/sheet.hpp`。`version.hpp` 和 `pitlane.hpp` 放在同一层。
 
@@ -170,7 +183,7 @@ cmake --install pitlane/build --prefix /opt/pitlane
 
 其他程序继续包含同一套头文件。链接动态库时使用 `-lpitlane`，运行时要能找到安装目录里的 `libpitlane.so`。安装结果还包括 `include/pitlane` 下的头文件。
 
-`examples/` 里是链接本库、并自己检查结果的小程序。`demo` 往临时映射写入一张买单，并在纸面撮合里成交。`desk` 走名称、资金、环的批量写入和一次会话节拍。`book` 走行情、价格窗、交易日和限价簿。`order` 走检查、订单表和手数拆分。`study` 走特征和调用方给出的决定。`time` 走周期换算、时钟页和成交环。`lane` 走柜台检查、迟到的成交和通道。`own` 走调用方自己保存的编号、切片和一笔柜台成交。`pace` 走组帧、快照和固定表。构建完成后可以运行：
+`examples/demo/` 里是链接本库、并自己检查结果的小程序。`demo` 往临时映射写入一张买单，并在纸面撮合里成交。`desk` 走名称、资金、环的批量写入和一次会话节拍。`book` 走行情、价格窗、交易日和限价簿。`order` 走检查、订单表和手数拆分。`study` 走特征和调用方给出的决定。`time` 走周期换算、时钟页和成交环。`lane` 走柜台检查、迟到的成交和通道。`own` 走调用方自己保存的编号、切片和一笔柜台成交。`pace` 走组帧、快照和固定表。构建完成后可以运行：
 
 ```bash
 ./pitlane/build/pitlane_demo

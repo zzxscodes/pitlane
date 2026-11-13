@@ -10,7 +10,7 @@ Include one header:
 
 Everything is in the namespace `pitlane`. Link `libpitlane.a`, or link the shared library with `-lpitlane`. The shared library's soname is `libpitlane.so.1`. The headers are the same for both.
 
-The release is `kVersion`, currently 2.17.0, also split into `kVersionMajor`, `kVersionMinor`, and `kVersionPatch`. `kDeskVersion` is the desk mapping-file layout and is currently 4. `kYardVersion` is the separate symbol/quote yard layout and is currently 2. A new library release can leave either layout number where it is.
+The release is `kVersion`, currently 2.18.0, also split into `kVersionMajor`, `kVersionMinor`, and `kVersionPatch`. `kDeskVersion` is the desk mapping-file layout and is currently 4. `kYardVersion` is the separate symbol/quote yard layout and is currently 2. A new library release can leave either layout number where it is.
 
 A browsable static site with a left-hand section list is generated into `doc/site/` (`python3 doc/gen_site.py`). Open a local `doc/site/index.html` or the GitHub Pages deployment — viewing the file on `github.com/.../blob/...` shows source only. Startup settings are covered under **Startup configuration**.
 
@@ -20,7 +20,7 @@ Prices and quantities are integers. Timestamps are microseconds. A side value of
 
 ## Startup configuration
 
-All tunables that the library accepts at process start live in an optional INI-like file (see `examples/pitlane.conf`). Defaults are the member initializers on `PitConf` in `desk/config.hpp`. Omit a key, or leave the value empty, to keep that default. Unknown keys are ignored. Hard parse errors (truncated line, non-numeric where a number is required) make `conf_load` return false.
+All tunables that the library accepts at process start live in an optional INI-like file (see `examples/demo/pitlane.conf`). Defaults are the member initializers on `PitConf` in `desk/config.hpp`. Omit a key, or leave the value empty, to keep that default. Unknown keys are ignored. Hard parse errors (truncated line, non-numeric where a number is required) make `conf_load` return false.
 
 Broker `ack_limit_us` / `life_limit_us` / `pull_limit_us` default to `60000000` (60s), matching a typical `trading center` `HeartBeatIntervalSec`. Set a limit to `0` to turn that axis off. Host defaults enable `thp_disable` and `mlockall`. Desk FanRing soft caps stay at the compile-time maxima (`kIntentCap` …). startup pool-scale symbol/quote pools live in the separate `[yard]` / `Yard` map (sized once at startup; hot path does not allocate). Mongo document roles and RabbitMQ topic roles are covered by local APIs (`seed_facts` / `TopicBus` / `RouteBook`), not by importing connection strings from `MongoConf` / broker URIs.
 
@@ -127,7 +127,7 @@ if (desk->intents.at(0, pitlane::kLoopReader, got, &fresh) && fresh) {
 }
 ```
 
-`Intent`, `Report`, and `Quote` are defined in `desk/types.hpp`. The other slot types — `AlgoJob`, `ControlNote`, `Pulse`, `TapePrint`, `QueryNote`, `PackageNote`, and `LogNote` — are defined in `desk/wire.hpp`. A payload larger than those slots uses `Parcel<Bytes>` on a ring the caller owns. `publish_parcel` fails when the length is greater than `Bytes`. Hot path may `desk_log_publish` a `LogNote`; cold side drains the `logs` ring.
+`Intent`, `Report`, and `Quote` are defined in `desk/types.hpp`. The other slot types — `AlgoJob`, `ControlNote`, `Pulse`, `TapePrint`, `QueryNote`, `PackageNote`, and `LogNote` — are defined in `desk/wire.hpp`. A payload larger than those slots uses `Parcel<Bytes>` on a ring the caller owns. `publish_parcel` fails when the length is greater than `Bytes`. Hot path may `desk_log_publish` a `LogNote`; cold side drains the `logs` ring. `WireLog` is the process logger from the notes: `log` packs one `PackedLine` (literals via `lit`, dynamic strings copied, scalars memcpy'd) into a fixed fail-full ring and does not format. A background thread, or `flush` in caller mode, turns the slot into text. Put the file on tmpfs when the disk must stay off the hot path.
 
 ## Run the session loop
 

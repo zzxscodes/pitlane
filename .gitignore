@@ -20,3 +20,9 @@ compile_commands.json
 Testing/
 CTestTestfile.cmake
 DartConfiguration.tcl
+
+# SimNow local secrets / runtime (never at repo root)
+examples/simnow/conf/simnow_7x24.conf
+examples/simnow/run/**
+!examples/simnow/run/.gitkeep
+*.simnow.conf

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(pitlane VERSION 2.17.0 LANGUAGES CXX)
+project(pitlane VERSION 2.18.0 LANGUAGES CXX)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -11,6 +11,7 @@ set(PITLANE_SOURCES
     src/desk/feed.cpp
     src/desk/logline.cpp
     src/desk/names.cpp
+    src/desk/session.cpp
     src/desk/region.cpp
     src/desk/runtime.cpp
     src/desk/signal.cpp
@@ -21,7 +22,8 @@ set(PITLANE_SOURCES
     src/book/venue.cpp
     src/order/lots.cpp
     src/time/simclock.cpp
-    src/util/textutil.cpp)
+    src/util/textutil.cpp
+    src/util/wirelog.cpp)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
@@ -31,6 +33,9 @@ include(CTest)
 option(PITLANE_BUILD_SHARED "Build libpitlane.so in addition to the static library" ON)
 option(PITLANE_BUILD_TESTS "Build area tests and the latency program" ON)
 option(PITLANE_BUILD_EXAMPLES "Build example programs" ON)
+option(PITLANE_BUILD_CTP "Build the optional CTP broker adapter and pitlane_simnow example" ON)
+# Prefer penetration (_se) libs for SimNow 7×24 handshake.
+set(PITLANE_CTP_API_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../ctp-api/api/v6.6.1_P1_20210406_api" CACHE PATH "CTP API root (_se)")
 option(PITLANE_NATIVE "Emit code for the build-host CPU (-march=native)" ON)
 option(PITLANE_LTO "Enable link-time optimization across translation units" ON)
 option(PITLANE_SANITIZE "Build with address and undefined-behavior sanitizers" OFF)
@@ -110,7 +115,7 @@ if(PITLANE_BUILD_EXAMPLES)
         else()
             set(ex_tgt pitlane_${ex})
         endif()
-        add_executable(${ex_tgt} examples/${ex}.cpp)
+        add_executable(${ex_tgt} examples/demo/${ex}.cpp)
         target_link_libraries(${ex_tgt} PRIVATE pitlane)
         target_compile_options(${ex_tgt} PRIVATE ${PITLANE_WARN_FLAGS} ${PITLANE_OPT_FLAGS})
         if(PITLANE_PGO_LINK)
@@ -119,6 +124,54 @@ if(PITLANE_BUILD_EXAMPLES)
         pitlane_lto(${ex_tgt})
         list(APPEND PITLANE_SAN_TARGETS ${ex_tgt})
     endforeach()
+endif()
+
+# Optional CTP broker adapter. Core session, engines, and WireLog do not include Thost.
+if(PITLANE_BUILD_CTP)
+    set(_PITLANE_CTP_MD_SO "${PITLANE_CTP_API_ROOT}/lib/libthostmduserapi_se.so")
+    set(_PITLANE_CTP_TD_SO "${PITLANE_CTP_API_ROOT}/lib/libthosttraderapi_se.so")
+    if(NOT EXISTS "${_PITLANE_CTP_MD_SO}")
+        set(_PITLANE_CTP_MD_SO "${PITLANE_CTP_API_ROOT}/lib/libctpthostmduserapi.so")
+        set(_PITLANE_CTP_TD_SO "${PITLANE_CTP_API_ROOT}/lib/libctpthosttraderapi.so")
+        set(_PITLANE_CTP_MD_LIB ctpthostmduserapi)
+        set(_PITLANE_CTP_TD_LIB ctpthosttraderapi)
+    else()
+        set(_PITLANE_CTP_MD_LIB thostmduserapi_se)
+        set(_PITLANE_CTP_TD_LIB thosttraderapi_se)
+    endif()
+    if(EXISTS "${PITLANE_CTP_API_ROOT}/include/ThostFtdcMdApi.h" AND EXISTS "${_PITLANE_CTP_MD_SO}")
+        add_library(pitlane_ctp STATIC
+            src/adapter/ctp/md_engine.cpp
+            src/adapter/ctp/td_client.cpp)
+        target_include_directories(pitlane_ctp PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+            ${PITLANE_CTP_API_ROOT}/include)
+        target_link_directories(pitlane_ctp PUBLIC ${PITLANE_CTP_API_ROOT}/lib)
+        target_link_libraries(pitlane_ctp PUBLIC pitlane ${_PITLANE_CTP_MD_LIB} ${_PITLANE_CTP_TD_LIB} Threads::Threads)
+        target_compile_features(pitlane_ctp PUBLIC cxx_std_17)
+        target_compile_options(pitlane_ctp PRIVATE -Wall -Wextra -O3 -DNDEBUG -D_GNU_SOURCE)
+        if(PITLANE_NATIVE)
+            target_compile_options(pitlane_ctp PRIVATE -march=native -mprefer-vector-width=256 -mno-avx512f)
+        endif()
+        set_target_properties(pitlane_ctp PROPERTIES POSITION_INDEPENDENT_CODE ON BUILD_RPATH "${PITLANE_CTP_API_ROOT}/lib")
+
+        if(PITLANE_BUILD_EXAMPLES)
+            add_executable(pitlane_simnow examples/simnow/main.cpp)
+            target_link_libraries(pitlane_simnow PRIVATE pitlane_ctp)
+            target_compile_options(pitlane_simnow PRIVATE -Wall -Wextra -O3 -DNDEBUG -D_GNU_SOURCE)
+            if(PITLANE_NATIVE)
+                target_compile_options(pitlane_simnow PRIVATE -march=native -mprefer-vector-width=256 -mno-avx512f)
+            endif()
+            set_target_properties(pitlane_simnow PROPERTIES
+                BUILD_RPATH "${PITLANE_CTP_API_ROOT}/lib;${CMAKE_CURRENT_BINARY_DIR}"
+                INSTALL_RPATH "${PITLANE_CTP_API_ROOT}/lib")
+            list(APPEND PITLANE_SAN_TARGETS pitlane_simnow)
+        endif()
+        message(STATUS "PITLANE_BUILD_CTP: ON (${PITLANE_CTP_API_ROOT})")
+    else()
+        message(WARNING "PITLANE_BUILD_CTP requested but API not found at ${PITLANE_CTP_API_ROOT}")
+    endif()
 endif()
 
 if(PITLANE_BUILD_TESTS AND BUILD_TESTING)
@@ -236,7 +289,7 @@ install(FILES
 
 install(FILES LICENSE README.md README_CN.md CHANGELOG.md
     DESTINATION ${CMAKE_INSTALL_DOCDIR})
-install(FILES examples/pitlane.conf
+install(FILES examples/demo/pitlane.conf
     DESTINATION ${CMAKE_INSTALL_DATADIR}/pitlane)
 install(DIRECTORY doc/site/
     DESTINATION ${CMAKE_INSTALL_DOCDIR}/site
