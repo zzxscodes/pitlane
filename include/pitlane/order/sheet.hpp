@@ -4,6 +4,7 @@
 #include "pitlane/desk/cash.hpp"
 #include "pitlane/order/judge.hpp"
 #include "pitlane/order/ledger.hpp"
+#include "pitlane/order/prelock.hpp"
 #include "pitlane/time/lap.hpp"
 #include "pitlane/order/life.hpp"
 #include "pitlane/util/textbuf.hpp"
@@ -180,6 +181,13 @@ struct GateAsk {
     const LotLock* lots{nullptr};
     int64_t lock_qty{0};  // when > 0 and lots set, read-only inventory check
     uint8_t cash_sell{0}; // 1 → lock_cash_sell_ok instead of lock_future_ok
+    // When fee_den > 0 on a limit enter, freeze notional plus the class fee.
+    Product fee_product{Product::Future};
+    int64_t fee_num{0};
+    int64_t stamp_num{0};
+    int64_t xfer_num{0};
+    int64_t fee_den{0};
+    uint8_t fee_sell{0};
 };
 
 inline Cause why_to_cause(Why why) noexcept {
@@ -229,8 +237,17 @@ inline Cause gate_ask(const GateAsk& ask) noexcept {
         } else {
             const LotErr err = lock_future_ok(*ask.lots, ask.off, ask.lock_qty);
             if (err == LotErr::NoToday) return Cause::NoToday;
+            if (err == LotErr::NoYday) return Cause::NoYday;
             if (err != LotErr::Ok) return Cause::NoPos;
         }
+    }
+    if (ask.act == Act::Enter && ask.mode == PxMode::Limit && ask.cash != nullptr && ask.fee_den > 0 && ask.px > 0 &&
+        ask.qty > 0) {
+        if (cmp_prod(ask.px, ask.qty, INT64_MAX, 1) > 0) return Cause::NoCash;
+        const int64_t notion = ask.px * ask.qty;
+        const int64_t fee = charge_class(ask.fee_product, notion, ask.fee_num, ask.fee_sell != 0, ask.stamp_num,
+                                          ask.xfer_num, ask.fee_num, ask.fee_den);
+        if (!prelock_ok(ask.cash->free_amt, notion, fee, ask.px, ask.qty)) return Cause::NoCash;
     }
     if (ask.act == Act::Enter && ask.risk != nullptr) {
         Intent probe{};

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "pitlane/book/arrive.hpp"
+#include "pitlane/book/extprint.hpp"
 #include "pitlane/book/drill.hpp"
 #include "pitlane/book/gap.hpp"
 #include "pitlane/book/lags.hpp"
@@ -54,6 +55,8 @@ public:
     int on_print(uint32_t name, int64_t px, int64_t qty, int64_t now_us, Report* buf, int cap) noexcept;
     // aggressor 0 keeps every print. A buy aggressor does not fill a resting buy, and the reverse.
     int on_tape(uint32_t name, int64_t px, int64_t qty, uint8_t aggressor, int64_t now_us, Report* buf, int cap) noexcept;
+    // Resting orders against prints that carry bid and ask numbers. One print's quantity is shared.
+    int on_ext(uint32_t name, const ExtPrint* prints, int nprints, int64_t now_us, Report* buf, int cap) noexcept;
     int on_shown(uint32_t name, uint8_t side, int64_t px, int64_t prev_qty, int64_t now_qty, int64_t now_us, Report* buf,
                  int cap) noexcept;
 

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(pitlane VERSION 2.19.0 LANGUAGES CXX)
+project(pitlane VERSION 2.20.0 LANGUAGES CXX)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
