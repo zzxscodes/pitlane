@@ -21,6 +21,13 @@ Account, engines, and `WireLog` are pitlane framework types. `ctp/` is this exam
 ../../build/pitlane_simnow conf/paper.conf
 ```
 
+`pitlane_simnow_bench` times that paper center without a broker library. It also checks the scale, lap, and histogram helpers, and times one call inside the ring, the order gate, and the paper venue. `ctest` runs it as `simnow_bench`.
+
+```bash
+cmake --build build -j --target pitlane_simnow_bench
+./build/pitlane_simnow_bench
+```
+
 ## Build
 
 Needs CTP `_se` headers/libs (`PITLANE_CTP_API_ROOT`). From repo root:

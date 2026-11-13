@@ -98,12 +98,87 @@ void PaperVenue::set_levels(uint32_t name, const Rung* bids, int nbid, const Run
     }
 }
 
+uint32_t PaperVenue::tag_mix(uint64_t tag) noexcept {
+    tag ^= tag >> 30;
+    tag *= 0xbf58476d1ce4e5b9ull;
+    tag ^= tag >> 27;
+    return static_cast<uint32_t>(tag) & (kTagMap - 1u);
+}
+
 int PaperVenue::find_tag(uint64_t tag) const noexcept {
     if (tag == 0) return -1;
-    for (uint32_t i = 0; i < kTickets; ++i) {
-        if (tickets_[i].used && tickets_[i].tag == tag) return static_cast<int>(i);
+    uint32_t i = tag_mix(tag);
+    for (uint32_t n = 0; n < kTagMap; ++n) {
+        const TagRef& s = tag_[i];
+        if (s.state == 0) return -1;
+        if (s.state == 1 && s.tag == tag) return s.idx;
+        i = (i + 1u) & (kTagMap - 1u);
     }
     return -1;
+}
+
+bool PaperVenue::tag_put(int idx, uint64_t tag) noexcept {
+    if (tag == 0 || idx < 0) return false;
+    uint32_t i = tag_mix(tag);
+    int tomb = -1;
+    for (uint32_t n = 0; n < kTagMap; ++n) {
+        TagRef& s = tag_[i];
+        if (s.state == 1 && s.tag == tag) return false;
+        if (s.state == 2 && tomb < 0) tomb = static_cast<int>(i);
+        if (s.state == 0) {
+            const uint32_t at = tomb >= 0 ? static_cast<uint32_t>(tomb) : i;
+            tag_[at].tag = tag;
+            tag_[at].idx = idx;
+            tag_[at].state = 1;
+            return true;
+        }
+        i = (i + 1u) & (kTagMap - 1u);
+    }
+    if (tomb < 0) return false;
+    tag_[tomb].tag = tag;
+    tag_[tomb].idx = idx;
+    tag_[tomb].state = 1;
+    return true;
+}
+
+void PaperVenue::tag_del(uint64_t tag) noexcept {
+    if (tag == 0) return;
+    uint32_t i = tag_mix(tag);
+    for (uint32_t n = 0; n < kTagMap; ++n) {
+        TagRef& s = tag_[i];
+        if (s.state == 0) return;
+        if (s.state == 1 && s.tag == tag) {
+            s.state = 2;
+            s.tag = 0;
+            s.idx = -1;
+            return;
+        }
+        i = (i + 1u) & (kTagMap - 1u);
+    }
+}
+
+void PaperVenue::live_link(int i) noexcept {
+    int prev = -1;
+    int cur = live_head_;
+    while (cur >= 0 && cur < i) {
+        prev = cur;
+        cur = live_next_[cur];
+    }
+    live_prev_[i] = prev;
+    live_next_[i] = cur;
+    if (prev >= 0) live_next_[prev] = i;
+    else live_head_ = i;
+    if (cur >= 0) live_prev_[cur] = i;
+    else live_tail_ = i;
+}
+
+void PaperVenue::live_unlink(int i) noexcept {
+    const int prev = live_prev_[i];
+    const int next = live_next_[i];
+    if (prev >= 0) live_next_[prev] = next;
+    else live_head_ = next;
+    if (next >= 0) live_prev_[next] = prev;
+    else live_tail_ = prev;
 }
 
 int PaperVenue::alloc_ticket() noexcept {
@@ -112,11 +187,14 @@ int PaperVenue::alloc_ticket() noexcept {
     free_head_ = free_next_[id];
     tickets_[id] = Ticket{};
     tickets_[id].used = 1;
+    live_link(id);
     return id;
 }
 
 void PaperVenue::free_ticket(int i) noexcept {
     if (i < 0 || static_cast<uint32_t>(i) >= kTickets || !tickets_[i].used) return;
+    tag_del(tickets_[i].tag);
+    live_unlink(i);
     tickets_[i].used = 0;
     free_next_[i] = free_head_;
     free_head_ = i;
@@ -138,9 +216,9 @@ int64_t PaperVenue::shown_at(const NameState& ns, uint8_t side, int64_t px) cons
 }
 
 bool PaperVenue::washes(const Intent& in) const noexcept {
-    for (uint32_t i = 0; i < kTickets; ++i) {
+    for (int i = live_head_; i >= 0; i = live_next_[i]) {
         const Ticket& t = tickets_[i];
-        if (!t.used || t.name != in.name || t.acct != in.acct || !live_phase(t.phase)) continue;
+        if (t.name != in.name || t.acct != in.acct || !live_phase(t.phase)) continue;
         if (t.side == in.side) continue;
         const int64_t left = t.qty - t.done;
         if (left <= 0) continue;
@@ -338,6 +416,11 @@ VenueOut PaperVenue::admit(const Intent& in, int64_t now_us, Report* buf, int ca
 
     Ticket& t = tickets_[ti];
     t.tag = in.tag;
+    if (!tag_put(ti, in.tag)) {
+        free_ticket(ti);
+        out.why = Why::Full;
+        return out;
+    }
     t.name = in.name;
     t.acct = in.acct;
     t.px = in.px;
@@ -377,15 +460,12 @@ VenueOut PaperVenue::admit(const Intent& in, int64_t now_us, Report* buf, int ca
 
 int PaperVenue::on_clock(int64_t now_us, Report* buf, int cap) noexcept {
     int n = 0;
-    for (uint32_t i = 0; i < kTickets; ++i) {
-        if (!tickets_[i].used) continue;
-        if (tickets_[i].sticky) continue;
-        if (tickets_[i].phase == static_cast<uint8_t>(Phase::Staged) && tickets_[i].ready_us <= now_us) {
-            n = activate(static_cast<int>(i), now_us, buf, cap, n);
-            continue;
-        }
-        if (tickets_[i].phase == static_cast<uint8_t>(Phase::PullWait) && tickets_[i].pull_ready_us <= now_us) {
-            Ticket& t = tickets_[i];
+    for (int i = live_head_; i >= 0;) {
+        const int next = live_next_[i];
+        Ticket& t = tickets_[i];
+        if (!t.sticky && t.phase == static_cast<uint8_t>(Phase::Staged) && t.ready_us <= now_us) {
+            n = activate(i, now_us, buf, cap, n);
+        } else if (!t.sticky && t.phase == static_cast<uint8_t>(Phase::PullWait) && t.pull_ready_us <= now_us) {
             t.phase = static_cast<uint8_t>(Phase::Cancelled);
             Report r{};
             r.tag = t.tag;
@@ -397,8 +477,9 @@ int PaperVenue::on_clock(int64_t now_us, Report* buf, int cap) noexcept {
             r.side = t.side;
             r.name = t.name;
             n = emit(buf, cap, n, r);
-            free_ticket(static_cast<int>(i));
+            free_ticket(i);
         }
+        i = next;
     }
     return n;
 }
@@ -542,25 +623,41 @@ int PaperVenue::on_tape(uint32_t name, int64_t px, int64_t qty, uint8_t aggresso
     if (name >= kNames || qty <= 0) return 0;
     names_[name].last_px = px;
     int n = 0;
-    for (uint32_t i = 0; i < kTickets; ++i) {
+    for (int i = live_head_; i >= 0;) {
+        const int next = live_next_[i];
         Ticket& t = tickets_[i];
-        if (!t.used || t.name != name) continue;
-        if (!tape_keep(aggressor, t.side, cfg_.rigid != 0)) continue;
+        if (t.name != name) {
+            i = next;
+            continue;
+        }
+        if (!tape_keep(aggressor, t.side, cfg_.rigid != 0)) {
+            i = next;
+            continue;
+        }
         const uint8_t phase = t.phase;
         if (phase != static_cast<uint8_t>(Phase::Working) && phase != static_cast<uint8_t>(Phase::Partial) &&
-            phase != static_cast<uint8_t>(Phase::PullWait))
+            phase != static_cast<uint8_t>(Phase::PullWait)) {
+            i = next;
             continue;
+        }
         const int64_t extra = cfg_.rigid_extra;
         const bool ok = buy_side(t.side) ? px <= t.px - extra : px >= t.px + extra;
-        if (!ok) continue;
+        if (!ok) {
+            i = next;
+            continue;
+        }
         const int64_t leaves = t.qty - t.done;
         int64_t got = 0;
         if (buy_side(t.side) && px < t.px) got = leaves;
         else if (sell_side(t.side) && px > t.px) got = leaves;
         else got = gap_print(t.gap, qty, t.lot, leaves);
-        if (got <= 0) continue;
-        n = fill_ticket(static_cast<int>(i), px, got, now_us, buf, cap, n);
-        if (t.used && t.done >= t.qty) free_ticket(static_cast<int>(i));
+        if (got <= 0) {
+            i = next;
+            continue;
+        }
+        n = fill_ticket(i, px, got, now_us, buf, cap, n);
+        if (t.used && t.done >= t.qty) free_ticket(i);
+        i = next;
     }
     return n;
 }
@@ -572,21 +669,34 @@ int PaperVenue::on_ext(uint32_t name, const ExtPrint* prints, int nprints, int64
         ExtPrint print = prints[p];
         if (print.px > 0) names_[name].last_px = print.px;
         if (print.qty <= 0) continue;
-        for (uint32_t i = 0; i < kTickets && print.qty > 0; ++i) {
+        for (int i = live_head_; i >= 0 && print.qty > 0;) {
+            const int next = live_next_[i];
             Ticket& t = tickets_[i];
-            if (!t.used || t.name != name) continue;
+            if (t.name != name) {
+                i = next;
+                continue;
+            }
             const uint8_t phase = t.phase;
             if (phase != static_cast<uint8_t>(Phase::Working) && phase != static_cast<uint8_t>(Phase::Partial) &&
-                phase != static_cast<uint8_t>(Phase::PullWait))
+                phase != static_cast<uint8_t>(Phase::PullWait)) {
+                i = next;
                 continue;
+            }
             const int64_t leaves = t.qty - t.done;
-            if (leaves <= 0 || t.born_us < 0) continue;
+            if (leaves <= 0 || t.born_us < 0) {
+                i = next;
+                continue;
+            }
             const PathFill hit = ext_match_one(buy_side(t.side), t.px, leaves, cfg_.rigid_extra, cfg_.rigid != 0,
                                                static_cast<uint64_t>(t.born_us), print);
-            if (hit.qty <= 0) continue;
-            n = fill_ticket(static_cast<int>(i), hit.px, hit.qty, now_us, buf, cap, n);
+            if (hit.qty <= 0) {
+                i = next;
+                continue;
+            }
+            n = fill_ticket(i, hit.px, hit.qty, now_us, buf, cap, n);
             print.qty -= hit.qty;
-            if (t.used && t.done >= t.qty) free_ticket(static_cast<int>(i));
+            if (t.used && t.done >= t.qty) free_ticket(i);
+            i = next;
         }
     }
     return n;
@@ -608,18 +718,28 @@ int PaperVenue::on_shown(uint32_t name, uint8_t side, int64_t px, int64_t prev_q
         break;
     }
     int n = 0;
-    for (uint32_t i = 0; i < kTickets; ++i) {
+    for (int i = live_head_; i >= 0;) {
+        const int next = live_next_[i];
         Ticket& t = tickets_[i];
-        if (!t.used || t.name != name || t.side != side || t.px != px) continue;
+        if (t.name != name || t.side != side || t.px != px) {
+            i = next;
+            continue;
+        }
         const uint8_t phase = t.phase;
         if (phase != static_cast<uint8_t>(Phase::Working) && phase != static_cast<uint8_t>(Phase::Partial) &&
-            phase != static_cast<uint8_t>(Phase::PullWait))
+            phase != static_cast<uint8_t>(Phase::PullWait)) {
+            i = next;
             continue;
+        }
         const int64_t leaves = t.qty - t.done;
         const int64_t got = gap_resize(t.gap, prev_qty, now_qty, cfg_.cancel_pow, t.lot, leaves);
-        if (got <= 0) continue;
-        n = fill_ticket(static_cast<int>(i), px, got, now_us, buf, cap, n);
-        if (t.used && t.done >= t.qty) free_ticket(static_cast<int>(i));
+        if (got <= 0) {
+            i = next;
+            continue;
+        }
+        n = fill_ticket(i, px, got, now_us, buf, cap, n);
+        if (t.used && t.done >= t.qty) free_ticket(i);
+        i = next;
     }
     return n;
 }

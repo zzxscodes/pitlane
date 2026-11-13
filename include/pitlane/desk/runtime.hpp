@@ -53,6 +53,7 @@ private:
     uint64_t pack_rsp_cur_{0};
     uint64_t log_cur_{0};
     uint64_t control_cur_{0};
+    int timers_live_{0};
     uint8_t stop_{0};
 
     template <typename T, uint32_t Cap>

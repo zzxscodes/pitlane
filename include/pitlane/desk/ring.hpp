@@ -211,6 +211,7 @@ template <typename T, uint32_t Cap, typename Fn>
 int ring_take(FanRing<T, Cap>& ring, uint64_t& cur, unsigned reader, bool only_addressed, Fn&& fn) noexcept {
     int n = 0;
     for (;;) {
+        if (cur >= ring.tail()) break;
         T item{};
         const int st = ring.poll(cur, reader, item, only_addressed);
         if (st < 0) break;

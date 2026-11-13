@@ -35,6 +35,7 @@ bool DeskLoop::add_timer(uint64_t id, int64_t when_us, int64_t every_us) noexcep
     for (int i = 0; i < kTimers; ++i) {
         if (!timer_[i].live) {
             timer_[i] = Timer{id, when_us, every_us, 1};
+            ++timers_live_;
             return true;
         }
     }
@@ -72,13 +73,18 @@ int DeskLoop::beat(Desk& desk, int64_t now_us, const LoopHooks& hooks) noexcept 
         ++control_cur_;
     }
 
-    for (int i = 0; i < kTimers; ++i) {
-        Timer& t = timer_[i];
-        if (!t.live || t.when_us > now_us) continue;
-        if (hooks.on_timer) hooks.on_timer(hooks.user, t.id, now_us);
-        ++n;
-        if (t.every_us > 0) t.when_us += t.every_us;
-        else t.live = 0;
+    if (timers_live_ > 0) {
+        for (int i = 0; i < kTimers; ++i) {
+            Timer& t = timer_[i];
+            if (!t.live || t.when_us > now_us) continue;
+            if (hooks.on_timer) hooks.on_timer(hooks.user, t.id, now_us);
+            ++n;
+            if (t.every_us > 0) t.when_us += t.every_us;
+            else {
+                t.live = 0;
+                --timers_live_;
+            }
+        }
     }
     return n;
 }

@@ -26,6 +26,8 @@ static void check_wide() {
     pitlane::Wide w = pitlane::mul_wide(10000000000ull, 10000000000ull);
     uint64_t q = 0;
     expect(pitlane::div_wide(w, 10000000000ull, q) && q == 10000000000ull, "wide divide");
+    w = pitlane::mul_wide(1000, 100);
+    expect(pitlane::div_wide(w, 100, q) && q == 1000, "wide divide small");
 }
 
 static void check_text() {
