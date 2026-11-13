@@ -10,16 +10,12 @@
 <div class="layout">
   <aside class="side">
     <h1>pitlane API</h1>
-    <div class="lang">
-      <a href="../en/publish-and-read.html">English</a>
-      <a href="#" class="active">中文</a>
-    </div>
     <nav>
       <a href="index.html">概述</a><a href="启动配置.html">启动配置</a><a href="打开共享区.html">打开共享区</a><a href="标的-行情池-yard.html">标的 / 行情池（Yard）</a><a href="发布和读取.html" class="active">发布和读取</a><a href="跑会话循环.html">跑会话循环</a><a href="准备一张委托.html">准备一张委托</a><a href="在纸面场所撮合.html">在纸面场所撮合</a><a href="合约-信号和柜台.html">合约、信号和柜台</a><a href="辅助函数.html">辅助函数</a><a href="调用方自己保管的辅助函数.html">调用方自己保管的辅助函数</a><a href="组帧-节奏和快照.html">组帧、节奏和快照</a><a href="周期计数和定长低延迟表.html">周期计数和定长低延迟表</a><a href="一张委托单.html">一张委托单</a><a href="研究-以及调用方自己的决定.html">研究，以及调用方自己的决定</a><a href="价格窗口-槽池和两笔费用.html">价格窗口、槽池和两笔费用</a><a href="调用所在的头文件.html">调用所在的头文件</a>
     </nav>
   </aside>
   <main class="main">
-    <div class="meta">Static API guide · open a section from the left</div>
+    <div class="meta">从左侧打开一节</div>
     <h1>发布和读取</h1>
 <p><code>Desk</code> 有十一条环：<code>intents</code>、<code>reports</code>、<code>quotes</code>、<code>algos</code>、<code>controls</code>、<code>pulses</code>、<code>prints</code>、<code>queries</code>、<code>pack_reqs</code>、<code>pack_rsps</code> 和 <code>logs</code>。编译期容量对齐 trade lane / package lane：<code>kIntentCap</code>/<code>kReportCap</code>/<code>kAlgoCap</code> 32768、<code>kQuoteCap</code> 8192、<code>kControlCap</code> 16384、<code>kPulseCap</code>/<code>kPrintCap</code> 4096、<code>kQueryCap</code> 1024、<code>kPackReqCap</code>/<code>kLogCap</code> 2048、<code>kPackRspCap</code> 16384。经 <code>desk_apply_conf</code> / <code>FanRing::tune</code> 后的软容量不超过该上限，由 <code>capacity()</code> 报告。资金和持仓在 <code>cash</code>（<code>kCashCap</code> 512）与 <code>hold</code>（<code>kHoldCap</code> 4096）里。</p>
 <p><code>publish</code> 接收一条消息和一个读者掩码。掩码为 0 时，第一个确认的读者取走这个槽。其他掩码列出必须确认的读者，这些读者都确认之后槽才能再次使用。读者编号从 0 到 63。会话循环是读者 7，也就是 <code>kLoopReader</code>。</p>

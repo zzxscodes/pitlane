@@ -1,7 +1,5 @@
 # pitlane
 
-中文说明见 `README_CN.md`。
-
 ### SimNow closed-loop example
 
 `examples/simnow/` is a self-contained mini-project. Its `ctp/` sources are a CTP gateway written on `MdEngine` and `TdClient`. It builds `pitlane_simnow` when `PITLANE_BUILD_CTP=ON` and a CTP `_se` API tree is available. The library itself does not link a broker API. Core demos live under `examples/demo/`. See `examples/simnow/README.md`.
@@ -13,9 +11,9 @@ cp -n conf/simnow_7x24.conf.example conf/simnow_7x24.conf   # set password
 # after 16:00 (7×24 window):
 ../../build/pitlane_simnow conf/simnow_7x24.conf
 ```
-调用约定见 `doc/API.md` / `doc/API_CN.md`。带侧栏的静态文档在 `doc/site/`：请打开本地 `doc/site/index.html`、安装后的 `share/doc/pitlane/site/`，或仓库的 GitHub Pages。在 `github.com/.../blob/...` 里点开 HTML 只会看到源码。改库时请成对更新中英文并执行 `python3 doc/gen_site.py`。
+The call guide is `doc/API.md`. The sidebar site is under `doc/site/en/`: open a local `doc/site/en/index.html`, the installed `share/doc/pitlane/site/en/`, or the repository GitHub Pages. Opening the HTML under `github.com/.../blob/...` shows source only. After a library change, update this guide and run `python3 doc/gen_site.py`.
 
-用 CMake 接入：
+Link with CMake:
 
 ```cmake
 find_package(pitlane REQUIRED)

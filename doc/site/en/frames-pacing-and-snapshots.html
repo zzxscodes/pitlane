@@ -10,16 +10,12 @@
 <div class="layout">
   <aside class="side">
     <h1>pitlane API</h1>
-    <div class="lang">
-      <a href="#" class="active">English</a>
-      <a href="../zh/组帧-节奏和快照.html">中文</a>
-    </div>
     <nav>
       <a href="index.html">Overview</a><a href="startup-configuration.html">Startup configuration</a><a href="open-a-shared-desk.html">Open a shared desk</a><a href="symbol-quote-yard.html">Symbol / quote yard</a><a href="publish-and-read.html">Publish and read</a><a href="run-the-session-loop.html">Run the session loop</a><a href="prepare-an-order.html">Prepare an order</a><a href="match-on-the-paper-venue.html">Match on the paper venue</a><a href="names-signals-and-the-counter.html">Names, signals, and the counter</a><a href="helpers.html">Helpers</a><a href="caller-owned-helpers.html">Caller-owned helpers</a><a href="frames-pacing-and-snapshots.html" class="active">Frames, pacing, and snapshots</a><a href="cycles-and-fixed-low-latency-tables.html">Cycles and fixed low-latency tables</a><a href="one-order-sheet.html">One order sheet</a><a href="research-and-a-caller-decision.html">Research and a caller decision</a><a href="a-price-window-a-slot-pool-and-two-charges.html">A price window, a slot pool, and two charges</a><a href="where-the-calls-live.html">Where the calls live</a>
     </nav>
   </aside>
   <main class="main">
-    <div class="meta">Static API guide · open a section from the left</div>
+    <div class="meta">Open a section from the left</div>
     <h1>Frames, pacing, and snapshots</h1>
 <p>These calls do not open a socket and do not send an order. The caller keeps the bytes, the clock, and the decision.</p>
 <p><code>digest_of</code> covers the bytes it is given. <code>Sum8</code> is the low 8 bits of the sum. <code>Crc16</code> is CRC-16/CCITT-FALSE. <code>Crc32</code> is the ISO-HDLC CRC-32. <code>digest_write</code> stores that value little-endian. <code>StreamAsm&lt;Cap&gt;</code> appends into its own buffer, with <code>Cap</code> from 16 to 65536. <code>FrameSpec</code> reads a little-endian body length at <code>len_off</code> inside a header of 4 to 32 bytes. <code>pull</code> waits until the header, body, and checksum are all present. A body longer than <code>max_body</code>, or a frame that cannot fit, returns <code>BadLen</code> and leaves the buffer unchanged. A bad checksum returns <code>BadDig</code>, drops that frame, and keeps the bytes after it. A good frame stays at the front until <code>commit</code>. <code>append</code> fails while a frame is still held.</p>

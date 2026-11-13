@@ -10,16 +10,12 @@
 <div class="layout">
   <aside class="side">
     <h1>pitlane API</h1>
-    <div class="lang">
-      <a href="../en/one-order-sheet.html">English</a>
-      <a href="#" class="active">中文</a>
-    </div>
     <nav>
       <a href="index.html">概述</a><a href="启动配置.html">启动配置</a><a href="打开共享区.html">打开共享区</a><a href="标的-行情池-yard.html">标的 / 行情池（Yard）</a><a href="发布和读取.html">发布和读取</a><a href="跑会话循环.html">跑会话循环</a><a href="准备一张委托.html">准备一张委托</a><a href="在纸面场所撮合.html">在纸面场所撮合</a><a href="合约-信号和柜台.html">合约、信号和柜台</a><a href="辅助函数.html">辅助函数</a><a href="调用方自己保管的辅助函数.html">调用方自己保管的辅助函数</a><a href="组帧-节奏和快照.html">组帧、节奏和快照</a><a href="周期计数和定长低延迟表.html">周期计数和定长低延迟表</a><a href="一张委托单.html" class="active">一张委托单</a><a href="研究-以及调用方自己的决定.html">研究，以及调用方自己的决定</a><a href="价格窗口-槽池和两笔费用.html">价格窗口、槽池和两笔费用</a><a href="调用所在的头文件.html">调用所在的头文件</a>
     </nav>
   </aside>
   <main class="main">
-    <div class="meta">Static API guide · open a section from the left</div>
+    <div class="meta">从左侧打开一节</div>
     <h1>一张委托单</h1>
 <p><code>phase_text</code> 给出状态的名字。<code>sheet_open</code> 在调用方自己的单上写下本地编号、方向、价格和数量。编号是 0、方向不认识，或者价格或数量不是正数，就拒绝，原来的单留下。<code>sheet_bind</code> 记下一次柜台编号。再来一个不同的编号会被拒绝。</p>
 <p><code>sheet_apply</code> 按状态表推进这张单。状态表不允许的事件，所有字段都保持原样。成交数量大于还没完成的数量，同样整张不动。一次成交把剩余做完时，状态停在部分成交，剩余为 0。全部完成要再给一次结束事件。拒绝会记下调用方传入的原因。发送、接受和结束这几类事件只保留第一次非负的时刻。负数时刻不写。<code>sheet_ack_ns</code> 和 <code>sheet_done_ns</code> 把这些时刻相减。<code>sheet_line</code> 用一行替换文本缓冲，里面是编号、方向、状态、原因、数量、已成和剩余。本地编号放不进有符号 64 位时拒绝，原来的那一行留下。</p>

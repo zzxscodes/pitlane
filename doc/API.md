@@ -1,6 +1,6 @@
 # pitlane API
 
-This is the call guide. The project introduction is `README.md` in the repository root. The Chinese guide is `API_CN.md` in this directory. When a public call changes, update both guides together.
+This is the call guide. The project introduction is `README.md` in the repository root.
 
 Include one header:
 
@@ -12,7 +12,7 @@ Everything is in the namespace `pitlane`. Link `libpitlane.a`, or link the share
 
 The release is `kVersion`, currently 2.21.1, also split into `kVersionMajor`, `kVersionMinor`, and `kVersionPatch`. `kDeskVersion` is the desk mapping-file layout and is currently 5. `kYardVersion` is the separate symbol/quote yard layout and is currently 2. A new library release can leave either layout number where it is.
 
-A browsable static site with a left-hand section list is generated into `doc/site/` (`python3 doc/gen_site.py`). Open a local `doc/site/index.html` or the GitHub Pages deployment — viewing the file on `github.com/.../blob/...` shows source only. Startup settings are covered under **Startup configuration**.
+A browsable static site with a left-hand section list is generated into `doc/site/en/` (`python3 doc/gen_site.py`). Open a local `doc/site/en/index.html` or the GitHub Pages deployment — viewing the file on `github.com/.../blob/...` shows source only. Startup settings are covered under **Startup configuration**.
 
 Headers live under `pitlane/desk/`, `pitlane/book/`, `pitlane/order/`, `pitlane/time/`, `pitlane/study/`, `pitlane/util/`, and `pitlane/host/`. `version.hpp` stays beside `pitlane.hpp`. The table below names the area in the path.
 

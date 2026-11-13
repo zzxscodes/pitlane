@@ -10,4 +10,4 @@ pitlane's `host/` helpers only change the **calling** process or thread. They do
 6. **RT** — `SCHED_FIFO`/`RR` only with CAP_SYS_NICE; pair with affinity.
 7. **Frequency** — performance governor; avoid AVX-512-only paths (pitlane caps auto-vector width at 256 bits under `PITLANE_NATIVE`).
 
-See also notes §1–4, §7, §32. Chinese: `HOST_TUNING_CN.md`.
+See also notes §1–4, §7, §32.

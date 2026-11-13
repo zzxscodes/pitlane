@@ -10,16 +10,12 @@
 <div class="layout">
   <aside class="side">
     <h1>pitlane API</h1>
-    <div class="lang">
-      <a href="#" class="active">English</a>
-      <a href="../zh/价格窗口-槽池和两笔费用.html">中文</a>
-    </div>
     <nav>
       <a href="index.html">Overview</a><a href="startup-configuration.html">Startup configuration</a><a href="open-a-shared-desk.html">Open a shared desk</a><a href="symbol-quote-yard.html">Symbol / quote yard</a><a href="publish-and-read.html">Publish and read</a><a href="run-the-session-loop.html">Run the session loop</a><a href="prepare-an-order.html">Prepare an order</a><a href="match-on-the-paper-venue.html">Match on the paper venue</a><a href="names-signals-and-the-counter.html">Names, signals, and the counter</a><a href="helpers.html">Helpers</a><a href="caller-owned-helpers.html">Caller-owned helpers</a><a href="frames-pacing-and-snapshots.html">Frames, pacing, and snapshots</a><a href="cycles-and-fixed-low-latency-tables.html">Cycles and fixed low-latency tables</a><a href="one-order-sheet.html">One order sheet</a><a href="research-and-a-caller-decision.html">Research and a caller decision</a><a href="a-price-window-a-slot-pool-and-two-charges.html" class="active">A price window, a slot pool, and two charges</a><a href="where-the-calls-live.html">Where the calls live</a>
     </nav>
   </aside>
   <main class="main">
-    <div class="meta">Static API guide · open a section from the left</div>
+    <div class="meta">Open a section from the left</div>
     <h1>A price window, a slot pool, and two charges</h1>
 <p><code>PriceWindow&lt;Cap&gt;</code> covers <code>Cap</code> ticks from a lower price, <code>Cap</code> a multiple of 64 from 64 to 4096. <code>reset</code> sets the lower price and the step, and clears the window. <code>set</code> writes one side&#x27;s quantity. Quantity 0 clears that tick. A price that is not on the step, or that falls outside the window, is refused and the previous quantities stay. <code>best</code> reports the highest occupied bid and the lowest occupied ask. Empty ticks are skipped a machine word at a time. <code>shown_before</code> sums quantity strictly better than a price: higher bids, or lower asks. The quantity at that price is left out. A sum that would overflow leaves the output unchanged and returns false.</p>
 <p><code>publish_batch</code> writes from 1 to <code>Cap</code> slots that share one reader mask, then stores the tail once. A busy slot makes the call return 0. Slots already in the ring stay as they were. <code>ack_span</code> acks consecutive positions for one reader and stops at the first position that reader cannot ack. Positions already acked stay acked.</p>

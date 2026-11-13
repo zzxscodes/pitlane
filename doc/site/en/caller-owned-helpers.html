@@ -10,16 +10,12 @@
 <div class="layout">
   <aside class="side">
     <h1>pitlane API</h1>
-    <div class="lang">
-      <a href="#" class="active">English</a>
-      <a href="../zh/调用方自己保管的辅助函数.html">中文</a>
-    </div>
     <nav>
       <a href="index.html">Overview</a><a href="startup-configuration.html">Startup configuration</a><a href="open-a-shared-desk.html">Open a shared desk</a><a href="symbol-quote-yard.html">Symbol / quote yard</a><a href="publish-and-read.html">Publish and read</a><a href="run-the-session-loop.html">Run the session loop</a><a href="prepare-an-order.html">Prepare an order</a><a href="match-on-the-paper-venue.html">Match on the paper venue</a><a href="names-signals-and-the-counter.html">Names, signals, and the counter</a><a href="helpers.html">Helpers</a><a href="caller-owned-helpers.html" class="active">Caller-owned helpers</a><a href="frames-pacing-and-snapshots.html">Frames, pacing, and snapshots</a><a href="cycles-and-fixed-low-latency-tables.html">Cycles and fixed low-latency tables</a><a href="one-order-sheet.html">One order sheet</a><a href="research-and-a-caller-decision.html">Research and a caller decision</a><a href="a-price-window-a-slot-pool-and-two-charges.html">A price window, a slot pool, and two charges</a><a href="where-the-calls-live.html">Where the calls live</a>
     </nav>
   </aside>
   <main class="main">
-    <div class="meta">Static API guide · open a section from the left</div>
+    <div class="meta">Open a section from the left</div>
     <h1>Caller-owned helpers</h1>
 <p>These calls do not attach to the desk. The caller keeps the storage, passes the numbers, and decides what to do with the result.</p>
 <p><code>IdSlip::issue</code> returns the next id. <code>undo</code> returns that id only while it is still the latest one and <code>keep</code> has not been called. <code>WireMold::seal</code> copies a prefix into the caller&#x27;s buffer. <code>put_u64</code> and <code>put_i64</code> write little-endian bytes at an offset inside that prefix. <code>read_block</code> accepts a block at least <code>know</code> bytes long and rejects a shorter one. <code>block_end</code> steps past the declared block, including bytes this build does not read.</p>

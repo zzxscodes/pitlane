@@ -10,16 +10,12 @@
 <div class="layout">
   <aside class="side">
     <h1>pitlane API</h1>
-    <div class="lang">
-      <a href="#" class="active">English</a>
-      <a href="../zh/启动配置.html">中文</a>
-    </div>
     <nav>
       <a href="index.html">Overview</a><a href="startup-configuration.html" class="active">Startup configuration</a><a href="open-a-shared-desk.html">Open a shared desk</a><a href="symbol-quote-yard.html">Symbol / quote yard</a><a href="publish-and-read.html">Publish and read</a><a href="run-the-session-loop.html">Run the session loop</a><a href="prepare-an-order.html">Prepare an order</a><a href="match-on-the-paper-venue.html">Match on the paper venue</a><a href="names-signals-and-the-counter.html">Names, signals, and the counter</a><a href="helpers.html">Helpers</a><a href="caller-owned-helpers.html">Caller-owned helpers</a><a href="frames-pacing-and-snapshots.html">Frames, pacing, and snapshots</a><a href="cycles-and-fixed-low-latency-tables.html">Cycles and fixed low-latency tables</a><a href="one-order-sheet.html">One order sheet</a><a href="research-and-a-caller-decision.html">Research and a caller decision</a><a href="a-price-window-a-slot-pool-and-two-charges.html">A price window, a slot pool, and two charges</a><a href="where-the-calls-live.html">Where the calls live</a>
     </nav>
   </aside>
   <main class="main">
-    <div class="meta">Static API guide · open a section from the left</div>
+    <div class="meta">Open a section from the left</div>
     <h1>Startup configuration</h1>
 <p>All tunables that the library accepts at process start live in an optional INI-like file (see <code>examples/demo/pitlane.conf</code>). Defaults are the member initializers on <code>PitConf</code> in <code>desk/config.hpp</code>. Omit a key, or leave the value empty, to keep that default. Unknown keys are ignored. Hard parse errors (truncated line, non-numeric where a number is required) make <code>conf_load</code> return false.</p>
 <p>Broker <code>ack_limit_us</code> / <code>life_limit_us</code> / <code>pull_limit_us</code> default to <code>60000000</code> (60s), matching a typical <code>trading center</code> <code>HeartBeatIntervalSec</code>. Set a limit to <code>0</code> to turn that axis off. Host defaults enable <code>thp_disable</code> and <code>mlockall</code>. Desk FanRing soft caps stay at the compile-time maxima (<code>kIntentCap</code> …). startup pool-scale symbol/quote pools live in the separate <code>[yard]</code> / <code>Yard</code> map (sized once at startup; hot path does not allocate). Mongo document roles and RabbitMQ topic roles are covered by local APIs (<code>seed_facts</code> / <code>TopicBus</code> / <code>RouteBook</code>), not by importing connection strings from <code>MongoConf</code> / broker URIs.</p>
