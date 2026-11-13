@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.19.0] - 2026-11-13
+
+### Added
+- `Center` is the trading-center step: market-data engine, quote book, strategy engine, then a live trader or the paper lane, plus a heartbeat pulse and an engine route allow-list (`RouteAllow`, zero bits = NoFilter).
+- `TapeMd` replays a caller-owned quote tape (tape engine role).
+- `examples/simnow/conf/paper.conf` runs that center with no broker and reports T2T.
+
+### Changed
+- The CTP trader, when `new_password` is set, rotates an expired counter password on login error 141 and logs in again. Leave that key only in the gitignored conf.
+
+### Notes
+- Library release version is 2.19.0. Desk layout stays `kDeskVersion` 4.
+
 ## [2.18.0] - 2026-11-13
 
 ### Added

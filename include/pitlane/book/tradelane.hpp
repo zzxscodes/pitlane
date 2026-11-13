@@ -3,6 +3,7 @@
 #include "pitlane/book/drill.hpp"
 #include "pitlane/book/venue.hpp"
 #include "pitlane/desk/region.hpp"
+#include "pitlane/desk/runtime.hpp"
 #include "pitlane/desk/yard.hpp"
 #include "pitlane/util/hint.hpp"
 

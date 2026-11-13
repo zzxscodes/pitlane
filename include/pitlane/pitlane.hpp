@@ -8,6 +8,8 @@
 #include "pitlane/desk/codec.hpp"
 #include "pitlane/desk/config.hpp"
 #include "pitlane/desk/engine.hpp"
+#include "pitlane/desk/center.hpp"
+#include "pitlane/desk/tape_md.hpp"
 #include "pitlane/desk/md_engine.hpp"
 #include "pitlane/desk/td_engine.hpp"
 #include "pitlane/desk/risk.hpp"

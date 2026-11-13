@@ -32,7 +32,7 @@ pitlane 是给**同一台机器**上多个交易进程用的 C++17 辅助库：�
 
 包含 `pitlane/pitlane.hpp`，链接 `libpitlane.a`（或 `libpitlane.so`）。类型都在命名空间 `pitlane`。这是本机辅助接口，不是拿来热替换另一套在跑系统的兼容层。
 
-发行版 **2.18.0**（`pitlane::kVersion`）。动态库 soname 仍是 `libpitlane.so.1`。desk 布局版本 `kDeskVersion` 为 4。标的/行情池 `Yard`（魔数 `PITYARD2`，`kYardVersion` 2）是另一块启动期映射，体量对齐 startup pool。
+发行版 **2.19.0**（`pitlane::kVersion`）。动态库 soname 仍是 `libpitlane.so.1`。desk 布局版本 `kDeskVersion` 为 4。标的/行情池 `Yard`（魔数 `PITYARD2`，`kYardVersion` 2）是另一块启动期映射，体量对齐 startup pool。
 
 别处用 Mongo / RabbitMQ 承担的职责，在这里用**本地实现**对齐：`seed_facts` / `seed_hours` / `seed_holidays` / `load_facts` / `load_hours` / `load_holidays` 写入合约与日历；`TopicBus` + `RouteBook` 做本机 topic 分发与算法路由。真正留在库外的是券商/CTP 等外部柜台接入。启动期可以分配或 mmap；辅助热路径不分配、不销毁资源。
 

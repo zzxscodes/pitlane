@@ -128,8 +128,7 @@ void CtpTdClient::OnFrontDisconnected(int nReason) {
     say_i(log_, 1, "[td] disconnected reason=", nReason);
 }
 
-void CtpTdClient::OnRspAuthenticate(CThostFtdcRspAuthenticateField*, CThostFtdcRspInfoField* pRspInfo, int, bool) {
-    if (!ok_rsp(pRspInfo, "authenticate")) return;
+void CtpTdClient::login() noexcept {
     CThostFtdcReqUserLoginField req{};
     std::snprintf(req.BrokerID, sizeof req.BrokerID, "%s", acct_.broker_id.c_str());
     std::snprintf(req.UserID, sizeof req.UserID, "%s", acct_.investor_id.c_str());
@@ -138,8 +137,39 @@ void CtpTdClient::OnRspAuthenticate(CThostFtdcRspAuthenticateField*, CThostFtdcR
     say_i(log_, 2, "[td] ReqUserLogin rc=", rc);
 }
 
+void CtpTdClient::rotate_password() noexcept {
+    CThostFtdcUserPasswordUpdateField req{};
+    std::snprintf(req.BrokerID, sizeof req.BrokerID, "%s", acct_.broker_id.c_str());
+    std::snprintf(req.UserID, sizeof req.UserID, "%s", acct_.investor_id.c_str());
+    std::snprintf(req.OldPassword, sizeof req.OldPassword, "%s", acct_.password.c_str());
+    std::snprintf(req.NewPassword, sizeof req.NewPassword, "%s", acct_.new_password.c_str());
+    const int rc = api_->ReqUserPasswordUpdate(&req, ++req_);
+    say_i(log_, 2, "[td] ReqUserPasswordUpdate rc=", rc);
+}
+
+void CtpTdClient::OnRspAuthenticate(CThostFtdcRspAuthenticateField*, CThostFtdcRspInfoField* pRspInfo, int, bool) {
+    if (!ok_rsp(pRspInfo, "authenticate")) return;
+    login();
+}
+
+void CtpTdClient::OnRspUserPasswordUpdate(CThostFtdcUserPasswordUpdateField*, CThostFtdcRspInfoField* pRspInfo, int,
+                                          bool) {
+    if (!ok_rsp(pRspInfo, "password update")) return;
+    acct_.password = acct_.new_password;
+    acct_.new_password.clear();
+    if (log_) log_->log(2, lit("[td] password updated, login again"));
+    login();
+}
+
 void CtpTdClient::OnRspUserLogin(CThostFtdcRspUserLoginField* pRspUserLogin, CThostFtdcRspInfoField* pRspInfo, int,
                                  bool) {
+    if (pRspInfo && pRspInfo->ErrorID == 141 && !acct_.new_password.empty() && !pw_tried_) {
+        pw_tried_ = 1;
+        say_err(log_, "login", pRspInfo->ErrorID, pRspInfo->ErrorMsg);
+        if (log_) log_->log(1, lit("[td] password expired, rotating"));
+        rotate_password();
+        return;
+    }
     if (!ok_rsp(pRspInfo, "login")) return;
     if (pRspUserLogin) {
         front_id_ = pRspUserLogin->FrontID;

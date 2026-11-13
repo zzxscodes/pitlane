@@ -7,13 +7,18 @@ Self-contained SimNow 7×24 example: MD → strategy → real IOC → TD accept,
 ```
 examples/simnow/
   main.cpp                 # closed-loop host
+  conf/paper.conf              # center loop, no broker
   conf/simnow_7x24.conf.example
   conf/simnow_7x24.conf    # local secrets (gitignored)
   run/                     # flow_*, desk.bin, wire.log (gitignored contents)
   README.md
 ```
 
-Account, engines, and `WireLog` are pitlane framework types. This directory only supplies a CTP adapter config. Replace `conf/simnow_7x24.conf` to point at another account or front. Progress is written to `run/wire.log` (and stderr) without formatting on the hot path. A rejected login stops the process instead of spinning.
+Account, engines, and `WireLog` are pitlane framework types. This directory only supplies a CTP adapter config. `mode = paper` runs the trading center (`Center` + `TapeMd` + `PaperVenue`) with no broker. That is the paper matcher role. `mode = live` keeps the CTP adapter on the same desk. Progress is written to `run/wire.log`.
+
+```bash
+../../build/pitlane_simnow conf/paper.conf
+```
 
 ## Build
 

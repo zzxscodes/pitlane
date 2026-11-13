@@ -10,7 +10,7 @@
 
 所有名字都在命名空间 `pitlane` 里。链接 `libpitlane.a`，或者用 `-lpitlane` 链接动态库。动态库的 soname 是 `libpitlane.so.1`。两种链接方式使用同一套头文件。
 
-发行版本是 `kVersion`，当前是 2.18.0，并拆成 `kVersionMajor`、`kVersionMinor` 和 `kVersionPatch`。`kDeskVersion` 是 desk 映射文件的布局版本，当前是 4。`kYardVersion` 是独立的标的/行情池布局版本，当前是 2。库的一次新发行可以保持任一布局版本不动。
+发行版本是 `kVersion`，当前是 2.19.0，并拆成 `kVersionMajor`、`kVersionMinor` 和 `kVersionPatch`。`kDeskVersion` 是 desk 映射文件的布局版本，当前是 4。`kYardVersion` 是独立的标的/行情池布局版本，当前是 2。库的一次新发行可以保持任一布局版本不动。
 
 带左侧分节导航的静态网页在 `doc/site/`（`python3 doc/gen_site.py` 生成）。打开**本地** `doc/site/index.html` 或 GitHub Pages；在 `github.com/.../blob/...` 里打开只会看到源码。启动期设置见 **启动配置**。
 
@@ -191,6 +191,8 @@ pitlane::VenueOut out = venue.admit(in, in.stamp_us, reps, 4);
 `admit` 把回报写入调用方缓冲区并设置 `out.why`。`trade_open=0` 时新开仓得到 `Why::Closed`。`on_clock` 在延迟到期后推进 staged 单并完成到期撤单（`hang` 时跳过）。`on_print` / `on_tape` 削减队列前方数量；打开 `rigid` 时 `tape_keep` 丢掉同向主动成交。`force_*` / `drill_apply` 对齐模拟器 forced fill 注入（`DrillCue::Closed` = 10，即 `NotTrading`）。`TouchMode` / `resolve_px` 解析对手/本方/最新/中间/五档。主动方为 0 时保留每笔成交。
 
 PitConf `[venue]` 对齐模拟器 `match.ini`：九段 go/pull 延迟、`rigid_rule`→`rigid`、`use_ext`→`tape_first`，以及 lot/rate/notional 等。用 `conf_venue_cfg` 得到 `VenueCfg`。
+
+`Center::step` 是交易中心循环（trading center / paper matcher 的进程角色）：可选 `TapeMd` 或实盘 `MdEngine`，行情顶档写入 `PaperVenue`，再跑 `StratEngine`，然后是已就绪的 `TdEngine` 或 `TradeLane`。`RouteAllow` 位图为 0 表示不过滤。心跳往 `Pulse` 环写主题 `hb`。`TapeMd` 重放调用方持有的行情数组。
 
 组合层（热路径仍无堆）：`FeedHub`、`TradeLane`、`StratHook`（含 algo/package/log/pause）、`seed_cash` / `seed_hold`；本地基础数据用 `seed_facts` / `seed_hours` / `seed_holidays` 以及冷加载 `load_facts` / `load_hours` / `load_holidays`；本机 topic 用 `TopicBus`；策略→算法绑定用 `RouteBook`。`pulse_bridge` 把 `PulseBoard` 队列扇入 Desk `pulses`（本机信号分发）。
 

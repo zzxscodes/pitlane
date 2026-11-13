@@ -798,9 +798,85 @@ static void check_local_shelf_bus() {
     ::unlink(path);
 }
 
+static void check_center() {
+    pitlane::RouteAllow allow{};
+    expect(allow.pass(0) && allow.pass(63), "route no filter");
+    allow.bits = 1ull << 3;
+    expect(allow.pass(3) && !allow.pass(1) && !allow.pass(70), "route bit");
+
+    const char* path = "pitlane_center.bin";
+    ::unlink(path);
+    pitlane::MapInfo map{};
+    expect(pitlane::map_create(path, pitlane::desk_bytes(), &map, map_opt_tmp()) == 0, "center map");
+    pitlane::Desk* desk = pitlane::desk_view(&map, 1);
+    expect(desk != nullptr, "center desk");
+
+    pitlane::Quote tape[4]{};
+    for (int i = 0; i < 4; ++i) {
+        tape[i].name = 1;
+        tape[i].bid_px = 1000000;
+        tape[i].ask_px = 1000200;
+        tape[i].last_px = 1000100;
+        tape[i].bid_qty = 5;
+        tape[i].ask_qty = 5;
+        tape[i].local_us = 1000 + i;
+    }
+    pitlane::TapeMd md;
+    md.src = tape;
+    md.n = 4;
+    md.burst = 1;
+    md.quote_mask = (1ull << pitlane::kBookReader) | (1ull << pitlane::kLoopReader);
+
+    struct Hot : pitlane::StratEngine {
+        int orders{0};
+        int fills{0};
+        void on_quote(const pitlane::Quote& q) override {
+            if (orders >= 2 || q.ask_qty <= 0) return;
+            pitlane::Intent in{};
+            in.tag = static_cast<uint64_t>(orders + 1);
+            in.name = q.name;
+            in.acct = 1;
+            in.px = q.ask_px;
+            in.qty = 1;
+            in.stamp_us = 1000 + orders;
+            in.side = static_cast<uint8_t>(pitlane::Side::Buy);
+            in.act = static_cast<uint8_t>(pitlane::Act::Enter);
+            in.style = static_cast<uint8_t>(pitlane::Style::Immediate);
+            if (insert_order(in)) ++orders;
+        }
+        void on_report(const pitlane::Report& r) override {
+            if (r.phase == static_cast<uint8_t>(pitlane::Phase::Filled) && r.qty > 0) ++fills;
+        }
+    } hot;
+
+    pitlane::VenueCfg cfg{};
+    auto* venue = new (std::nothrow) pitlane::PaperVenue(cfg);
+    expect(venue != nullptr, "venue");
+    pitlane::TradeLane lane{};
+    lane.venue = venue;
+    lane.report_mask = 1ull << pitlane::kLoopReader;
+
+    pitlane::Center center{};
+    center.desk = desk;
+    center.md = &md;
+    center.strat = &hot;
+    center.paper = &lane;
+    center.book = venue;
+    center.heartbeat_us = 1;
+    expect(center.set_up(), "center setup");
+    for (int i = 0; i < 12; ++i) center.step(2000 + i);
+    expect(md.done(), "tape done");
+    expect(hot.orders == 2, "center orders");
+    expect(hot.fills == 2, "center fills");
+    expect(center.beats >= 1, "heartbeat");
+    delete venue;
+    pitlane::map_release(&map);
+    ::unlink(path);
+}
+
 int main() {
-    expect(pitlane::kVersionMajor == 2 && pitlane::kVersionMinor == 18 && pitlane::kVersionPatch == 0, "release");
-    expect(std::strcmp(pitlane::kVersion, "2.18.0") == 0, "release text");
+    expect(pitlane::kVersionMajor == 2 && pitlane::kVersionMinor == 19 && pitlane::kVersionPatch == 0, "release");
+    expect(std::strcmp(pitlane::kVersion, "2.19.0") == 0, "release text");
     expect(pitlane::kDeskVersion == 4, "desk layout");
     check_conf();
     check_yard();
@@ -816,6 +892,7 @@ int main() {
     check_ring_full();
     check_hold();
     check_session();
+    check_center();
     if (g_fails) {
         std::fprintf(stderr, "%d desk check(s) failed\n", g_fails);
         return 1;
