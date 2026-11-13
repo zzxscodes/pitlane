@@ -86,6 +86,7 @@ bool load_account_conf(const char* path, Account& acct, StratCfg& strat, std::st
         if (std::strcmp(key, "broker_id") == 0) acct.broker_id = val;
         else if (std::strcmp(key, "investor_id") == 0) acct.investor_id = val;
         else if (std::strcmp(key, "password") == 0) acct.password = val;
+        else if (std::strcmp(key, "new_password") == 0) acct.new_password = val;
         else if (std::strcmp(key, "app_id") == 0) acct.app_id = val;
         else if (std::strcmp(key, "auth_code") == 0) acct.auth_code = val;
         else if (std::strcmp(key, "md_front") == 0) acct.md_front = val;
@@ -135,6 +136,14 @@ bool load_account_conf(const char* path, Account& acct, StratCfg& strat, std::st
         } else if (std::strcmp(key, "t2t_samples") == 0) {
             if (!parse_i32(val, strat.t2t_samples)) {
                 err = "t2t";
+                std::fclose(f);
+                return false;
+            }
+        } else if (std::strcmp(key, "mode") == 0) {
+            if (std::strcmp(val, "paper") == 0) strat.paper = 1;
+            else if (std::strcmp(val, "live") == 0) strat.paper = 0;
+            else {
+                err = "mode";
                 std::fclose(f);
                 return false;
             }

@@ -5,6 +5,7 @@
 #   cd examples/simnow && ../../build/pitlane_simnow conf/simnow_7x24.conf
 # Window: trading day 16:00–next 09:00; non-trading day 16:00–next 12:00.
 
+mode = live
 broker_id = 9999
 investor_id = 249674
 password =

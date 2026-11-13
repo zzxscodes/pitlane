@@ -12,6 +12,7 @@ struct Account {
     std::string broker_id;
     std::string investor_id;
     std::string password;
+    std::string new_password; // set only to rotate an expired counter password, then clear it
     std::string app_id;
     std::string auth_code;
     std::string md_front;
@@ -34,6 +35,7 @@ struct StratCfg {
     int max_live_orders{2};
     int t2t_samples{50};
     int connect_timeout_s{30};
+    int paper{0}; // 0 live counter, 1 paper center (paper matcher role)
 };
 
 bool load_account_conf(const char* path, Account& acct, StratCfg& strat, std::string& err);

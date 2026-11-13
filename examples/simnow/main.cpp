@@ -4,7 +4,10 @@
 
 #include "pitlane/adapter/ctp/md_engine.hpp"
 #include "pitlane/adapter/ctp/td_client.hpp"
+#include "pitlane/book/venue.hpp"
+#include "pitlane/desk/center.hpp"
 #include "pitlane/desk/session.hpp"
+#include "pitlane/desk/tape_md.hpp"
 #include "pitlane/util/wirelog.hpp"
 #include "pitlane/desk/ids.hpp"
 #include "pitlane/desk/region.hpp"
@@ -16,6 +19,7 @@
 
 #include <atomic>
 #include <cerrno>
+#include <new>
 #include <csignal>
 #include <cstdio>
 #include <cstring>
@@ -216,6 +220,169 @@ bool ensure_dir(const char* path) {
     return ::mkdir(tmp, 0755) == 0 || errno == EEXIST;
 }
 
+int run_paper(const pitlane::Account& acct, const pitlane::StratCfg& cfg) {
+    if (!ensure_dir(acct.work_dir.c_str())) return 2;
+    pitlane::WireLog wlog(acct.log_path.c_str(), 3);
+    wlog.log(2, pitlane::lit("simnow paper center"));
+
+    ::unlink(acct.desk_path.c_str());
+    pitlane::MapOpt opt{};
+    opt.hugepage = 0;
+    opt.lock = 0;
+    opt.prefault = 1;
+    pitlane::MapInfo map{};
+    if (pitlane::map_create(acct.desk_path.c_str(), pitlane::desk_bytes(), &map, opt) != 0) return 1;
+    pitlane::Desk* desk = pitlane::desk_view(&map, 1);
+    if (!desk) return 1;
+
+    pitlane::CycleScale scale{};
+    if (!warm_scale(scale)) return 1;
+
+    constexpr int kTape = 32;
+    pitlane::Quote tape[kTape]{};
+    for (int i = 0; i < kTape; ++i) {
+        tape[i].name = 1;
+        tape[i].bid_px = 1000000;
+        tape[i].ask_px = 1000200;
+        tape[i].last_px = 1000100;
+        tape[i].bid_qty = 8;
+        tape[i].ask_qty = 8;
+        tape[i].local_us = 1000 + i;
+    }
+    pitlane::TapeMd md;
+    md.src = tape;
+    md.n = kTape;
+    md.burst = 1;
+    md.quote_mask = (1ull << pitlane::kBookReader) | (1ull << pitlane::kLoopReader);
+
+    struct Hot : pitlane::StratEngine {
+        pitlane::StratCfg cfg{};
+        pitlane::CycleScale scale{};
+        pitlane::IdMint mint{1, 1};
+        int orders{0};
+        int fills{0};
+        int live{0};
+        int64_t last_us{0};
+        uint64_t t0[64]{};
+        uint64_t local_ns[64]{};
+        uint64_t round_ns[64]{};
+        uint64_t tags[64]{};
+
+        void on_quote(const pitlane::Quote& q) override {
+            if (cfg.t2t_samples > 0 && orders >= cfg.t2t_samples) return;
+            if (q.ask_qty <= 0 || q.ask_px < q.bid_px) return;
+            if (q.ask_px - q.bid_px > cfg.max_spread_x10000) return;
+            if (q.ask_px > cfg.buy_px_x10000) return;
+            const int64_t now = q.local_us > 0 ? q.local_us : 1;
+            if (cfg.min_order_gap_us > 0 && now - last_us < cfg.min_order_gap_us) return;
+            if (live >= cfg.max_live_orders) return;
+            uint64_t c0 = 0;
+            (void)pitlane::cycles_ordered(c0);
+            pitlane::Intent in{};
+            in.tag = mint.next(1, 10);
+            in.name = q.name;
+            in.acct = 1;
+            in.px = q.ask_px;
+            in.qty = cfg.order_qty > 0 ? cfg.order_qty : 1;
+            in.stamp_us = now;
+            in.side = static_cast<uint8_t>(pitlane::Side::Buy);
+            in.act = static_cast<uint8_t>(pitlane::Act::Enter);
+            in.style = static_cast<uint8_t>(pitlane::Style::Immediate);
+            if (!insert_order(in)) return;
+            uint64_t c1 = 0;
+            (void)pitlane::cycles_ordered(c1);
+            const int i = orders;
+            if (i < 64) {
+                tags[i] = in.tag;
+                t0[i] = c0;
+                uint64_t ns = 0;
+                if (c1 > c0) (void)pitlane::scale_ns(scale, c1 - c0, ns);
+                local_ns[i] = ns;
+            }
+            ++orders;
+            ++live;
+            last_us = now;
+        }
+
+        void on_report(const pitlane::Report& r) override {
+            if (r.phase != static_cast<uint8_t>(pitlane::Phase::Filled) || r.qty <= 0) return;
+            uint64_t c1 = 0;
+            (void)pitlane::cycles_ordered(c1);
+            for (int i = 0; i < orders && i < 64; ++i) {
+                if (tags[i] != r.tag || round_ns[i] != 0) continue;
+                uint64_t ns = 0;
+                if (c1 > t0[i]) (void)pitlane::scale_ns(scale, c1 - t0[i], ns);
+                round_ns[i] = ns;
+                ++fills;
+                if (live > 0) --live;
+                break;
+            }
+        }
+    } hot;
+    hot.cfg = cfg;
+    hot.scale = scale;
+
+    pitlane::VenueCfg vc{};
+    auto* venue = new (std::nothrow) pitlane::PaperVenue(vc);
+    if (!venue) return 1;
+    pitlane::TradeLane lane{};
+    lane.venue = venue;
+    lane.report_mask = 1ull << pitlane::kLoopReader;
+
+    pitlane::Center center{};
+    center.desk = desk;
+    center.md = &md;
+    center.strat = &hot;
+    center.paper = &lane;
+    center.book = venue;
+    center.log = &wlog;
+    center.heartbeat_us = 1000000;
+    if (!center.set_up()) return 1;
+
+    const int want = cfg.t2t_samples > 0 ? cfg.t2t_samples : 8;
+    for (int i = 0; i < kTape + want + 4 && hot.fills < want; ++i) center.step(1000 + i);
+
+    uint64_t local[64];
+    uint64_t rt[64];
+    int nl = 0, nr = 0;
+    const int use = hot.fills < 64 ? hot.fills : 64;
+    for (int i = 0; i < hot.orders && i < 64; ++i) {
+        if (hot.local_ns[i]) local[nl++] = hot.local_ns[i];
+        if (hot.round_ns[i]) rt[nr++] = hot.round_ns[i];
+    }
+    auto sortn = [](uint64_t* a, int n) {
+        for (int i = 1; i < n; ++i) {
+            uint64_t v = a[i];
+            int j = i;
+            while (j > 0 && a[j - 1] > v) {
+                a[j] = a[j - 1];
+                --j;
+            }
+            a[j] = v;
+        }
+    };
+    auto pct = [&](uint64_t* a, int n, int p) -> uint64_t {
+        if (n <= 0) return 0;
+        sortn(a, n);
+        return a[(n - 1) * p / 100];
+    };
+    std::printf("\n=== pitlane %s simnow paper center ===\n", pitlane::kVersion);
+    std::printf("orders=%d fills=%d beats=%llu\n", hot.orders, hot.fills, static_cast<unsigned long long>(center.beats));
+    if (nl)
+        std::printf("local_path_ns p50=%llu p99=%llu\n", static_cast<unsigned long long>(pct(local, nl, 50)),
+                    static_cast<unsigned long long>(pct(local, nl, 99)));
+    if (nr)
+        std::printf("roundtrip_ns  p50=%llu p99=%llu\n", static_cast<unsigned long long>(pct(rt, nr, 50)),
+                    static_cast<unsigned long long>(pct(rt, nr, 99)));
+    std::printf("============================================\n");
+    wlog.log(2, pitlane::lit("paper fills="), hot.fills);
+    wlog.flush();
+    delete venue;
+    pitlane::map_release(&map);
+    ::unlink(acct.desk_path.c_str());
+    return hot.fills > 0 ? 0 : 1;
+}
+
 int main(int argc, char** argv) {
     // Prefer running from examples/simnow so ./run stays local to the example.
     const char* conf_path = "conf/simnow_7x24.conf";
@@ -231,6 +398,7 @@ int main(int argc, char** argv) {
     }
     pitlane::apply_account_env(acct);
     pitlane::resolve_runtime_paths(acct);
+    if (strat.paper) return run_paper(acct, strat);
     if (acct.password.empty() || acct.investor_id.empty() || acct.instruments.empty()) {
         std::fprintf(stderr, "need investor_id/password/instruments\n");
         return 2;

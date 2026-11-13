@@ -61,6 +61,8 @@ public:
                            int nRequestID, bool bIsLast) override;
     void OnRspUserLogin(CThostFtdcRspUserLoginField* pRspUserLogin, CThostFtdcRspInfoField* pRspInfo, int nRequestID,
                         bool bIsLast) override;
+    void OnRspUserPasswordUpdate(CThostFtdcUserPasswordUpdateField* pUserPasswordUpdate, CThostFtdcRspInfoField* pRspInfo,
+                                 int nRequestID, bool bIsLast) override;
     void OnRspSettlementInfoConfirm(CThostFtdcSettlementInfoConfirmField* pSettlementInfoConfirm,
                                     CThostFtdcRspInfoField* pRspInfo, int nRequestID, bool bIsLast) override;
     void OnRspOrderInsert(CThostFtdcInputOrderField* pInputOrder, CThostFtdcRspInfoField* pRspInfo, int nRequestID,
@@ -72,6 +74,8 @@ public:
 private:
     bool ok_rsp(CThostFtdcRspInfoField* info, const char* what);
     void finish_ref(int ref) noexcept;
+    void login() noexcept;
+    void rotate_password() noexcept;
     int find_live(int ref) const noexcept;
     int find_t0(uint64_t tag) const noexcept;
 
@@ -88,6 +92,7 @@ private:
     std::atomic<int> max_ref_{0};
     std::atomic<bool> ready_{false};
     std::atomic<bool> failed_{false};
+    uint8_t pw_tried_{0};
 
     char name_code_[InstMap::kMax][32]{};
     uint32_t name_id_[InstMap::kMax]{};
