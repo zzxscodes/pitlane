@@ -18,7 +18,7 @@ namespace pitlane {
 // Compile-time Caps track trade lane / package lane / MaxPosition scale (powers of
 // two). Soft tune at startup may shrink usable depth; physical arrays stay Cap.
 // Package and log lanes cover package lane / log report size roles locally.
-// Layout bump: kDeskVersion is 4.
+// Layout bump: kDeskVersion is 5 (subs, signals, market orders, rebuild quotes).
 
 // Powers of two under trade lane / package lane maxima; soft-tune may shrink usable depth.
 inline constexpr uint32_t kIntentCap = 32768;   // MaxOrderRequestSize ~120k
@@ -34,7 +34,11 @@ inline constexpr uint32_t kQueryCap = 1024;
 inline constexpr uint32_t kPackReqCap = 2048;   // MaxPackageReqSize
 inline constexpr uint32_t kPackRspCap = 16384;  // MaxPackageRspSize ~120k (soft)
 inline constexpr uint32_t kLogCap = 2048;       // log report size
-inline constexpr uint32_t kDeskVersion = 4;
+inline constexpr uint32_t kSubCap = 2048;
+inline constexpr uint32_t kSigCap = 4096;
+inline constexpr uint32_t kMktCap = 4096;
+inline constexpr uint32_t kRebuildCap = 2048;
+inline constexpr uint32_t kDeskVersion = 5;
 
 struct alignas(64) Desk {
     FanRing<Intent, kIntentCap> intents;
@@ -48,6 +52,10 @@ struct alignas(64) Desk {
     FanRing<PackageNote, kPackReqCap> pack_reqs;
     FanRing<PackageNote, kPackRspCap> pack_rsps;
     FanRing<LogNote, kLogCap> logs;
+    FanRing<SubNote, kSubCap> subs;
+    FanRing<SigNote, kSigCap> signals;
+    FanRing<MktNote, kMktCap> mkt_ords;
+    FanRing<Quote, kRebuildCap> rebuilds;
     CashLine cash[kCashCap];
     HoldLine hold[kHoldCap];
     alignas(64) std::atomic<int64_t> clock_us{0};

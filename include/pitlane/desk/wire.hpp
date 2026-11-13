@@ -66,10 +66,61 @@ struct QueryNote {
     uint32_t acct{0};
     uint32_t engine{0};
     int64_t cursor{0};
-    uint8_t kind{0};  // 1 inventory, 2 cash
+    uint8_t kind{0};  // 1 position, 2 asset. last==0 is a request, last==1 is the reply
     uint8_t last{0};
     char locate[24]{};
 };
+
+// Market-data subscribe lane (MarketData::ProcessSubReq). code is the instrument text.
+enum class SubKind : uint8_t {
+    Quote = 1,
+    Unquote = 2,
+    Signal = 3,
+    Rebuild = 4,
+    MktOrder = 5,
+    MktTrade = 6,
+    DropSignals = 7
+};
+
+struct SubNote {
+    uint32_t name{0};
+    uint32_t engine{0};
+    uint64_t req{0};
+    uint8_t kind{0};
+    char code[32]{};
+    char topic[24]{};
+};
+
+// One signal sample (WriteSignal / OnSignal). last==1 closes a batch.
+struct SigNote {
+    uint32_t name{0};
+    int64_t stamp_us{0};
+    int64_t value{0};
+    int32_t seq{0};
+    uint8_t last{0};
+    char topic[24]{};
+};
+
+// Public order on the tape (OnMktOrder). act 1 new, 2 cancel.
+struct MktNote {
+    uint32_t name{0};
+    uint64_t seq{0};
+    int64_t px{0};
+    int64_t qty{0};
+    int64_t stamp_us{0};
+    uint8_t side{0};
+    uint8_t act{0};
+    char code[32]{};
+};
+
+inline void slot_text(char* dst, int cap, const char* src) noexcept {
+    if (!dst || cap <= 0) return;
+    int i = 0;
+    if (src) {
+        for (; src[i] && i + 1 < cap; ++i) dst[i] = src[i];
+    }
+    dst[i] = 0;
+}
 
 // package lane role (local). Body capped; oversized payloads stay on Parcel rings.
 struct PackageNote {
@@ -104,6 +155,9 @@ static_assert(std::is_trivially_copyable<ControlNote>::value, "ControlNote");
 static_assert(std::is_trivially_copyable<Pulse>::value, "Pulse");
 static_assert(std::is_trivially_copyable<TapePrint>::value, "TapePrint");
 static_assert(std::is_trivially_copyable<QueryNote>::value, "QueryNote");
+static_assert(std::is_trivially_copyable<SubNote>::value, "SubNote");
+static_assert(std::is_trivially_copyable<SigNote>::value, "SigNote");
+static_assert(std::is_trivially_copyable<MktNote>::value, "MktNote");
 static_assert(std::is_trivially_copyable<PackageNote>::value, "PackageNote");
 static_assert(std::is_trivially_copyable<LogNote>::value, "LogNote");
 static_assert(std::is_trivially_copyable<Parcel<32>>::value, "Parcel");

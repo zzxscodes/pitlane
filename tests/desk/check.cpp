@@ -874,10 +874,182 @@ static void check_center() {
     ::unlink(path);
 }
 
+static void check_framework() {
+    const pitlane::DelayPair live = pitlane::order_delay(1, 10, 40);
+    const pitlane::DelayPair bent = pitlane::order_delay(2, 10, 40);
+    expect(live.submit_ns == 40 && live.ack_ns == 40, "live delay");
+    expect(bent.submit_ns == 40 && bent.ack_ns == 30, "bent delay");
+    expect(pitlane::role_quotes(pitlane::SimRole::Quote) && pitlane::role_match(pitlane::SimRole::Trader), "sim roles");
+    pitlane::TapePace pace{};
+    pace.gap_x = 40;
+    pace.ngap = 1;
+    pace.gaps[0] = {100, 200};
+    expect(pace.play_x == 1 && pitlane::tape_speed(pace, 150) == 40 && pitlane::tape_speed(pace, 10) == 1, "tape speed");
+    expect(pitlane::tape_kind_on(pitlane::TapeKind::Print, false, true) == false, "print kind off");
+    pitlane::TapeClock master{9, 4};
+    pitlane::TapeClock local{};
+    pitlane::follow_clock(local, master);
+    expect(local.exch_ns == 9 && local.speed == 4, "follow clock");
+
+    pitlane::Intent bad{};
+    expect(pitlane::order_precheck(bad) == pitlane::Why::Qty, "precheck qty");
+
+    const char* path = "pitlane_gate.bin";
+    ::unlink(path);
+    pitlane::MapInfo map{};
+    expect(pitlane::map_create(path, pitlane::desk_bytes(), &map, map_opt_tmp()) == 0, "gate map");
+    pitlane::Desk* desk = pitlane::desk_view(&map, 1);
+    expect(desk != nullptr, "gate desk");
+    desk->clock_us.store(5000, std::memory_order_relaxed);
+
+    struct Md : pitlane::MdEngine {
+        int calls{0};
+        bool subscribe(const char* const*, int) override {
+            ++calls;
+            return false;
+        }
+    } md;
+    md.bind_desk(desk);
+    expect(md.set_up(), "md setup");
+    for (int i = 0; i < 6; ++i) {
+        pitlane::SubNote n{};
+        n.kind = static_cast<uint8_t>(pitlane::SubKind::Quote);
+        n.name = 3;
+        pitlane::slot_text(n.code, 32, "au");
+        expect(desk->subs.publish(n, 1ull << pitlane::kMdReader), "sub publish");
+    }
+    md.loop_task();
+    expect(md.calls == pitlane::MdEngine::kSubFailMax, "sub fail cap");
+
+    struct Feed : pitlane::MdEngine {
+        int calls{0};
+        bool subscribe(const char* const*, int) override {
+            ++calls;
+            return true;
+        }
+        bool push_quote(const pitlane::Quote& q) { return write_quote(q); }
+        bool push_sig(const pitlane::SigNote& s) { return write_signal(s); }
+        bool push_mkt(const pitlane::MktNote& m) { return write_mkt(m); }
+    } feed;
+    feed.bind_desk(desk);
+    feed.quote_mask = 1ull << pitlane::kStratReader;
+    expect(feed.set_up(), "feed setup");
+
+    struct Hot : pitlane::StratEngine {
+        int quotes{0};
+        int sigs{0};
+        int mkts{0};
+        int assets{0};
+        int dates{0};
+        int timers{0};
+        void on_quote(const pitlane::Quote&) override { ++quotes; }
+        void on_signal(const pitlane::SigNote&) override { ++sigs; }
+        void on_mkt_order(const pitlane::MktNote&) override { ++mkts; }
+        void on_asset(const pitlane::QueryNote& n) override {
+            if (n.cursor == 80) ++assets;
+        }
+        void on_new_date(int64_t) override { ++dates; }
+        void on_timer(uint64_t, int64_t) override { ++timers; }
+    } hot;
+    hot.bind_desk(desk);
+    expect(hot.set_up(), "strat setup");
+    expect(hot.subscribe_code("au2612", 3), "strat sub");
+    feed.loop_task();
+    expect(feed.calls == 1, "feed took sub");
+    uint32_t copied[4]{};
+    expect(feed.copy_subs(copied, 4) == 1 && copied[0] == 3, "sub snapshot");
+
+    pitlane::Quote q{};
+    q.name = 3;
+    q.bid_px = 100;
+    q.ask_px = 102;
+    q.ask_qty = 1;
+    q.local_us = 5000;
+    expect(feed.push_quote(q), "write quote");
+    pitlane::SigNote sig{};
+    sig.name = 3;
+    sig.value = 7;
+    sig.last = 1;
+    expect(feed.push_sig(sig), "write signal");
+    pitlane::MktNote mkt{};
+    mkt.name = 3;
+    mkt.px = 101;
+    mkt.qty = 2;
+    mkt.side = 1;
+    expect(feed.push_mkt(mkt), "write mkt");
+    pitlane::ControlNote day{};
+    day.kind = 5;
+    day.stamp_us = 5000;
+    expect(desk->controls.publish(day, 0), "new date");
+    expect(hot.add_timer(1, 5000, 0), "timer");
+
+    struct Cli : pitlane::TdClient {
+        int inserts{0};
+        int assets{0};
+        int algos{0};
+        int insert(const pitlane::Intent&) override {
+            ++inserts;
+            return 0;
+        }
+        int cancel(uint64_t, uint32_t) override { return 0; }
+        bool ready() const noexcept override { return true; }
+        int query_asset(const pitlane::QueryNote&) override {
+            ++assets;
+            return 0;
+        }
+        int on_algo(const pitlane::AlgoJob&) override {
+            ++algos;
+            return 0;
+        }
+    } cli;
+    struct Gate : pitlane::TdEngine {
+        pitlane::Why risk_filter(const pitlane::Intent& in) override {
+            return in.tag == 2 ? pitlane::Why::Wash : pitlane::Why::None;
+        }
+    } gate;
+    gate.client = &cli;
+    gate.bind_desk(desk);
+    gate.report_mask = 1ull << pitlane::kStratReader;
+    expect(gate.set_up(), "gate setup");
+
+    pitlane::Intent ok{};
+    ok.tag = 1;
+    ok.name = 3;
+    ok.qty = 1;
+    ok.stamp_us = 5000;
+    ok.side = static_cast<uint8_t>(pitlane::Side::Buy);
+    ok.act = static_cast<uint8_t>(pitlane::Act::Enter);
+    pitlane::Intent wash = ok;
+    wash.tag = 2;
+    expect(desk->intents.publish(ok, 0) && desk->intents.publish(wash, 0), "intents");
+    expect(hot.query_asset(9, 11), "query asset");
+    pitlane::AlgoJob job{};
+    job.tag = 4;
+    job.name = 3;
+    job.phase = 1;
+    expect(hot.insert_algo(job), "algo req");
+    expect(!hot.insert_order(bad), "reject empty order");
+
+    gate.loop_task();
+    expect(cli.inserts == 1 && cli.assets == 1 && cli.algos == 1, "gate forwarded");
+    pitlane::Report denied{};
+    bool fresh = false;
+    expect(desk->reports.at(0, pitlane::kStratReader, denied, &fresh) && fresh, "denied report");
+    expect(denied.tag == 2 && denied.phase == static_cast<uint8_t>(pitlane::Phase::Denied), "wash denied");
+    expect(gate.write_asset_rsp(9, 80, 11), "asset rsp");
+
+    hot.loop_task();
+    expect(hot.quotes == 1 && hot.sigs == 1 && hot.mkts == 1, "strat picks");
+    expect(hot.assets == 1 && hot.dates == 1 && hot.timers == 1, "strat replies");
+
+    pitlane::map_release(&map);
+    ::unlink(path);
+}
+
 int main() {
-    expect(pitlane::kVersionMajor == 2 && pitlane::kVersionMinor == 20 && pitlane::kVersionPatch == 0, "release");
-    expect(std::strcmp(pitlane::kVersion, "2.20.0") == 0, "release text");
-    expect(pitlane::kDeskVersion == 4, "desk layout");
+    expect(pitlane::kVersionMajor == 2 && pitlane::kVersionMinor == 21 && pitlane::kVersionPatch == 0, "release");
+    expect(std::strcmp(pitlane::kVersion, "2.21.0") == 0, "release text");
+    expect(pitlane::kDeskVersion == 5, "desk layout");
     check_conf();
     check_yard();
     check_local_shelf_bus();
@@ -893,6 +1065,7 @@ int main() {
     check_hold();
     check_session();
     check_center();
+    check_framework();
     if (g_fails) {
         std::fprintf(stderr, "%d desk check(s) failed\n", g_fails);
         return 1;

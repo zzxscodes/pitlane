@@ -4,7 +4,7 @@
 
 ### SimNow closed-loop example
 
-`examples/simnow/` is a self-contained mini-project (conf + run + main). It builds `pitlane_simnow` when `PITLANE_BUILD_CTP=ON` and a CTP `_se` API tree is available. Core demos live under `examples/demo/`. See `examples/simnow/README.md`.
+`examples/simnow/` is a self-contained mini-project. Its `ctp/` sources are a CTP gateway written on `MdEngine` and `TdClient`. It builds `pitlane_simnow` when `PITLANE_BUILD_CTP=ON` and a CTP `_se` API tree is available. The library itself does not link a broker API. Core demos live under `examples/demo/`. See `examples/simnow/README.md`.
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j --target pitlane_simnow
@@ -32,7 +32,7 @@ Market data, strategy, and order entry often live in different processes. They m
 
 Include `pitlane/pitlane.hpp` and link `libpitlane.a` (or `libpitlane.so`). Everything is in namespace `pitlane`. This is a same-machine helper with its own types — not a drop-in replace for another live stack.
 
-Release **2.20.0** (`pitlane::kVersion`). Shared-object soname stays `libpitlane.so.1`. Desk file layout is `kDeskVersion` 4. The symbol/quote yard (`Yard`, magic `PITYARD2`, `kYardVersion` 2) is a second map sized like startup pool pools.
+Release **2.21.0** (`pitlane::kVersion`). Shared-object soname stays `libpitlane.so.1`. Desk file layout is `kDeskVersion` 5. The symbol/quote yard (`Yard`, magic `PITYARD2`, `kYardVersion` 2) is a second map sized like startup pool pools.
 
 Roles that other systems put on Mongo or RabbitMQ are covered **locally**: `seed_facts` / `seed_hours` / `seed_holidays` for basic contract and calendar rows; `TopicBus` + `RouteBook` for same-machine topic routing and algo binding. Broker/CTP adapters stay outside the library. Startup may allocate or mmap; the helper hot path does not allocate or tear down resources.
 
@@ -46,7 +46,7 @@ Headers and sources sit one directory deeper, by area. `desk` holds the shared r
 
 ## Shared region
 
-A mapping file starts with the magic `PITLANE1`. The desk layout version is 4, stored as `kDeskVersion`. `desk_view` opens a file only when both the magic and this layout version match. A blank file is initialized once, and only when the call allows creation. An older file with a different version is not treated as the current layout.
+A mapping file starts with the magic `PITLANE1`. The desk layout version is 5, stored as `kDeskVersion`. Layout 5 adds subscription, signal, market-order, and rebuild-quote rings. `desk_view` opens a file only when both the magic and this layout version match. A blank file is initialized once, and only when the call allows creation. An older file with a different version is not treated as the current layout.
 
 One shared region holds eight rings.
 

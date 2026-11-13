@@ -52,6 +52,8 @@ public:
 
     VenueOut admit(const Intent& in, int64_t now_us, Report* buf, int cap) noexcept;
     int on_clock(int64_t now_us, Report* buf, int cap) noexcept;
+    // TimerMatch and TimerCancel: due admits and pulls. Does not block the order ring.
+    int timer_due(int64_t now_us, Report* buf, int cap) noexcept { return on_clock(now_us, buf, cap); }
     int on_print(uint32_t name, int64_t px, int64_t qty, int64_t now_us, Report* buf, int cap) noexcept;
     // aggressor 0 keeps every print. A buy aggressor does not fill a resting buy, and the reverse.
     int on_tape(uint32_t name, int64_t px, int64_t qty, uint8_t aggressor, int64_t now_us, Report* buf, int cap) noexcept;

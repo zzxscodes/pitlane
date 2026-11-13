@@ -2,8 +2,8 @@
 // MD callback thread: Quote publish → strategy → Intent → TdClient::insert (IOC).
 // Measures local / gate / roundtrip T2T with TSC conversion.
 
-#include "pitlane/adapter/ctp/md_engine.hpp"
-#include "pitlane/adapter/ctp/td_client.hpp"
+#include "md_engine.hpp"
+#include "td_client.hpp"
 #include "pitlane/book/venue.hpp"
 #include "pitlane/desk/center.hpp"
 #include "pitlane/desk/session.hpp"
@@ -476,6 +476,7 @@ int main(int argc, char** argv) {
             }
         }
         ++spins;
+        md.loop_task();
         if ((spins & 0xffffull) == 0) {
             // light yield every 64k spins to avoid locking a core forever if quiet
             timespec ts{0, 100000}; // 0.1ms

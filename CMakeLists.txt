@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(pitlane VERSION 2.20.0 LANGUAGES CXX)
+project(pitlane VERSION 2.21.0 LANGUAGES CXX)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -33,7 +33,7 @@ include(CTest)
 option(PITLANE_BUILD_SHARED "Build libpitlane.so in addition to the static library" ON)
 option(PITLANE_BUILD_TESTS "Build area tests and the latency program" ON)
 option(PITLANE_BUILD_EXAMPLES "Build example programs" ON)
-option(PITLANE_BUILD_CTP "Build the optional CTP broker adapter and pitlane_simnow example" ON)
+option(PITLANE_BUILD_CTP "Build the pitlane_simnow example, which contains the CTP gateway" ON)
 # Prefer penetration (_se) libs for SimNow 7×24 handshake.
 set(PITLANE_CTP_API_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../ctp-api/api/v6.6.1_P1_20210406_api" CACHE PATH "CTP API root (_se)")
 option(PITLANE_NATIVE "Emit code for the build-host CPU (-march=native)" ON)
@@ -126,8 +126,8 @@ if(PITLANE_BUILD_EXAMPLES)
     endforeach()
 endif()
 
-# Optional CTP broker adapter. Core session, engines, and WireLog do not include Thost.
-if(PITLANE_BUILD_CTP)
+# SimNow example builds its own CTP gateway on MdEngine / TdClient. The library does not link Thost.
+if(PITLANE_BUILD_CTP AND PITLANE_BUILD_EXAMPLES)
     set(_PITLANE_CTP_MD_SO "${PITLANE_CTP_API_ROOT}/lib/libthostmduserapi_se.so")
     set(_PITLANE_CTP_TD_SO "${PITLANE_CTP_API_ROOT}/lib/libthosttraderapi_se.so")
     if(NOT EXISTS "${_PITLANE_CTP_MD_SO}")
@@ -140,35 +140,24 @@ if(PITLANE_BUILD_CTP)
         set(_PITLANE_CTP_TD_LIB thosttraderapi_se)
     endif()
     if(EXISTS "${PITLANE_CTP_API_ROOT}/include/ThostFtdcMdApi.h" AND EXISTS "${_PITLANE_CTP_MD_SO}")
-        add_library(pitlane_ctp STATIC
-            src/adapter/ctp/md_engine.cpp
-            src/adapter/ctp/td_client.cpp)
-        target_include_directories(pitlane_ctp PUBLIC
-            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-            $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+        add_executable(pitlane_simnow
+            examples/simnow/main.cpp
+            examples/simnow/ctp/md_engine.cpp
+            examples/simnow/ctp/td_client.cpp)
+        target_include_directories(pitlane_simnow PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/examples/simnow/ctp
             ${PITLANE_CTP_API_ROOT}/include)
-        target_link_directories(pitlane_ctp PUBLIC ${PITLANE_CTP_API_ROOT}/lib)
-        target_link_libraries(pitlane_ctp PUBLIC pitlane ${_PITLANE_CTP_MD_LIB} ${_PITLANE_CTP_TD_LIB} Threads::Threads)
-        target_compile_features(pitlane_ctp PUBLIC cxx_std_17)
-        target_compile_options(pitlane_ctp PRIVATE -Wall -Wextra -O3 -DNDEBUG -D_GNU_SOURCE)
+        target_link_directories(pitlane_simnow PRIVATE ${PITLANE_CTP_API_ROOT}/lib)
+        target_link_libraries(pitlane_simnow PRIVATE pitlane ${_PITLANE_CTP_MD_LIB} ${_PITLANE_CTP_TD_LIB})
+        target_compile_options(pitlane_simnow PRIVATE -Wall -Wextra -O3 -DNDEBUG -D_GNU_SOURCE)
         if(PITLANE_NATIVE)
-            target_compile_options(pitlane_ctp PRIVATE -march=native -mprefer-vector-width=256 -mno-avx512f)
+            target_compile_options(pitlane_simnow PRIVATE -march=native -mprefer-vector-width=256 -mno-avx512f)
         endif()
-        set_target_properties(pitlane_ctp PROPERTIES POSITION_INDEPENDENT_CODE ON BUILD_RPATH "${PITLANE_CTP_API_ROOT}/lib")
-
-        if(PITLANE_BUILD_EXAMPLES)
-            add_executable(pitlane_simnow examples/simnow/main.cpp)
-            target_link_libraries(pitlane_simnow PRIVATE pitlane_ctp)
-            target_compile_options(pitlane_simnow PRIVATE -Wall -Wextra -O3 -DNDEBUG -D_GNU_SOURCE)
-            if(PITLANE_NATIVE)
-                target_compile_options(pitlane_simnow PRIVATE -march=native -mprefer-vector-width=256 -mno-avx512f)
-            endif()
-            set_target_properties(pitlane_simnow PROPERTIES
-                BUILD_RPATH "${PITLANE_CTP_API_ROOT}/lib;${CMAKE_CURRENT_BINARY_DIR}"
-                INSTALL_RPATH "${PITLANE_CTP_API_ROOT}/lib")
-            list(APPEND PITLANE_SAN_TARGETS pitlane_simnow)
-        endif()
-        message(STATUS "PITLANE_BUILD_CTP: ON (${PITLANE_CTP_API_ROOT})")
+        set_target_properties(pitlane_simnow PROPERTIES
+            BUILD_RPATH "${PITLANE_CTP_API_ROOT}/lib;${CMAKE_CURRENT_BINARY_DIR}"
+            INSTALL_RPATH "${PITLANE_CTP_API_ROOT}/lib")
+        list(APPEND PITLANE_SAN_TARGETS pitlane_simnow)
+        message(STATUS "pitlane_simnow: CTP gateway example (${PITLANE_CTP_API_ROOT})")
     else()
         message(WARNING "PITLANE_BUILD_CTP requested but API not found at ${PITLANE_CTP_API_ROOT}")
     endif()

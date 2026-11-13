@@ -119,6 +119,28 @@ public:
         return at(n - 1, reader, out, &fresh);
     }
 
+    // 1: this reader takes the slot. 0: skip it. -1: not published yet.
+    // only_addressed leaves need==0 for a reader that was named on the publish.
+    PITLANE_HOT int poll(uint64_t pos, unsigned reader, T& out, bool only_addressed) const noexcept {
+        if (unlikely(reader >= 64u || pos >= tail_.load(std::memory_order_acquire))) return -1;
+        const Slot& s = slots_[pos & mask_];
+        if (unlikely(s.state.load(std::memory_order_acquire) != 1u || s.seq != pos + 1u)) return -1;
+        const uint64_t bit = 1ull << reader;
+        const uint64_t need = s.need;
+        const uint64_t ack = s.ack.load(std::memory_order_acquire);
+        bool take = false;
+        if (need == 0) {
+            if (!only_addressed && ack == 0) take = true;
+        } else if ((need & bit) != 0 && (ack & bit) == 0) {
+            take = true;
+        }
+        if (unlikely(s.state.load(std::memory_order_acquire) != 1u || s.seq != pos + 1u)) return -1;
+        if (!take) return 0;
+        out = s.body;
+        if (unlikely(s.state.load(std::memory_order_acquire) != 1u || s.seq != pos + 1u)) return -1;
+        return 1;
+    }
+
     PITLANE_HOT bool ack(uint64_t pos, unsigned reader) noexcept {
         if (unlikely(reader >= 64u)) return false;
         Slot& s = slots_[pos & mask_];
@@ -183,5 +205,23 @@ private:
     uint32_t mask_{Cap - 1u};
     int64_t claimed_{-1};
 };
+
+// Drains one reader. Slots that are not for this reader are skipped, not a stall.
+template <typename T, uint32_t Cap, typename Fn>
+int ring_take(FanRing<T, Cap>& ring, uint64_t& cur, unsigned reader, bool only_addressed, Fn&& fn) noexcept {
+    int n = 0;
+    for (;;) {
+        T item{};
+        const int st = ring.poll(cur, reader, item, only_addressed);
+        if (st < 0) break;
+        if (st > 0) {
+            ring.ack(cur, reader);
+            fn(item);
+            ++n;
+        }
+        ++cur;
+    }
+    return n;
+}
 
 }  // namespace pitlane

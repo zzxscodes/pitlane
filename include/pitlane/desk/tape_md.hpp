@@ -26,6 +26,7 @@ public:
             ++at;
             ++k;
         }
+        housekeep();
     }
 };
 

@@ -7,6 +7,9 @@
 namespace pitlane {
 
 inline constexpr unsigned kLoopReader = 7;
+inline constexpr unsigned kStratReader = kLoopReader;
+inline constexpr unsigned kGateReader = 6;  // trader gateway
+inline constexpr unsigned kMdReader = 5;    // market-data gateway
 
 struct LoopHooks {
     void (*on_quote)(void* user, const Quote& quote){nullptr};
