@@ -1,0 +1,33 @@
+# pitlane_simnow — local SimNow 7×24 closed-loop example (real IOC).
+# Copy to simnow_7x24.conf (gitignored) and set password, or:
+#   export SIMNOW_PASSWORD=...
+# Run from this directory so work_dir=./run stays under examples/simnow:
+#   cd examples/simnow && ../../build/pitlane_simnow conf/simnow_7x24.conf
+# Window: trading day 16:00–next 09:00; non-trading day 16:00–next 12:00.
+
+broker_id = 9999
+investor_id = 249674
+password =
+app_id = simnow_client_test
+auth_code = 0000000000000000
+
+md_front = tcp://182.254.243.31:40011
+td_front = tcp://182.254.243.31:40001
+
+# Prefer liquid night-session contracts on 7×24; adjust month codes as listed.
+instruments = au2602,ag2602
+
+# Runtime stays under this example (never the repo root).
+work_dir = ./run
+# flow_md_dir / flow_td_dir / desk_path / log_path default under work_dir
+# log_path = ./run/wire.log
+# host_cpu = 0
+
+# Prices are ×10000. Keep buy_px high to take offers for T2T validation.
+buy_px_x10000 = 999999999
+max_spread_x10000 = 500
+order_qty = 1
+min_order_gap_us = 3000000
+max_live_orders = 2
+t2t_samples = 30
+connect_timeout_s = 30

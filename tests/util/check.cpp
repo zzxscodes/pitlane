@@ -715,6 +715,29 @@ static void check_breach_fuzz_smoke() {
     expect(published > 0, "fuzz publish");
 }
 
+static void check_wirelog() {
+    const char* path = "pitlane_wire.log";
+    ::unlink(path);
+    {
+        pitlane::WireLog log(path, 3, pitlane::WireLog::kCaller);
+        expect(log.log(2, pitlane::lit("px="), 42, pitlane::lit("qty="), static_cast<int64_t>(7)), "wire push");
+        log.flush();
+    }
+    FILE* f = std::fopen(path, "r");
+    char buf[256]{};
+    expect(f && std::fgets(buf, sizeof buf, f), "wire read");
+    if (f) std::fclose(f);
+    expect(std::strstr(buf, "px=") && std::strstr(buf, "42") && std::strstr(buf, "qty=") && std::strstr(buf, "7"),
+           "wire text");
+    ::unlink(path);
+    {
+        pitlane::WireLog log(path, 2, pitlane::WireLog::kCaller);
+        expect(!log.log(3, pitlane::lit("hidden")), "wire drop debug");
+        expect(log.dropped() >= 1, "wire dropped");
+    }
+    ::unlink(path);
+}
+
 int main() {
     check_numeric();
     check_wide();
@@ -740,6 +763,7 @@ int main() {
     check_pin_phase();
     check_authbits_seqgate();
     check_breach_fuzz_smoke();
+    check_wirelog();
     if (g_fails) {
         std::fprintf(stderr, "%d util check(s) failed\n", g_fails);
         return 1;

@@ -90,7 +90,7 @@ inline int cmp_prod(int64_t a, int64_t b, int64_t c, int64_t d) noexcept {
 
 // Quotient of a 128-bit value and a 64-bit divisor. Fails when the quotient does not fit in 64 bits.
 // den must be small enough that a remainder below den can be shifted by one bit.
-PITLANE_HOT bool div_wide(Wide w, uint64_t den, uint64_t& q) noexcept {
+PITLANE_HOT inline bool div_wide(Wide w, uint64_t den, uint64_t& q) noexcept {
     if (unlikely(den == 0 || den > (UINT64_MAX >> 1) || w.hi >= den)) return false;
     uint64_t rem = 0;
     for (int i = 63; i >= 0; --i) {

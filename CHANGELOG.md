@@ -1,5 +1,21 @@
 # Changelog
 
+## [2.18.0] - 2026-11-13
+
+### Added
+- `WireLog`: one slot per line, hot path stores type tags and raw values, a cold thread formats and writes (trading-system-notes async log). A full ring drops the line.
+- Broker-neutral `Account` / `StratCfg` / `load_account_conf` in `desk/session.hpp`, plus `InstMap`.
+
+### Changed
+- CTP is only the optional adapter under `include/pitlane/adapter/ctp` (`pitlane_ctp`). It is not a framework module.
+- SimNow example logs to `run/wire.log` and stops when the counter rejects login or the front stays silent.
+
+### Fixed
+- `div_wide` is an inline function, so more than one translation unit can include it.
+
+### Notes
+- Library release version is 2.18.0. Desk layout stays `kDeskVersion` 4.
+
 ## [2.17.0] - 2026-11-12
 
 ### Added
