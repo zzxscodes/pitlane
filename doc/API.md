@@ -10,7 +10,7 @@ Include one header:
 
 Everything is in the namespace `pitlane`. Link `libpitlane.a`, or link the shared library with `-lpitlane`. The shared library's soname is `libpitlane.so.1`. The headers are the same for both.
 
-The release is `kVersion`, currently 2.20.0, also split into `kVersionMajor`, `kVersionMinor`, and `kVersionPatch`. `kDeskVersion` is the desk mapping-file layout and is currently 4. `kYardVersion` is the separate symbol/quote yard layout and is currently 2. A new library release can leave either layout number where it is.
+The release is `kVersion`, currently 2.21.0, also split into `kVersionMajor`, `kVersionMinor`, and `kVersionPatch`. `kDeskVersion` is the desk mapping-file layout and is currently 5. `kYardVersion` is the separate symbol/quote yard layout and is currently 2. A new library release can leave either layout number where it is.
 
 A browsable static site with a left-hand section list is generated into `doc/site/` (`python3 doc/gen_site.py`). Open a local `doc/site/index.html` or the GitHub Pages deployment — viewing the file on `github.com/.../blob/...` shows source only. Startup settings are covered under **Startup configuration**.
 
@@ -69,7 +69,7 @@ pitlane::Desk* desk = pitlane::desk_view(&map, 1);
 if (!desk) return 1;
 ```
 
-`map_create` creates or extends the file and does not wipe an existing mapping. The default `MapOpt` uses explicit huge pages only: length rounds to Hugepagesize, and the file is placed on hugetlbfs (default `/dev/hugepages` as `pitlane_<basename>`), or at the caller path when that path is already on hugetlbfs. THP / `MADV_HUGEPAGE` are never used. When explicit pages are unavailable the mapping falls back to the caller path and sets `MapInfo::fallback`. `mlock` is attempted by default; `numa_node >= 0` binds the range with `MPOL_BIND`. `desk_view` returns the desk only when the magic is `PITLANE1` and the layout version is `kDeskVersion`, which is 4. The second argument formats a still-blank file when it is non-zero. A file with the wrong magic is left untouched and the call returns null. After the magic is written, do not format the mapping again.
+`map_create` creates or extends the file and does not wipe an existing mapping. The default `MapOpt` uses explicit huge pages only: length rounds to Hugepagesize, and the file is placed on hugetlbfs (default `/dev/hugepages` as `pitlane_<basename>`), or at the caller path when that path is already on hugetlbfs. THP / `MADV_HUGEPAGE` are never used. When explicit pages are unavailable the mapping falls back to the caller path and sets `MapInfo::fallback`. `mlock` is attempted by default; `numa_node >= 0` binds the range with `MPOL_BIND`. `desk_view` returns the desk only when the magic is `PITLANE1` and the layout version is `kDeskVersion`, which is 5. The second argument formats a still-blank file when it is non-zero. A file with the wrong magic is left untouched and the call returns null. After the magic is written, do not format the mapping again.
 
 Another process attaches with `map_attach` and passes 0 to `desk_view` (same logical path so both sides resolve the same hugetlbfs file). `map_release` unmaps; if the mapping was locked it calls `munlock` first, then closes the file. Each ring has one writer. Readers do not share a cursor.
 
@@ -127,7 +127,7 @@ if (desk->intents.at(0, pitlane::kLoopReader, got, &fresh) && fresh) {
 }
 ```
 
-`Intent`, `Report`, and `Quote` are defined in `desk/types.hpp`. The other slot types — `AlgoJob`, `ControlNote`, `Pulse`, `TapePrint`, `QueryNote`, `PackageNote`, and `LogNote` — are defined in `desk/wire.hpp`. A payload larger than those slots uses `Parcel<Bytes>` on a ring the caller owns. `publish_parcel` fails when the length is greater than `Bytes`. Hot path may `desk_log_publish` a `LogNote`; cold side drains the `logs` ring. `WireLog` is the process logger from the notes: `log` packs one `PackedLine` (literals via `lit`, dynamic strings copied, scalars memcpy'd) into a fixed fail-full ring and does not format. A background thread, or `flush` in caller mode, turns the slot into text. Put the file on tmpfs when the disk must stay off the hot path.
+`Intent`, `Report`, and `Quote` are defined in `desk/types.hpp`. The other slot types — `AlgoJob`, `ControlNote`, `Pulse`, `TapePrint`, `QueryNote`, `SubNote`, `SigNote`, `MktNote`, `PackageNote`, and `LogNote` — are defined in `desk/wire.hpp`. A payload larger than those slots uses `Parcel<Bytes>` on a ring the caller owns. `publish_parcel` fails when the length is greater than `Bytes`. Hot path may `desk_log_publish` a `LogNote`; cold side drains the `logs` ring. `WireLog` is the process logger from the notes: `log` packs one `PackedLine` (literals via `lit`, dynamic strings copied, scalars memcpy'd) into a fixed fail-full ring and does not format. A background thread, or `flush` in caller mode, turns the slot into text. Put the file on tmpfs when the disk must stay off the hot path.
 
 ## Run the session loop
 
@@ -194,7 +194,11 @@ pitlane::VenueOut out = venue.admit(in, in.stamp_us, reps, 4);
 
 PitConf `[venue]` mirrors simulator `match.ini`: nine go/pull lags (`go_usN` / `pull_usN`, or fractional-second `delayN` / `cancel_delayN`), `rigid_rule`→`rigid`, `use_ext`→`tape_first`, plus lot/rate/notional/`cancel_pow_x1000`. Use `conf_venue_cfg` to build a `VenueCfg`.
 
-`Center::step` is the trading-center loop (trading center / paper matcher process role): optional `TapeMd` or a live `MdEngine`, quote tops into `PaperVenue`, `StratEngine`, then a ready `TdEngine` or `TradeLane`. `RouteAllow` with zero bits is NoFilter. A heartbeat publishes a `Pulse` on topic `hb`. `TapeMd` replays a caller-owned quote array.
+`Center::step` is the trading-center loop (trading center / paper matcher process role): optional `TapeMd` or a live `MdEngine`, quote tops into `PaperVenue`, `StratEngine`, then a ready `TdEngine` or `TradeLane`. It stores `now_us` on the desk clock. `RouteAllow` with zero bits is NoFilter. A heartbeat publishes a `Pulse` on topic `hb`. `TapeMd` replays a caller-owned quote array.
+
+`Engine` is the shared process role: `set_up`, `pre_run`, `loop_task`, `post_run`, timers, control notes, a symbol table, and `housekeep`. `MdEngine` drains `subs` (quote, signal, rebuild, market order, market trade). Five failed subscribes in a row stop further sends. `copy_subs` copies the id list before a later send. `write_quote`, `write_print`, `write_signal`, `write_factor`, `write_mkt`, and `write_rebuild` are the gateway writes. `TdClient` is the counter surface a gateway implements (`insert`, `cancel`, `on_algo`, `query_asset`, `query_position`). `TdEngine` runs orders, then asset and position queries, then algo jobs, then `BrokerWatch` timeouts. `risk_filter` can deny an enter before the client is called. `StratEngine` is the strategy and its context: it picks reports, quotes, rebuilds, market orders, prints, algo jobs, query replies, and signals, and it publishes orders, subscriptions, and queries. `order_precheck` drops a child with a bad size, side, id, or time. Broker sockets are not in this library. A CTP gateway belongs in the program that subclasses these types, as `examples/simnow/ctp` does.
+
+`SimRole` names the four paper roles (tape, quote adapter, trader, matcher). `order_delay` and `tape_speed` follow the replay notes. `timer_due` runs due matches and cancels. `adjust_offset` is the derivative close-then-open split.
 
 Composition helpers (still allocation-free on the hot path): `FeedHub` into Yard/Desk; `TradeLane::lane_beat` for paper TD; `StratHook` onto `DeskLoop` (including algo/package/log/pause); `seed_cash` / `seed_hold` for account rows; `seed_facts` / `seed_hours` / `seed_holidays` plus cold `load_facts` / `load_hours` / `load_holidays` for local basic-data tables; `TopicBus` for same-machine topic pub/sub; `RouteBook` for strategy→algo binding. `pulse_bridge` fans `PulseBoard` into desk `pulses`.
 
@@ -424,7 +428,12 @@ These calls do not open a socket, do not send an order, and do not start a threa
 | `desk/runtime.hpp` | `DeskLoop` |
 | `desk/signal.hpp` | `PulseBoard` |
 | `desk/types.hpp` | `Intent`, `Report`, `Quote`, sides, styles, phases, and `Why` |
-| `desk/wire.hpp` | Algo, control, pulse, print, query, and parcel slots |
+| `desk/wire.hpp` | Algo, control, pulse, print, query, subscribe, signal, market-order, and parcel slots |
+| `desk/engine.hpp` | `Engine` process role |
+| `desk/md_engine.hpp` | `MdEngine` market-data gateway |
+| `desk/td_engine.hpp` | `TdEngine` / `TdClient` trader gateway |
+| `desk/plane.hpp` | `SimRole`, replay delay, and tape speed |
+| `study/strat_engine.hpp` | `StratEngine` strategy and context |
 | `host/affinity.hpp` | Set CPU affinity for the calling thread or process |
 | `host/hugepage.hpp` | `nr_hugepages`, Hugepagesize, `thp_disable` |
 | `host/memlock.hpp` | Process-wide `mlockall` / `munlockall` |

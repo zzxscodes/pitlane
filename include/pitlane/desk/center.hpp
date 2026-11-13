@@ -66,6 +66,7 @@ struct Center {
 
     int step(int64_t now_us) noexcept {
         if (!desk) return -1;
+        desk->clock_us.store(now_us, std::memory_order_release);
         if (md) md->loop_task();
         if (book) {
             Quote q{};

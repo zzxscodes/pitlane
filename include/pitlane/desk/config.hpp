@@ -44,6 +44,10 @@ struct PitConf {
     uint32_t pack_req_cap{kPackReqCap};
     uint32_t pack_rsp_cap{kPackRspCap};
     uint32_t log_cap{kLogCap};
+    uint32_t sub_cap{kSubCap};
+    uint32_t sig_cap{kSigCap};
+    uint32_t mkt_cap{kMktCap};
+    uint32_t rebuild_cap{kRebuildCap};
     uint32_t cash_cap{kCashCap};
     uint32_t hold_cap{kHoldCap};
 

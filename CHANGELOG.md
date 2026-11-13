@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.21.0] - 2026-11-13
+
+### Added
+- Gateway and strategy roles from `the reference gateway`: `Engine` timers, controls, symbols, and heartbeat; `MdEngine` subscription drain with a five-failure cap and a copied subscription list; `TdEngine` order, asset, position, and algo handling plus `risk_filter` and working-order timeouts; `StratEngine` picks the same lanes a strategy context picks, and publishes orders, subscribes, and queries.
+- Desk layout 5: `subs`, `signals`, `mkt_ords`, and `rebuilds`. `FanRing::poll` skips a slot that is not addressed to the reader.
+- `SimRole`, `order_delay`, `tape_speed`, and `follow_clock` for the four-role paper path. `timer_due` is the matcher clock step. `adjust_offset` closes the opposite book before an open. `order_precheck` rejects a bad child before it is published.
+
+### Changed
+- The CTP gateway lives in `examples/simnow/ctp` and is built only into `pitlane_simnow`. The library does not include or link a broker API.
+
+### Notes
+- Library release version is 2.21.0. Desk layout is `kDeskVersion` 5.
+
 ## [2.20.0] - 2026-11-13
 
 ### Added

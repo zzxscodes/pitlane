@@ -28,7 +28,7 @@ if (pitlane::map_create(&quot;desk.bin&quot;, pitlane::desk_bytes(), &amp;map) !
 pitlane::Desk* desk = pitlane::desk_view(&amp;map, 1);
 if (!desk) return 1;
 </code></pre>
-<p><code>map_create</code> 创建或扩展文件，不会清掉已经存在的映射。默认 <code>MapOpt</code> 走显式大页：长度按 Hugepagesize 对齐，优先在 hugetlbfs（默认 <code>/dev/hugepages</code>，逻辑名映射为 <code>pitlane_&lt;基名&gt;</code>）建文件；路径本身已在 hugetlbfs 上则直接使用。不用 THP / <code>MADV_HUGEPAGE</code>。显式大页不可用时回退到调用方路径并置 <code>MapInfo::fallback</code>。默认尝试 <code>mlock</code>，<code>numa_node &gt;= 0</code> 时对该区间做 <code>MPOL_BIND</code>。只有魔数是 <code>PITLANE1</code> 且布局版本是 <code>kDeskVersion</code> 时，<code>desk_view</code> 才返回工作区。当前布局版本是 4。第二个参数非 0 时，才会初始化一份仍然空白的文件。魔数不对的文件保持原样，调用返回空指针。魔数写上以后不要再次初始化。</p>
+<p><code>map_create</code> 创建或扩展文件，不会清掉已经存在的映射。默认 <code>MapOpt</code> 走显式大页：长度按 Hugepagesize 对齐，优先在 hugetlbfs（默认 <code>/dev/hugepages</code>，逻辑名映射为 <code>pitlane_&lt;基名&gt;</code>）建文件；路径本身已在 hugetlbfs 上则直接使用。不用 THP / <code>MADV_HUGEPAGE</code>。显式大页不可用时回退到调用方路径并置 <code>MapInfo::fallback</code>。默认尝试 <code>mlock</code>，<code>numa_node &gt;= 0</code> 时对该区间做 <code>MPOL_BIND</code>。只有魔数是 <code>PITLANE1</code> 且布局版本是 <code>kDeskVersion</code> 时，<code>desk_view</code> 才返回工作区。当前布局版本是 5。第二个参数非 0 时，才会初始化一份仍然空白的文件。魔数不对的文件保持原样，调用返回空指针。魔数写上以后不要再次初始化。</p>
 <p>其他进程用 <code>map_attach</code> 挂上，再把 0 传给 <code>desk_view</code>（须与创建时同一逻辑路径，以便解析到同一 hugetlbfs 文件）。<code>map_release</code> 解除映射；若曾 <code>mlock</code> 则先 <code>munlock</code>，再关闭文件。每条环只有一个写入者。读者不要共用一个读取位置。</p>
 <p><code>desk-&gt;clock_us</code> 是会话时钟，单位是微秒。<code>DeskLoop::beat</code> 把当次传入的时间写到这里。</p>
   </main>

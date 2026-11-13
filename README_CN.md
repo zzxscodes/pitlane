@@ -4,7 +4,7 @@ English overview: `README.md`.
 
 ### SimNow 闭环示例
 
-`examples/simnow/` 是自包含小项目（conf + run + main）。`PITLANE_BUILD_CTP=ON` 且有 CTP `_se` API 时编出 `pitlane_simnow`。原库内演示在 `examples/demo/`。详见 `examples/simnow/README.md`。
+`examples/simnow/` 是自包含小项目。其中 `ctp/` 是写在 `MdEngine` 和 `TdClient` 上的 CTP 网关，只在 `PITLANE_BUILD_CTP=ON` 且有 CTP `_se` API 时编进 `pitlane_simnow`。库本身不链接券商 API。原库内演示在 `examples/demo/`。详见 `examples/simnow/README.md`。
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j --target pitlane_simnow
@@ -32,7 +32,7 @@ pitlane 是给**同一台机器**上多个交易进程用的 C++17 辅助库：�
 
 包含 `pitlane/pitlane.hpp`，链接 `libpitlane.a`（或 `libpitlane.so`）。类型都在命名空间 `pitlane`。这是本机辅助接口，不是拿来热替换另一套在跑系统的兼容层。
 
-发行版 **2.20.0**（`pitlane::kVersion`）。动态库 soname 仍是 `libpitlane.so.1`。desk 布局版本 `kDeskVersion` 为 4。标的/行情池 `Yard`（魔数 `PITYARD2`，`kYardVersion` 2）是另一块启动期映射，体量对齐 startup pool。
+发行版 **2.21.0**（`pitlane::kVersion`）。动态库 soname 仍是 `libpitlane.so.1`。desk 布局版本 `kDeskVersion` 为 5。标的/行情池 `Yard`（魔数 `PITYARD2`，`kYardVersion` 2）是另一块启动期映射，体量对齐 startup pool。
 
 别处用 Mongo / RabbitMQ 承担的职责，在这里用**本地实现**对齐：`seed_facts` / `seed_hours` / `seed_holidays` / `load_facts` / `load_hours` / `load_holidays` 写入合约与日历；`TopicBus` + `RouteBook` 做本机 topic 分发与算法路由。真正留在库外的是券商/CTP 等外部柜台接入。启动期可以分配或 mmap；辅助热路径不分配、不销毁资源。
 
@@ -46,7 +46,7 @@ pitlane 是给**同一台机器**上多个交易进程用的 C++17 辅助库：�
 
 ## 共享区
 
-映射文件以魔数 `PITLANE1` 开头。工作区布局版本是 4，记在 `kDeskVersion` 里。`desk_view` 只打开魔数和这个布局版本都相符的文件。文件仍是空白，并且调用时允许创建，才会初始化一次。版本不同的旧文件不会被当作当前布局使用。
+映射文件以魔数 `PITLANE1` 开头。工作区布局版本是 5，记在 `kDeskVersion` 里。布局 5 增加订阅、信号、市场委托和重建行情四条环。`desk_view` 只打开魔数和这个布局版本都相符的文件。文件仍是空白，并且调用时允许创建，才会初始化一次。版本不同的旧文件不会被当作当前布局使用。
 
 一块共享区里有八条环。
 

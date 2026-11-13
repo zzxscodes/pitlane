@@ -335,6 +335,14 @@ int set_key(PitConf& conf, const char* section, const char* key, const char* val
             return ok(parse_u32(val, conf.pack_rsp_cap));
         if (std::strcmp(key, "log_cap") == 0)
             return ok(parse_u32(val, conf.log_cap));
+        if (std::strcmp(key, "sub_cap") == 0)
+            return ok(parse_u32(val, conf.sub_cap));
+        if (std::strcmp(key, "sig_cap") == 0)
+            return ok(parse_u32(val, conf.sig_cap));
+        if (std::strcmp(key, "mkt_cap") == 0)
+            return ok(parse_u32(val, conf.mkt_cap));
+        if (std::strcmp(key, "rebuild_cap") == 0)
+            return ok(parse_u32(val, conf.rebuild_cap));
         if (std::strcmp(key, "cash_cap") == 0)
             return ok(parse_u32(val, conf.cash_cap));
         if (std::strcmp(key, "hold_cap") == 0)
@@ -592,6 +600,10 @@ int conf_normalize(PitConf& conf, char* hints, int hints_cap) noexcept {
     fix_ring(conf.pack_req_cap, kPackReqCap, "pack_req_cap");
     fix_ring(conf.pack_rsp_cap, kPackRspCap, "pack_rsp_cap");
     fix_ring(conf.log_cap, kLogCap, "log_cap");
+    fix_ring(conf.sub_cap, kSubCap, "sub_cap");
+    fix_ring(conf.sig_cap, kSigCap, "sig_cap");
+    fix_ring(conf.mkt_cap, kMktCap, "mkt_cap");
+    fix_ring(conf.rebuild_cap, kRebuildCap, "rebuild_cap");
 
     auto fix_rows = [&](uint32_t& field, uint32_t hi, const char* name) {
         const uint32_t before = field;
@@ -903,6 +915,14 @@ bool desk_apply_conf(Desk& desk, const PitConf& conf) noexcept {
     if (!desk.pack_rsps.tune(conf.pack_rsp_cap))
         return false;
     if (!desk.logs.tune(conf.log_cap))
+        return false;
+    if (!desk.subs.tune(conf.sub_cap))
+        return false;
+    if (!desk.signals.tune(conf.sig_cap))
+        return false;
+    if (!desk.mkt_ords.tune(conf.mkt_cap))
+        return false;
+    if (!desk.rebuilds.tune(conf.rebuild_cap))
         return false;
     return true;
 }

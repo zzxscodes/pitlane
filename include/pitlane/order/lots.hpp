@@ -33,6 +33,12 @@ int split_lots(int64_t want, LotPos pos, LotPend pend, int64_t max_lot, int64_t 
 int split_against(LotPos opp, LotPend pend, CloseStyle rule, int64_t want, int64_t max_lot, int64_t min_lot,
                   LotSlice* out, int cap) noexcept;
 
+// TryAdjustDerOffset: close the opposite book, then open the shortfall.
+inline int adjust_offset(LotPos opp, LotPend pend, CloseStyle rule, int64_t want, int64_t max_lot, int64_t min_lot,
+                         LotSlice* out, int cap) noexcept {
+    return split_against(opp, pend, rule, want, max_lot, min_lot, out, cap);
+}
+
 // A-share board lot. Direction still goes through normalize_gate; these are quantity helpers only.
 
 inline bool board_lot_ok(int64_t qty, int64_t lot = 100) noexcept {

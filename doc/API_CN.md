@@ -10,7 +10,7 @@
 
 所有名字都在命名空间 `pitlane` 里。链接 `libpitlane.a`，或者用 `-lpitlane` 链接动态库。动态库的 soname 是 `libpitlane.so.1`。两种链接方式使用同一套头文件。
 
-发行版本是 `kVersion`，当前是 2.20.0，并拆成 `kVersionMajor`、`kVersionMinor` 和 `kVersionPatch`。`kDeskVersion` 是 desk 映射文件的布局版本，当前是 4。`kYardVersion` 是独立的标的/行情池布局版本，当前是 2。库的一次新发行可以保持任一布局版本不动。
+发行版本是 `kVersion`，当前是 2.21.0，并拆成 `kVersionMajor`、`kVersionMinor` 和 `kVersionPatch`。`kDeskVersion` 是 desk 映射文件的布局版本，当前是 5。`kYardVersion` 是独立的标的/行情池布局版本，当前是 2。库的一次新发行可以保持任一布局版本不动。
 
 带左侧分节导航的静态网页在 `doc/site/`（`python3 doc/gen_site.py` 生成）。打开**本地** `doc/site/index.html` 或 GitHub Pages；在 `github.com/.../blob/...` 里打开只会看到源码。启动期设置见 **启动配置**。
 
@@ -69,7 +69,7 @@ pitlane::Desk* desk = pitlane::desk_view(&map, 1);
 if (!desk) return 1;
 ```
 
-`map_create` 创建或扩展文件，不会清掉已经存在的映射。默认 `MapOpt` 走显式大页：长度按 Hugepagesize 对齐，优先在 hugetlbfs（默认 `/dev/hugepages`，逻辑名映射为 `pitlane_<基名>`）建文件；路径本身已在 hugetlbfs 上则直接使用。不用 THP / `MADV_HUGEPAGE`。显式大页不可用时回退到调用方路径并置 `MapInfo::fallback`。默认尝试 `mlock`，`numa_node >= 0` 时对该区间做 `MPOL_BIND`。只有魔数是 `PITLANE1` 且布局版本是 `kDeskVersion` 时，`desk_view` 才返回工作区。当前布局版本是 4。第二个参数非 0 时，才会初始化一份仍然空白的文件。魔数不对的文件保持原样，调用返回空指针。魔数写上以后不要再次初始化。
+`map_create` 创建或扩展文件，不会清掉已经存在的映射。默认 `MapOpt` 走显式大页：长度按 Hugepagesize 对齐，优先在 hugetlbfs（默认 `/dev/hugepages`，逻辑名映射为 `pitlane_<基名>`）建文件；路径本身已在 hugetlbfs 上则直接使用。不用 THP / `MADV_HUGEPAGE`。显式大页不可用时回退到调用方路径并置 `MapInfo::fallback`。默认尝试 `mlock`，`numa_node >= 0` 时对该区间做 `MPOL_BIND`。只有魔数是 `PITLANE1` 且布局版本是 `kDeskVersion` 时，`desk_view` 才返回工作区。当前布局版本是 5。第二个参数非 0 时，才会初始化一份仍然空白的文件。魔数不对的文件保持原样，调用返回空指针。魔数写上以后不要再次初始化。
 
 其他进程用 `map_attach` 挂上，再把 0 传给 `desk_view`（须与创建时同一逻辑路径，以便解析到同一 hugetlbfs 文件）。`map_release` 解除映射；若曾 `mlock` 则先 `munlock`，再关闭文件。每条环只有一个写入者。读者不要共用一个读取位置。
 
@@ -127,7 +127,7 @@ if (desk->intents.at(0, pitlane::kLoopReader, got, &fresh) && fresh) {
 }
 ```
 
-`Intent`、`Report` 和 `Quote` 在 `desk/types.hpp`。其余槽类型——`AlgoJob`、`ControlNote`、`Pulse`、`TapePrint`、`QueryNote`、`PackageNote`、`LogNote`——在 `desk/wire.hpp`。比这些槽更大的数据，由调用方放在自己的环上，类型是 `Parcel<Bytes>`。长度大于 `Bytes` 时，`publish_parcel` 失败。热路径可用 `desk_log_publish` 写入 `LogNote`，冷侧再排空 `logs` 环。`WireLog` 对齐笔记里的异步日志：`log` 把一行打进一个 `PackedLine`（字面量用 `lit`，动态串拷进槽，标量 `memcpy`），满环丢弃该行，热路径不格式化。后台线程或调用方 `flush` 再把槽写成文本。日志文件放 tmpfs，热路径就不碰块设备。
+`Intent`、`Report` 和 `Quote` 在 `desk/types.hpp`。其余槽类型——`AlgoJob`、`ControlNote`、`Pulse`、`TapePrint`、`QueryNote`、`SubNote`、`SigNote`、`MktNote`、`PackageNote`、`LogNote`——在 `desk/wire.hpp`。比这些槽更大的数据，由调用方放在自己的环上，类型是 `Parcel<Bytes>`。长度大于 `Bytes` 时，`publish_parcel` 失败。热路径可用 `desk_log_publish` 写入 `LogNote`，冷侧再排空 `logs` 环。`WireLog` 对齐笔记里的异步日志：`log` 把一行打进一个 `PackedLine`（字面量用 `lit`，动态串拷进槽，标量 `memcpy`），满环丢弃该行，热路径不格式化。后台线程或调用方 `flush` 再把槽写成文本。日志文件放 tmpfs，热路径就不碰块设备。
 
 ## 跑会话循环
 
@@ -194,7 +194,11 @@ pitlane::VenueOut out = venue.admit(in, in.stamp_us, reps, 4);
 
 PitConf `[venue]` 对齐模拟器 `match.ini`：九段 go/pull 延迟、`rigid_rule`→`rigid`、`use_ext`→`tape_first`，以及 lot/rate/notional 等。用 `conf_venue_cfg` 得到 `VenueCfg`。
 
-`Center::step` 是交易中心循环（trading center / paper matcher 的进程角色）：可选 `TapeMd` 或实盘 `MdEngine`，行情顶档写入 `PaperVenue`，再跑 `StratEngine`，然后是已就绪的 `TdEngine` 或 `TradeLane`。`RouteAllow` 位图为 0 表示不过滤。心跳往 `Pulse` 环写主题 `hb`。`TapeMd` 重放调用方持有的行情数组。
+`Center::step` 是交易中心循环（trading center / paper matcher 的进程角色）：可选 `TapeMd` 或实盘 `MdEngine`，行情顶档写入 `PaperVenue`，再跑 `StratEngine`，然后是已就绪的 `TdEngine` 或 `TradeLane`。它把 `now_us` 写进 desk 时钟。`RouteAllow` 位图为 0 表示不过滤。心跳往 `Pulse` 环写主题 `hb`。`TapeMd` 重放调用方持有的行情数组。
+
+`Engine` 是进程角色：`set_up`、`pre_run`、`loop_task`、`post_run`、定时器、控制消息、合约表和 `housekeep`。`MdEngine` 排空 `subs`（行情、信号、重建、市场委托、市场成交）。连续五次订阅失败后不再发送。`copy_subs` 先复制订阅名单再发送。`write_quote`、`write_print`、`write_signal`、`write_factor`、`write_mkt`、`write_rebuild` 是网关写入。`TdClient` 是网关要实现的柜台面（`insert`、`cancel`、`on_algo`、`query_asset`、`query_position`）。`TdEngine` 依次处理报单、资金查询、持仓查询、算法单，再处理 `BrokerWatch` 超时。`risk_filter` 可以在调用柜台前拒掉一笔报入。`StratEngine` 同时是策略和它的上下文：它收取回报、行情、重建、市场委托、逐笔、算法单、查询应答和信号，并发布报单、订阅和查询。`order_precheck` 在发布前丢掉数量、方向、编号或时间不合法的子单。库里没有券商套接字。CTP 网关写在继承这些类型的程序里，`examples/simnow/ctp` 就是这样。
+
+`SimRole` 标出纸面四角色（回放、行情适配、交易、撮合）。`order_delay` 和 `tape_speed` 对齐回放笔记。`timer_due` 处理到期的撮合与撤单。`adjust_offset` 是先平对手仓再开仓的拆分。
 
 组合层（热路径仍无堆）：`FeedHub`、`TradeLane`、`StratHook`（含 algo/package/log/pause）、`seed_cash` / `seed_hold`；本地基础数据用 `seed_facts` / `seed_hours` / `seed_holidays` 以及冷加载 `load_facts` / `load_hours` / `load_holidays`；本机 topic 用 `TopicBus`；策略→算法绑定用 `RouteBook`。`pulse_bridge` 把 `PulseBoard` 队列扇入 Desk `pulses`（本机信号分发）。
 
@@ -424,7 +428,12 @@ book.apply(edits, 1);
 | `desk/runtime.hpp` | `DeskLoop` |
 | `desk/signal.hpp` | `PulseBoard` |
 | `desk/types.hpp` | `Intent`、`Report`、`Quote`，以及方向、方式、阶段和 `Why` |
-| `desk/wire.hpp` | 算法单、控制、信号、逐笔、查询和包裹槽 |
+| `desk/wire.hpp` | 算法单、控制、脉冲、逐笔、查询、订阅、信号、市场委托和包裹槽 |
+| `desk/engine.hpp` | `Engine` 进程角色 |
+| `desk/md_engine.hpp` | `MdEngine` 行情网关 |
+| `desk/td_engine.hpp` | `TdEngine` / `TdClient` 交易网关 |
+| `desk/plane.hpp` | `SimRole`、回放时延与播放倍率 |
+| `study/strat_engine.hpp` | `StratEngine` 策略与上下文 |
 | `host/affinity.hpp` | 设置调用线程或进程的 CPU 亲和性掩码 |
 | `host/hugepage.hpp` | `nr_hugepages`、Hugepagesize、`thp_disable` |
 | `host/memlock.hpp` | 进程级 `mlockall` / `munlockall` |
