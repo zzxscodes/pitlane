@@ -60,6 +60,7 @@ public:
         for (int i = 0; i < kTimers; ++i) {
             if (timer_[i].live) continue;
             timer_[i] = Timer{id, when_us, every_us, 1};
+            ++timers_live_;
             return true;
         }
         return false;
@@ -117,12 +118,17 @@ public:
                 if (n.kind == 1) request_stop();
             });
         }
-        for (int i = 0; i < kTimers; ++i) {
-            Timer& t = timer_[i];
-            if (!t.live || t.when_us > now) continue;
-            on_timer(t.id, now);
-            if (t.every_us > 0) t.when_us += t.every_us;
-            else t.live = 0;
+        if (timers_live_ > 0) {
+            for (int i = 0; i < kTimers; ++i) {
+                Timer& t = timer_[i];
+                if (!t.live || t.when_us > now) continue;
+                on_timer(t.id, now);
+                if (t.every_us > 0) t.when_us += t.every_us;
+                else {
+                    t.live = 0;
+                    --timers_live_;
+                }
+            }
         }
         if (beat_us > 0 && (last_beat_us_ == 0 || now - last_beat_us_ >= beat_us)) emit_heartbeat(now);
     }
@@ -165,6 +171,7 @@ private:
     Timer timer_[kTimers]{};
     Sym sym_[kSymbols]{};
     uint64_t control_cur_{0};
+    int timers_live_{0};
     int64_t last_beat_us_{0};
     uint64_t beats_{0};
     uint32_t engine_id_{0};

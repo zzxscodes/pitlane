@@ -104,7 +104,12 @@ private:
         int admits;
     };
 
+    static uint32_t tag_mix(uint64_t tag) noexcept;
     int find_tag(uint64_t tag) const noexcept;
+    bool tag_put(int idx, uint64_t tag) noexcept;
+    void tag_del(uint64_t tag) noexcept;
+    void live_link(int i) noexcept;
+    void live_unlink(int i) noexcept;
     int alloc_ticket() noexcept;
     void free_ticket(int i) noexcept;
     int64_t shown_at(const NameState& ns, uint8_t side, int64_t px) const noexcept;
@@ -114,11 +119,26 @@ private:
     int fill_ticket(int ti, int64_t px, int64_t qty, int64_t now_us, Report* buf, int cap, int n) noexcept;
     int fill_silent(int ti, int64_t qty) noexcept;
 
+    // Open-address map from tag to ticket. Live tickets stay in index order so a print
+    // still reaches the lower slot first. Empty books do not walk the whole table.
+    static constexpr uint32_t kTagMap = 2048;
+    static_assert((kTagMap & (kTagMap - 1u)) == 0u, "tag map");
+    struct TagRef {
+        uint64_t tag{0};
+        int32_t idx{-1};
+        uint8_t state{0}; // 0 empty, 1 live, 2 tomb
+    };
+
     VenueCfg cfg_;
     Ticket tickets_[kTickets]{};
     NameState names_[kNames]{};
+    TagRef tag_[kTagMap]{};
     int free_head_{0};
     int free_next_[kTickets]{};
+    int live_head_{-1};
+    int live_tail_{-1};
+    int live_next_[kTickets]{};
+    int live_prev_[kTickets]{};
 };
 
 } // namespace pitlane

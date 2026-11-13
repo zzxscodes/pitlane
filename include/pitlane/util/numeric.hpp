@@ -92,6 +92,10 @@ inline int cmp_prod(int64_t a, int64_t b, int64_t c, int64_t d) noexcept {
 // den must be small enough that a remainder below den can be shifted by one bit.
 PITLANE_HOT inline bool div_wide(Wide w, uint64_t den, uint64_t& q) noexcept {
     if (unlikely(den == 0 || den > (UINT64_MAX >> 1) || w.hi >= den)) return false;
+    if (w.hi == 0) {
+        q = w.lo / den;
+        return true;
+    }
     uint64_t rem = 0;
     for (int i = 63; i >= 0; --i) {
         rem = (rem << 1) | ((w.hi >> static_cast<unsigned>(i)) & 1ull);

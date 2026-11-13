@@ -1,4 +1,5 @@
 #include "pitlane/pitlane.hpp"
+#include "perf_suite.hpp"
 #include "t2t_plan.hpp"
 
 #include <algorithm>
@@ -451,6 +452,7 @@ uint64_t pause_p50(int pauses) {
 }  // namespace
 
 int main() {
+    g_fails += pitlane_bench::run();
     pitlane::LatReport report;
 
     pitlane::UsSlot slot;

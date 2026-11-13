@@ -31,7 +31,13 @@ public:
     bool has(const char* name) const noexcept {
         if (!name) return false;
         for (int i = 0; i < n_; ++i) {
-            if (std::strcmp(slot_[i], name) == 0) return true;
+            const char* a = slot_[i];
+            const char* b = name;
+            while (*a && *a == *b) {
+                ++a;
+                ++b;
+            }
+            if (*a == 0 && *b == 0) return true;
         }
         return false;
     }
@@ -182,6 +188,7 @@ inline void add_tally(DayTally& dst, const DayTally& src) noexcept {
 inline int64_t px_shift(bool buy, int64_t limit, int64_t last, int64_t den) noexcept {
     if (last <= 0 || den <= 0) return 0;
     const int64_t diff = buy ? limit - last : last - limit;
+    if (diff == 0) return 0;
     const int neg = diff < 0;
     const int64_t mag = neg ? -diff : diff;
     const int cmp = cmp_prod(mag, den, INT64_MAX, last);
