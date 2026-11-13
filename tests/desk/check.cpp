@@ -1047,8 +1047,8 @@ static void check_framework() {
 }
 
 int main() {
-    expect(pitlane::kVersionMajor == 2 && pitlane::kVersionMinor == 21 && pitlane::kVersionPatch == 0, "release");
-    expect(std::strcmp(pitlane::kVersion, "2.21.0") == 0, "release text");
+    expect(pitlane::kVersionMajor == 2 && pitlane::kVersionMinor == 21 && pitlane::kVersionPatch == 1, "release");
+    expect(std::strcmp(pitlane::kVersion, "2.21.1") == 0, "release text");
     expect(pitlane::kDeskVersion == 5, "desk layout");
     check_conf();
     check_yard();

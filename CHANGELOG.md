@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.21.1] - 2026-11-13
+
+### Fixed
+- The heartbeat pulse is published from a cold function. g++ 11 at `-O3` otherwise treated the value-initialized padding as uninitialized and failed the build under `-Werror`.
+
+### Notes
+- Library release version is 2.21.1. Desk layout stays `kDeskVersion` 5.
+
 ## [2.21.0] - 2026-11-13
 
 ### Added
