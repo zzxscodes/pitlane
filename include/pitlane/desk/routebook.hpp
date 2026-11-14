@@ -6,7 +6,7 @@
 
 namespace pitlane {
 
-// Local algo route table (trading center algo route table role). No heap.
+// Local algo route table. No heap.
 //
 // Entries can be changed while the process runs. generation() advances on every
 // real change, so a strategy loop can cache its own view and reconcile only

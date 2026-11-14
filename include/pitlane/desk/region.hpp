@@ -15,12 +15,12 @@ namespace pitlane {
 // Each ring has a single writer. Readers keep their own cursors.
 // Cash and inventory rows stay in place and are updated under RowGate.
 //
-// Compile-time Caps track trade lane / package lane / MaxPosition scale (powers of
+// Compile-time Caps track trade-lane / package / position scale (powers of
 // two). Soft tune at startup may shrink usable depth; physical arrays stay Cap.
-// Package and log lanes cover package lane / log report size roles locally.
+// Package and log lanes cover their local roles.
 // Layout bump: kDeskVersion is 5 (subs, signals, market orders, rebuild quotes).
 
-// Powers of two under trade lane / package lane maxima; soft-tune may shrink usable depth.
+// Powers of two under the trade / package maxima; soft-tune may shrink usable depth.
 inline constexpr uint32_t kIntentCap = 32768;   // MaxOrderRequestSize ~120k
 inline constexpr uint32_t kReportCap = 32768;   // MaxOrderRespondSize ~60k
 inline constexpr uint32_t kQuoteCap = 8192;
@@ -33,7 +33,7 @@ inline constexpr uint32_t kPrintCap = 4096;
 inline constexpr uint32_t kQueryCap = 1024;
 inline constexpr uint32_t kPackReqCap = 2048;   // MaxPackageReqSize
 inline constexpr uint32_t kPackRspCap = 16384;  // MaxPackageRspSize ~120k (soft)
-inline constexpr uint32_t kLogCap = 2048;       // log report size
+inline constexpr uint32_t kLogCap = 2048;       // log report cap
 inline constexpr uint32_t kSubCap = 2048;
 inline constexpr uint32_t kSigCap = 4096;
 inline constexpr uint32_t kMktCap = 4096;

@@ -30,7 +30,7 @@ Market data, strategy, and order entry often live in different processes. They m
 
 Include `pitlane/pitlane.hpp` and link `libpitlane.a` (or `libpitlane.so`). Everything is in namespace `pitlane`. This is a same-machine and cross-host hub with its own types — not a drop-in replace for another live stack.
 
-Release **2.23.0** (`pitlane::kVersion`). Shared-object soname stays `libpitlane.so.1`. Desk file layout is `kDeskVersion` 5. The symbol/quote yard (`Yard`, magic `PITYARD2`, `kYardVersion` 2) is a second map sized like startup pool pools.
+Release **2.23.0** (`pitlane::kVersion`). Shared-object soname stays `libpitlane.so.1`. Desk file layout is `kDeskVersion` 5. The symbol/quote yard (`Yard`, magic `PITYARD2`, `kYardVersion` 2) is a second map sized like the production pools.
 
 2.23.0 adds an Aeron-style cross-host layer: a 32-byte frame codec (`net_pack` / `net_unpack`), a term log with pad frames and flow control (`TermLog`), a non-blocking IPv4 `UdpLink`, a leader/follower `ReplicaLog` with quorum commit, and a `RemoteHub` that bridges desk rings to remote intent/report traffic. It also adds the missing execution layers: `Oms`, `Ems`, `Sor`, `Pms`, and `Rms`; and a unified factor path, `FactorEngine` -> `FactorEval` -> `FactorPipeline`, that runs unchanged in research, backtest, paper, and live stages. The desk layout stays 5; the new transport has its own frame format.
 

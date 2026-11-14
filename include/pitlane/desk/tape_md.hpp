@@ -4,7 +4,7 @@
 
 namespace pitlane {
 
-// Replay market-data engine (tape engine role). Caller owns the quote array.
+// Replay market-data engine. Caller owns the quote array.
 // loop_task publishes up to burst quotes. A full ring stops the burst without skipping.
 
 class TapeMd : public MdEngine {

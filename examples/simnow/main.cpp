@@ -4,6 +4,7 @@
 
 #include "md_engine.hpp"
 #include "td_client.hpp"
+#include "full_flow.hpp"
 #include "pitlane/book/venue.hpp"
 #include "pitlane/desk/center.hpp"
 #include "pitlane/desk/session.hpp"
@@ -42,8 +43,10 @@ struct App {
     pitlane::StratCfg cfg{};
     pitlane::CtpTdClient* td{nullptr};
     pitlane::Desk* desk{nullptr};
+    pitlane::FullFlow* flow{nullptr};
     pitlane::CycleScale scale{};
     pitlane::IdMint mint{1, 1};
+    bool full{false};
 
     T2TSample samples[kSamples]{};
     std::atomic<int> n_samples{0};
@@ -71,8 +74,14 @@ uint64_t to_ns(const pitlane::CycleScale& scale, uint64_t cycles) noexcept {
     return ns;
 }
 
-void on_accept(void* user, const pitlane::LiveOrder& lo, int64_t, uint64_t roundtrip_ns) {
+void on_accept(void* user, const pitlane::LiveOrder& lo, int64_t now_us, uint64_t roundtrip_ns) {
     auto* app = static_cast<App*>(user);
+    if (app->flow) {
+        uint64_t c1 = 0;
+        (void)pitlane::cycles_ordered(c1);
+        app->flow->push_ack(lo.tag, c1, lo.gate_ns, now_us);
+        return;
+    }
     const int i = app->n_samples.fetch_add(1, std::memory_order_relaxed);
     if (i < App::kSamples) {
         app->samples[i] = T2TSample{lo.local_ns, lo.gate_ns, roundtrip_ns};
@@ -84,9 +93,38 @@ void on_accept(void* user, const pitlane::LiveOrder& lo, int64_t, uint64_t round
     }
 }
 
+void on_trade_cb(void* user, uint64_t tag, uint32_t, int64_t px, int64_t qty, int64_t now_us) {
+    auto* app = static_cast<App*>(user);
+    if (app->flow) app->flow->push_trade(tag, px, qty, now_us);
+}
+
+void on_done_cb(void* user, uint64_t tag, int64_t filled, int status, int64_t now_us) {
+    auto* app = static_cast<App*>(user);
+    if (app->flow) app->flow->push_done(tag, filled, status, now_us);
+}
+
+void on_reject_cb(void* user, uint64_t tag, int err_id, int64_t now_us) {
+    auto* app = static_cast<App*>(user);
+    if (app->flow) app->flow->push_reject(tag, err_id, now_us);
+}
+
+int send_live(void* user, const pitlane::Intent& in) {
+    auto* app = static_cast<App*>(user);
+    uint64_t c = 0;
+    (void)pitlane::cycles_ordered(c);
+    app->td->note_t0(in.tag, c, in.stamp_us, 0);
+    return app->td->insert(in);
+}
+
 void on_tick_hot(void* user, uint32_t name, const pitlane::Quote& q, uint64_t t0_cycles) {
     auto* app = static_cast<App*>(user);
     if (app->stop.load(std::memory_order_relaxed)) return;
+    if (app->flow) {
+        uint64_t t1 = 0;
+        (void)pitlane::cycles_ordered(t1);
+        app->flow->on_tick(name, q, t0_cycles, t1);
+        return;
+    }
     if (!app->td || !app->td->ready()) return;
     if (q.bid_px <= 0 || q.ask_px < q.bid_px || q.ask_qty <= 0) return;
     const int64_t spread = q.ask_px - q.bid_px;
@@ -383,22 +421,141 @@ int run_paper(const pitlane::Account& acct, const pitlane::StratCfg& cfg) {
     return hot.fills > 0 ? 0 : 1;
 }
 
+struct FlowStrat : pitlane::StratEngine {
+    pitlane::FullFlow* flow{nullptr};
+
+    void on_quote(const pitlane::Quote& q) override {
+        if (!flow) return;
+        flow->on_tick(q.name, q, 0, 0);
+        flow->on_beat(q.local_us > 0 ? q.local_us : 1);
+    }
+
+    void on_report(const pitlane::Report& r) override {
+        if (flow) flow->on_report(r, r.stamp_us > 0 ? r.stamp_us : 1);
+    }
+};
+
+int paper_send(void* user, const pitlane::Intent& in) {
+    return static_cast<FlowStrat*>(user)->insert_order(in) ? 0 : 1;
+}
+
+int run_paper_flow(const pitlane::Account& acct, const pitlane::StratCfg& cfg) {
+    (void)cfg;
+    if (!ensure_dir(acct.work_dir.c_str())) return 2;
+    pitlane::WireLog wlog(acct.log_path.c_str(), 3);
+    wlog.log(2, pitlane::lit("simnow full flow paper"));
+
+    ::unlink(acct.desk_path.c_str());
+    pitlane::MapOpt opt{};
+    opt.hugepage = 0;
+    opt.lock = 0;
+    opt.prefault = 1;
+    pitlane::MapInfo map{};
+    if (pitlane::map_create(acct.desk_path.c_str(), pitlane::desk_bytes(), &map, opt) != 0) return 1;
+    pitlane::Desk* desk = pitlane::desk_view(&map, 1);
+    if (!desk) return 1;
+
+    pitlane::FullFlow flow;
+    if (!flow.open(acct, 2, &wlog)) {
+        pitlane::map_release(&map);
+        ::unlink(acct.desk_path.c_str());
+        return 1;
+    }
+    flow.set_timing(2000000, 6000000, 2000000);
+
+    constexpr int kTape = 512;
+    static pitlane::Quote tape[kTape]{};
+    uint32_t rng = 0x12345u;
+    int64_t px = 1000000;
+    for (int i = 0; i < kTape; ++i) {
+        rng = rng * 1664525u + 1013904223u;
+        const int dir = static_cast<int>((rng >> 16) % 3u) - 1;
+        px += dir * 100;
+        if (px < 900000) px = 1000000;
+        if (px > 1100000) px = 1000000;
+        pitlane::Quote& q = tape[i];
+        q.name = 1;
+        q.bid_px = px - 50;
+        q.ask_px = px + 50;
+        q.last_px = px;
+        q.bid_qty = 5;
+        q.ask_qty = 5;
+        q.exch_us = 1000000 + static_cast<int64_t>(i) * 1000000;
+        q.local_us = q.exch_us;
+    }
+
+    pitlane::TapeMd md;
+    md.src = tape;
+    md.n = kTape;
+    md.burst = 1;
+    md.quote_mask = (1ull << pitlane::kBookReader) | (1ull << pitlane::kLoopReader);
+
+    pitlane::VenueCfg vc{};
+    auto* venue = new (std::nothrow) pitlane::PaperVenue(vc);
+    if (!venue) {
+        flow.close();
+        pitlane::map_release(&map);
+        ::unlink(acct.desk_path.c_str());
+        return 1;
+    }
+    pitlane::TradeLane lane{};
+    lane.venue = venue;
+    lane.report_mask = 1ull << pitlane::kLoopReader;
+
+    FlowStrat strat;
+    strat.flow = &flow;
+    flow.set_send(paper_send, &strat);
+
+    pitlane::Center center{};
+    center.desk = desk;
+    center.md = &md;
+    center.strat = &strat;
+    center.paper = &lane;
+    center.book = venue;
+    center.log = &wlog;
+    center.heartbeat_us = 1000000;
+    if (!center.set_up()) {
+        flow.close();
+        delete venue;
+        pitlane::map_release(&map);
+        ::unlink(acct.desk_path.c_str());
+        return 1;
+    }
+
+    for (int i = 0; i < kTape && !flow.complete(); ++i) center.step(tape[i].local_us);
+
+    flow.summarize(&wlog);
+    const bool ok = flow.pass();
+    flow.close();
+    wlog.flush();
+    delete venue;
+    pitlane::map_release(&map);
+    ::unlink(acct.desk_path.c_str());
+    return ok ? 0 : 1;
+}
+
 int main(int argc, char** argv) {
     // Prefer running from examples/simnow so ./run stays local to the example.
     const char* conf_path = "conf/simnow_7x24.conf";
-    if (argc > 1) conf_path = argv[1];
+    bool full = false;
+    for (int i = 1; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--full") == 0)
+            full = true;
+        else
+            conf_path = argv[i];
+    }
 
     pitlane::Account acct{};
     pitlane::StratCfg strat{};
     std::string err;
     if (!pitlane::load_account_conf(conf_path, acct, strat, err)) {
         std::fprintf(stderr, "load conf %s: %s\n", conf_path, err.c_str());
-        std::fprintf(stderr, "usage: cd examples/simnow && ../../build/pitlane_simnow conf/simnow_7x24.conf\n");
+        std::fprintf(stderr, "usage: cd examples/simnow && ../../build/pitlane_simnow [--full] conf/simnow_7x24.conf\n");
         return 2;
     }
     pitlane::apply_account_env(acct);
     pitlane::resolve_runtime_paths(acct);
-    if (strat.paper) return run_paper(acct, strat);
+    if (strat.paper) return full ? run_paper_flow(acct, strat) : run_paper(acct, strat);
     if (acct.password.empty() || acct.investor_id.empty() || acct.instruments.empty()) {
         std::fprintf(stderr, "need investor_id/password/instruments\n");
         return 2;
@@ -446,20 +603,40 @@ int main(int argc, char** argv) {
     md.set_tick_fn(on_tick_hot, &app);
     md.quote_mask = 0;
 
-    if (!md.set_up()) return 1;
+    pitlane::FullFlow flow;
+    if (full) {
+        if (!flow.open(acct, 1, &wlog)) return 1;
+        flow.set_send(send_live, &app);
+        flow.set_timing(5000000, 60000000, 20000000);
+        app.flow = &flow;
+        app.full = true;
+        td.set_trade(on_trade_cb, &app);
+        td.set_done(on_done_cb, &app);
+        td.set_reject(on_reject_cb, &app);
+    }
+
+    if (!md.set_up()) {
+        if (full) flow.close();
+        return 1;
+    }
     td.bind_inst(md.inst());
-    if (!td.start()) return 1;
+    if (!td.start()) {
+        if (full) flow.close();
+        return 1;
+    }
     md.pre_run();
 
     std::signal(SIGINT, on_sig);
     std::signal(SIGTERM, on_sig);
     timespec wait_t0{};
     clock_gettime(CLOCK_MONOTONIC, &wait_t0);
-    std::printf("[simnow] pitlane %s investor=%s n_inst=%zu samples=%d work=%s (live IOC)\n", pitlane::kVersion,
-                acct.investor_id.c_str(), acct.instruments.size(), strat.t2t_samples, acct.work_dir.c_str());
+    std::printf("[simnow] pitlane %s investor=%s n_inst=%zu samples=%d work=%s (live IOC%s)\n", pitlane::kVersion,
+                acct.investor_id.c_str(), acct.instruments.size(), strat.t2t_samples, acct.work_dir.c_str(),
+                full ? " full-flow" : "");
 
     // Busy-wait for completion; no sleep on the wait path beyond cpu_relax bursts.
     uint64_t spins = 0;
+    int64_t ready_wall = 0;
     while (!app.stop.load(std::memory_order_acquire)) {
         if (td.failed() || md.failed()) {
             wlog.log(0, pitlane::lit("simnow stop: broker login failed"));
@@ -475,6 +652,20 @@ int main(int argc, char** argv) {
                 break;
             }
         }
+        if (full) {
+            const int64_t now = wall_us();
+            if (td.ready()) {
+                if (ready_wall == 0) ready_wall = now;
+                app.flow->on_beat(now);
+                if (app.flow->complete()) {
+                    app.done.store(true, std::memory_order_release);
+                    app.stop.store(true, std::memory_order_release);
+                } else if (now - ready_wall >= 240000000ll) {
+                    app.flow->fail_timeout();
+                    app.stop.store(true, std::memory_order_release);
+                }
+            }
+        }
         ++spins;
         md.loop_task();
         if ((spins & 0xffffull) == 0) {
@@ -486,9 +677,16 @@ int main(int argc, char** argv) {
         }
     }
 
-    const int rc = (td.ready() && !td.failed() && !md.failed()) ? 0 : 1;
+    int rc = 0;
     wlog.flush();
-    summarize(app);
+    if (full) {
+        flow.summarize(&wlog);
+        rc = flow.pass() ? 0 : 1;
+        flow.close();
+    } else {
+        rc = (td.ready() && !td.failed() && !md.failed()) ? 0 : 1;
+        summarize(app);
+    }
     md.request_stop();
     md.post_run();
     td.stop();

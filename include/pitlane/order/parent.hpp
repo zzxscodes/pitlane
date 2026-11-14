@@ -89,6 +89,14 @@ inline bool slice_restore(SlicePlan& plan, int64_t qty) noexcept {
     return true;
 }
 
+// Releases scheduled quantity without filling it and without returning it to the
+// pool. A rejected child is treated as lost; the remaining cuts still run.
+inline bool slice_release(SlicePlan& plan, int64_t qty) noexcept {
+    if (qty <= 0 || qty > plan.scheduled) return false;
+    plan.scheduled -= qty;
+    return true;
+}
+
 // Returns the quantity removed from children that were already scheduled again.
 inline int64_t slice_late(SlicePlan& plan, int64_t qty) noexcept {
     if (qty <= 0) return 0;

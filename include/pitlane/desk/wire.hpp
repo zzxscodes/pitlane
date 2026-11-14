@@ -122,7 +122,7 @@ inline void slot_text(char* dst, int cap, const char* src) noexcept {
     dst[i] = 0;
 }
 
-// package lane role (local). Body capped; oversized payloads stay on Parcel rings.
+// Package lane (local). Body capped; oversized payloads stay on Parcel rings.
 struct PackageNote {
     uint64_t id{0};
     uint32_t len{0};
@@ -131,7 +131,7 @@ struct PackageNote {
     uint8_t data[240]{};
 };
 
-// log report size role: cold/async drain; hot path only publishes the note.
+// Log lane: cold/async drain; hot path only publishes the note.
 struct LogNote {
     int32_t level{0};
     int32_t pad{0};

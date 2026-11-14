@@ -35,7 +35,7 @@ struct StratCfg {
     int max_live_orders{2};
     int t2t_samples{50};
     int connect_timeout_s{30};
-    int paper{0}; // 0 live counter, 1 paper center (paper matcher role)
+    int paper{0}; // 0 live counter, 1 paper center
 };
 
 bool load_account_conf(const char* path, Account& acct, StratCfg& strat, std::string& err);

@@ -58,7 +58,7 @@ struct QueryWant {
 
 class QueryFold {
 public:
-    // Sized for trading center strategy engine count+trading engine count (9+15) with headroom (not Desk mmap).
+    // Sized for 9 strategy + 15 trading engines with headroom (not Desk mmap).
     static constexpr uint32_t kEngines = 32;
     static constexpr uint32_t kAccounts = 64;
     static constexpr uint32_t kQueue = 16;

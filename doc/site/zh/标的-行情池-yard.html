@@ -17,7 +17,7 @@
   <main class="main">
     <div class="meta">从左侧打开一节</div>
     <h1>标的 / 行情池（Yard）</h1>
-<p><code>Yard</code> 是独立的启动期映射（魔数 <code>PITYARD2</code>，布局 <code>kYardVersion</code> 2），对齐 startup pool：稠密标的、行情/委托/成交/重建/混合道，以及 <code>YardFacts</code> / <code>YardHours</code> 表。默认与 trading center 同量级（标的/行情 15 万×256，order/trade 10×32768，rebuild 10×128，mix 10×32768，facts 35000，hours 500）。<code>yard_open</code> 一次定长；claim / bind / publish / latest 热路径不分配。池满失败关闭。命名为 pitlane 自有（<code>YardTick</code>、<code>YardPrint</code>、<code>YardFacts</code>、<code>YardHours</code>），不复用 cts 标识符。</p>
+<p><code>Yard</code> 是独立的启动期映射（魔数 <code>PITYARD2</code>，布局 <code>kYardVersion</code> 2），用于启动期定长的池：稠密标的、行情/委托/成交/重建/混合道，以及 <code>YardFacts</code> / <code>YardHours</code> 表。默认量级（标的/行情 15 万×256，order/trade 10×32768，rebuild 10×128，mix 10×32768，facts 35000，hours 500）。<code>yard_open</code> 一次定长；claim / bind / publish / latest 热路径不分配。池满失败关闭。命名为 pitlane 自有（<code>YardTick</code>、<code>YardPrint</code>、<code>YardFacts</code>、<code>YardHours</code>）。</p>
 <pre><code class="language-cpp">
 pitlane::YardPlan plan = pitlane::conf_yard_plan(conf);  // 测试可用更小 plan
 pitlane::YardView yard{};
@@ -29,7 +29,7 @@ if (!pitlane::yard_publish(yard, id, mark)) return 1;
 pitlane::YardTick tick{/* px qty side ts_us */};
 if (!pitlane::yard_publish_tick(yard, id, tick)) return 1;
 </code></pre>
-<p><code>conf_study_plan</code> 拷贝 study pool 量级默认，供调用方 <code>FactorSeries</code> / <code>NamedFactorRing</code> 定深（不是共享 mmap）。</p>
+<p><code>conf_study_plan</code> 拷贝研究量级默认，供调用方 <code>FactorSeries</code> / <code>NamedFactorRing</code> 定深（不是共享 mmap）。</p>
   </main>
 </div>
 </body>

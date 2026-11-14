@@ -202,12 +202,7 @@ PITLANE_INLINE unsigned cover_mask2(const int64_t* __restrict px, int64_t limit,
         in = _mm_andnot_si128(lim_gt, _mm_set1_epi64x(-1));
     }
     const __m128i ok = _mm_and_si128(pos, in);
-    alignas(16) int64_t lane[2]{};
-    _mm_store_si128(reinterpret_cast<__m128i*>(lane), ok);
-    unsigned bits = 0;
-    if (lane[0] != 0) bits |= 1u;
-    if (lane[1] != 0) bits |= 2u;
-    return bits;
+    return static_cast<unsigned>(_mm_movemask_pd(_mm_castsi128_pd(ok)));
 }
 #endif
 
@@ -226,13 +221,7 @@ PITLANE_INLINE unsigned cover_mask4(const int64_t* __restrict px, int64_t limit,
         in = _mm256_andnot_si256(lim_gt, _mm256_set1_epi64x(-1));
     }
     const __m256i ok = _mm256_and_si256(pos, in);
-    alignas(32) int64_t lane[4]{};
-    _mm256_store_si256(reinterpret_cast<__m256i*>(lane), ok);
-    _mm256_zeroupper();
-    unsigned bits = 0;
-    for (int i = 0; i < 4; ++i) {
-        if (lane[i] != 0) bits |= 1u << i;
-    }
+    const unsigned bits = static_cast<unsigned>(_mm256_movemask_pd(_mm256_castsi256_pd(ok)));
     return bits;
 }
 #endif

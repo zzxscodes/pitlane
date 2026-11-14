@@ -32,6 +32,9 @@ class CtpTdClient : public TdClient, public CThostFtdcTraderSpi {
 public:
     static constexpr int kLive = 64;
     using AcceptFn = void (*)(void* user, const LiveOrder& lo, int64_t now_us, uint64_t roundtrip_ns);
+    using TradeFn = void (*)(void* user, uint64_t tag, uint32_t name, int64_t px, int64_t qty, int64_t now_us);
+    using DoneFn = void (*)(void* user, uint64_t tag, int64_t filled, int status, int64_t now_us);
+    using RejectFn = void (*)(void* user, uint64_t tag, int err_id, int64_t now_us);
 
     explicit CtpTdClient(Account acct);
     ~CtpTdClient() override;
@@ -50,6 +53,18 @@ public:
     void set_accept(AcceptFn fn, void* user) noexcept {
         accept_fn_ = fn;
         accept_user_ = user;
+    }
+    void set_trade(TradeFn fn, void* user) noexcept {
+        trade_fn_ = fn;
+        trade_user_ = user;
+    }
+    void set_done(DoneFn fn, void* user) noexcept {
+        done_fn_ = fn;
+        done_user_ = user;
+    }
+    void set_reject(RejectFn fn, void* user) noexcept {
+        reject_fn_ = fn;
+        reject_user_ = user;
     }
     void set_report_sink(TdEngine* eng) noexcept { eng_ = eng; }
 
@@ -86,6 +101,12 @@ private:
     const CycleScale* scale_{nullptr};
     AcceptFn accept_fn_{nullptr};
     void* accept_user_{nullptr};
+    TradeFn trade_fn_{nullptr};
+    void* trade_user_{nullptr};
+    DoneFn done_fn_{nullptr};
+    void* done_user_{nullptr};
+    RejectFn reject_fn_{nullptr};
+    void* reject_user_{nullptr};
     int req_{0};
     int front_id_{0};
     int session_id_{0};

@@ -1,6 +1,6 @@
 #pragma once
 
-// Print matching from paper matcher BackTestMatch.
+// Print matching from the paper matcher's back-test mode.
 // Prices are integers. A same-direction print still counts; the fill price differs.
 
 #include "pitlane/book/arrive.hpp"

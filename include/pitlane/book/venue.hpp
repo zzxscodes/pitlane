@@ -62,7 +62,7 @@ public:
     int on_shown(uint32_t name, uint8_t side, int64_t px, int64_t prev_qty, int64_t now_qty, int64_t now_us, Report* buf,
                  int cap) noexcept;
 
-    // Deterministic drills (simulator forced fill role). Fail-closed on miss/full.
+    // Deterministic drills. Fail-closed on miss/full.
     int force_fill(uint64_t tag, int64_t px, int64_t qty, int64_t now_us, Report* buf, int cap) noexcept;
     int force_pull(uint64_t tag, int64_t now_us, Report* buf, int cap) noexcept;
     int force_deny(uint64_t tag, int64_t now_us, Report* buf, int cap) noexcept;

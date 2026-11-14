@@ -9,6 +9,8 @@ cmake-build-*/
 *.a
 *.so
 *.so.*
+# Vendored SimNow CTP API ships prebuilt shared objects; keep them.
+!examples/simnow/third_party/ctp/lib/*.so
 *.user
 *.profraw
 *.profdata

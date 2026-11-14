@@ -6,7 +6,7 @@
 
 namespace pitlane {
 
-// Deterministic paper drills (paper matcher forced fill / session state role).
+// Deterministic paper drills (forced fill / pull / deny cues).
 // Pitlane-owned names. Fixed table, fail-closed when full. No heap.
 
 enum class DrillCue : uint8_t {
@@ -19,7 +19,7 @@ enum class DrillCue : uint8_t {
     HangEnter = 6,   // stay staged/working; on_clock skips
     HangPull = 7,    // stay in PullWait; on_clock skips
     DropFill = 8,    // apply fill qty without Report
-    Closed = 10      // NotTrading / session closed (session state); sets trade_open=0
+    Closed = 10      // NotTrading / session closed; sets trade_open=0
 };
 
 struct DrillRow {

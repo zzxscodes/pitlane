@@ -30,7 +30,7 @@ pitlane 是给**同一台机器或同一组机器**上多个交易进程用的 C
 
 包含 `pitlane/pitlane.hpp`，链接 `libpitlane.a`（或 `libpitlane.so`）。类型都在命名空间 `pitlane`。这是本机与跨机共用的交易枢纽接口，不是拿来热替换另一套在跑系统的兼容层。
 
-发行版 **2.23.0**（`pitlane::kVersion`）。动态库 soname 仍是 `libpitlane.so.1`。desk 布局版本 `kDeskVersion` 为 5。标的/行情池 `Yard`（魔数 `PITYARD2`，`kYardVersion` 2）是另一块启动期映射，体量对齐 startup pool。
+发行版 **2.23.0**（`pitlane::kVersion`）。动态库 soname 仍是 `libpitlane.so.1`。desk 布局版本 `kDeskVersion` 为 5。标的/行情池 `Yard`（魔数 `PITYARD2`，`kYardVersion` 2）是另一块启动期映射，体量对齐生产池。
 
 2.23.0 增加 Aeron 式跨机层：32 字节帧编解码（`net_pack` / `net_unpack`）、带 pad 帧和流控的 term log（`TermLog`）、非阻塞 IPv4 `UdpLink`、带多数派提交的 leader/follower 复制日志（`ReplicaLog`），以及把 desk 环与远端委托/回报对接的 `RemoteHub`。同时补齐执行层：`Oms`、`Ems`、`Sor`、`Pms`、`Rms`；并加入统一的因子路径 `FactorEngine` -> `FactorEval` -> `FactorPipeline`，在研究、回测、纸面和实盘阶段复用同一套代码。desk 布局仍为 5；新传输使用自己的帧格式。
 

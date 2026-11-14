@@ -8,7 +8,7 @@
 
 namespace pitlane {
 
-// Cold seed rows (paper matcher accounts[] / position.json role). Caller fills
+// Cold seed rows (accounts / position.json style). Caller fills
 // arrays at startup; apply once before hot path. No heap.
 
 struct CashSeed {

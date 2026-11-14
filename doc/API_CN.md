@@ -22,7 +22,7 @@
 
 库在进程启动时接受的可调项，都放在可选的 INI 风格文件里（见 `examples/demo/pitlane.conf`）。默认值是 `desk/config.hpp` 里 `PitConf` 的成员初值。省略某个键，或把值留空，就保留该默认值。未知键忽略。硬解析错误（截断行、该写数字却写了别的）时 `conf_load` 返回 false。
 
-`broker` 的 `ack_limit_us` / `life_limit_us` / `pull_limit_us` 默认 `60000000`（60 秒），对齐常见的 `trading center` `HeartBeatIntervalSec`；设为 `0` 关闭该轴。`host` 默认打开 `thp_disable` 与 `mlockall`。Desk FanRing 软容量仍停在编译期上限（`kIntentCap` 等）。十万级标的/行情池在独立的 `[yard]` / `Yard` 映射里（启动期一次建好，热路径不再分配）。Mongo 文档与 RabbitMQ topic 的职责由本机或跨机 API 承担（`seed_facts` / `TopicBus` / `RouteBook` / `TermLog` / `ReplicaLog`），不会把连接串或券商 URI 写进库里。
+`broker` 的 `ack_limit_us` / `life_limit_us` / `pull_limit_us` 默认 `60000000`（60 秒），对齐常见的 60 秒心跳；设为 `0` 关闭该轴。`host` 默认打开 `thp_disable` 与 `mlockall`。Desk FanRing 软容量仍停在编译期上限（`kIntentCap` 等）。十万级标的/行情池在独立的 `[yard]` / `Yard` 映射里（启动期一次建好，热路径不再分配）。Mongo 文档与 RabbitMQ topic 的职责由本机或跨机 API 承担（`seed_facts` / `TopicBus` / `RouteBook` / `TermLog` / `ReplicaLog`），不会把连接串或券商 URI 写进库里。
 
 `conf_normalize` 在加载后只跑一次。它把环容量压到 `[2, 编译期 Cap]` 内的 2 的幂，把仅编译期定长的尺寸（`QueryFold`、`BrokerWatch::kCap`）恢复并写提示，并把每条调整写成一行可读文字放进调用方缓冲。启动时打印这些行。热路径不再打开配置文件。
 
@@ -77,7 +77,7 @@ if (!desk) return 1;
 
 ## 标的 / 行情池（Yard）
 
-`Yard` 是独立的启动期映射（魔数 `PITYARD2`，布局 `kYardVersion` 2），对齐 startup pool：稠密标的、行情/委托/成交/重建/混合道，以及 `YardFacts` / `YardHours` 表。默认与 trading center 同量级（标的/行情 15 万×256，order/trade 10×32768，rebuild 10×128，mix 10×32768，facts 35000，hours 500）。`yard_open` 一次定长；claim / bind / publish / latest 热路径不分配。池满失败关闭。命名为 pitlane 自有（`YardTick`、`YardPrint`、`YardFacts`、`YardHours`），不复用 cts 标识符。
+`Yard` 是独立的启动期映射（魔数 `PITYARD2`，布局 `kYardVersion` 2），用于启动期定长的池：稠密标的、行情/委托/成交/重建/混合道，以及 `YardFacts` / `YardHours` 表。默认量级（标的/行情 15 万×256，order/trade 10×32768，rebuild 10×128，mix 10×32768，facts 35000，hours 500）。`yard_open` 一次定长；claim / bind / publish / latest 热路径不分配。池满失败关闭。命名为 pitlane 自有（`YardTick`、`YardPrint`、`YardFacts`、`YardHours`）。
 
 ```cpp
 pitlane::YardPlan plan = pitlane::conf_yard_plan(conf);  // 测试可用更小 plan
@@ -91,11 +91,11 @@ pitlane::YardTick tick{/* px qty side ts_us */};
 if (!pitlane::yard_publish_tick(yard, id, tick)) return 1;
 ```
 
-`conf_study_plan` 拷贝 study pool 量级默认，供调用方 `FactorSeries` / `NamedFactorRing` 定深（不是共享 mmap）。
+`conf_study_plan` 拷贝研究量级默认，供调用方 `FactorSeries` / `NamedFactorRing` 定深（不是共享 mmap）。
 
 ## 发布和读取
 
-`Desk` 有十一条环：`intents`、`reports`、`quotes`、`algos`、`controls`、`pulses`、`prints`、`queries`、`pack_reqs`、`pack_rsps` 和 `logs`。编译期容量对齐 trade lane / package lane：`kIntentCap`/`kReportCap`/`kAlgoCap` 32768、`kQuoteCap` 8192、`kControlCap` 16384、`kPulseCap`/`kPrintCap` 4096、`kQueryCap` 1024、`kPackReqCap`/`kLogCap` 2048、`kPackRspCap` 16384。经 `desk_apply_conf` / `FanRing::tune` 后的软容量不超过该上限，由 `capacity()` 报告。资金和持仓在 `cash`（`kCashCap` 512）与 `hold`（`kHoldCap` 4096）里。
+`Desk` 有十一条环：`intents`、`reports`、`quotes`、`algos`、`controls`、`pulses`、`prints`、`queries`、`pack_reqs`、`pack_rsps` 和 `logs`。编译期容量对齐交易/打包规模：`kIntentCap`/`kReportCap`/`kAlgoCap` 32768、`kQuoteCap` 8192、`kControlCap` 16384、`kPulseCap`/`kPrintCap` 4096、`kQueryCap` 1024、`kPackReqCap`/`kLogCap` 2048、`kPackRspCap` 16384。经 `desk_apply_conf` / `FanRing::tune` 后的软容量不超过该上限，由 `capacity()` 报告。资金和持仓在 `cash`（`kCashCap` 512）与 `hold`（`kHoldCap` 4096）里。
 
 `publish` 接收一条消息和一个读者掩码。掩码为 0 时，第一个确认的读者取走这个槽。其他掩码列出必须确认的读者，这些读者都确认之后槽才能再次使用。读者编号从 0 到 63。会话循环是读者 7，也就是 `kLoopReader`。
 
@@ -190,11 +190,11 @@ pitlane::VenueOut out = venue.admit(in, in.stamp_us, reps, 4);
 
 `on_ext` 用序号和买卖委托号去对未完成的挂单。`print_hits` 要求成交不早于该单；`rigid` 打开时价格必须严格穿过滑点后的限价。`same_side_print` 在该方向的委托号更晚时为真。同向成交仍然计入这张挂单，成交价用逐笔价。另一方向计入时用委托价。`match_quote` 是主动路径：买价打到卖盘、卖价打到买盘时，按可见量成交。一笔逐笔的数量在多张挂单之间共用。
 
-`admit` 把回报写入调用方缓冲区并设置 `out.why`。`trade_open=0` 时新开仓得到 `Why::Closed`。`on_clock` 在延迟到期后推进 staged 单并完成到期撤单（`hang` 时跳过）。`on_print` / `on_tape` 削减队列前方数量；打开 `rigid` 时 `tape_keep` 丢掉同向主动成交。`force_*` / `drill_apply` 对齐模拟器 forced fill 注入（`DrillCue::Closed` = 10，即 `NotTrading`）。`TouchMode` / `resolve_px` 解析对手/本方/最新/中间/五档。主动方为 0 时保留每笔成交。
+`admit` 把回报写入调用方缓冲区并设置 `out.why`。`trade_open=0` 时新开仓得到 `Why::Closed`。`on_clock` 在延迟到期后推进 staged 单并完成到期撤单（`hang` 时跳过）。`on_print` / `on_tape` 削减队列前方数量；打开 `rigid` 时 `tape_keep` 丢掉同向主动成交。`force_*` / `drill_apply` 覆盖强制注入（`DrillCue::Closed` = 10，即 `NotTrading`）。`TouchMode` / `resolve_px` 解析对手/本方/最新/中间/五档。主动方为 0 时保留每笔成交。
 
-PitConf `[venue]` 对齐模拟器 `match.ini`：九段 go/pull 延迟、`rigid_rule`→`rigid`、`use_ext`→`tape_first`，以及 lot/rate/notional 等。用 `conf_venue_cfg` 得到 `VenueCfg`。
+PitConf `[venue]` 对齐纸面撮合器的 `match.ini`：九段 go/pull 延迟、`rigid_rule`→`rigid`、`use_ext`→`tape_first`，以及 lot/rate/notional 等。用 `conf_venue_cfg` 得到 `VenueCfg`。
 
-`Center::step` 是交易中心循环（trading center / paper matcher 的进程角色）：可选 `TapeMd` 或实盘 `MdEngine`，行情顶档写入 `PaperVenue`，再跑 `StratEngine`，然后是已就绪的 `TdEngine` 或 `TradeLane`。它把 `now_us` 写进 desk 时钟。`RouteAllow` 位图为 0 表示不过滤。心跳往 `Pulse` 环写主题 `hb`。`TapeMd` 重放调用方持有的行情数组。
+`Center::step` 是交易中心循环（交易中心进程角色）：可选 `TapeMd` 或实盘 `MdEngine`，行情顶档写入 `PaperVenue`，再跑 `StratEngine`，然后是已就绪的 `TdEngine` 或 `TradeLane`。它把 `now_us` 写进 desk 时钟。`RouteAllow` 位图为 0 表示不过滤。心跳往 `Pulse` 环写主题 `hb`。`TapeMd` 重放调用方持有的行情数组。
 
 `Engine` 是进程角色：`set_up`、`pre_run`、`loop_task`、`post_run`、定时器、控制消息、合约表和 `housekeep`。`MdEngine` 排空 `subs`（行情、信号、重建、市场委托、市场成交）。连续五次订阅失败后不再发送。`copy_subs` 先复制订阅名单再发送。`write_quote`、`write_print`、`write_signal`、`write_factor`、`write_mkt`、`write_rebuild` 是网关写入。`TdClient` 是网关要实现的柜台面（`insert`、`cancel`、`on_algo`、`query_asset`、`query_position`）。`TdEngine` 依次处理报单、资金查询、持仓查询、算法单，再处理 `BrokerWatch` 超时。`risk_filter` 可以在调用柜台前拒掉一笔报入。`StratEngine` 同时是策略和它的上下文：它收取回报、行情、重建、市场委托、逐笔、算法单、查询应答和信号，并发布报单、订阅和查询。`order_precheck` 在发布前丢掉数量、方向、编号或时间不合法的子单。库里没有券商套接字。CTP 网关写在继承这些类型的程序里，`examples/simnow/ctp` 就是这样。
 

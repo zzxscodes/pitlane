@@ -223,6 +223,19 @@ static void check_ems() {
     expect(ems.on_child(7, 1003, 34, true), "ems child three");
     expect(ems.progress(7, done, working) && done == 100 && working == 0, "ems complete");
     expect(ems.close(7) && ems.count() == 0, "ems close");
+
+    pitlane::Ems<2, 8> rej;
+    expect(rej.open(9, 10, 30, 10, 1, 0, 1), "ems reject open");
+    pitlane::SorSlice rslice[2]{};
+    expect(rej.poll(9, 0, &v, 1, rslice, 2) == 1 && rslice[0].qty == 3, "ems reject first");
+    expect(rej.on_reject(9, 3), "ems reject return");
+    expect(rej.progress(9, done, working) && done == 0 && working == 0, "ems reject progress");
+    expect(!rej.on_reject(9, 3), "ems reject empty");
+    expect(rej.poll(9, 10000, &v, 1, rslice, 2) == 1 && rslice[0].qty == 3, "ems reject repoll");
+    expect(rej.poll(9, 20000, &v, 1, rslice, 2) == 1 && rslice[0].qty == 4, "ems reject last");
+    expect(rej.on_child(9, 1004, 3, true) && rej.on_child(9, 1005, 4, true), "ems reject fill");
+    expect(rej.progress(9, done, working) && done == 7 && working == 0, "ems reject complete");
+    expect(rej.close(9) && rej.count() == 0, "ems reject close");
 }
 
 static void check_pms() {

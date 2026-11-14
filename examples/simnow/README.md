@@ -8,6 +8,7 @@ Self-contained SimNow 7×24 example: MD → strategy → real IOC → TD accept,
 examples/simnow/
   main.cpp                 # closed-loop host
   ctp/                     # CTP gateway on MdEngine and TdClient
+  third_party/ctp/         # vendored official CTP API (_se headers + Linux libs)
   conf/paper.conf          # center loop, no broker
   conf/simnow_7x24.conf.example
   conf/simnow_7x24.conf    # local secrets (gitignored)
@@ -30,7 +31,12 @@ cmake --build build -j --target pitlane_simnow_bench
 
 ## Build
 
-Needs CTP `_se` headers/libs (`PITLANE_CTP_API_ROOT`). From repo root:
+The official CTP `_se` headers and Linux shared objects are vendored under
+`third_party/ctp` (official package `v6.7.13_20260225`, from the SimNow / SFIT
+API download; the archive copy came from the public `pseudocodes/ctp2rs` mirror
+because the SimNow download page is behind a WAF on some networks). Point
+`PITLANE_CTP_API_ROOT` at another unpacked `_se` package to override. From the
+repo root:
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DPITLANE_BUILD_CTP=ON
@@ -48,3 +54,43 @@ cp -n conf/simnow_7x24.conf.example conf/simnow_7x24.conf   # edit password
 Optional: `SIMNOW_PASSWORD`, `SIMNOW_INVESTOR`, `SIMNOW_WORK_DIR`.
 
 Runtime files only under `./run` (or `work_dir` in conf).
+
+## Full-flow validation
+
+`--full` runs one instance of every core pitlane path in a single process:
+
+```
+SimNow quote -> FactorPipeline (Momentum / OFI / ZScore) -> signal
+  -> RMS pre-trade check -> EMS parent slice -> SOR venue choice
+  -> OMS state machine -> real CTP IOC (live) or PaperVenue (paper)
+  -> PMS position/PnL -> WAL append + recover -> snapshot publish -> tail latency
+```
+
+Only the first subscribed instrument is used as the factor series; other
+instruments still connect and receive quotes.
+
+```bash
+# paper: no broker login, deterministic tape
+cd examples/simnow && ../../build/pitlane_simnow --full conf/paper.conf
+
+# live: real SimNow orders
+cd examples/simnow && ../../build/pitlane_simnow --full conf/simnow_7x24.conf
+```
+
+A run is `PASS` when at least one parent completes, at least one child fills,
+the WAL replay count matches what was appended, the snapshot latest sequence
+matches the published sequence, and both OMS and PMS hold rows. The summary
+prints OMS/EMS/PMS counters, factor values and evaluation, WAL/snapshot state,
+and quote/report tail percentiles.
+
+Files created under `run/`:
+
+- `flow.wal` — framed append log of parent marks, intents, acks, and fills.
+- `flow.snap` — cross-process read-only snapshot ring of flow state.
+- `wire.log` — same progress log as the T2T mode.
+
+Live failures are reported with the CTP error id in `run/wire.log`. Common
+cases: wrong/expired password (`141`), missing authentication (`3`), contract
+not trading in this session, or settlement not confirmed (`7`). The example
+does not change the account password automatically.
+

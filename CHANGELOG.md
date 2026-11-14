@@ -51,7 +51,7 @@
 ## [2.21.0] - 2026-11-13
 
 ### Added
-- Gateway and strategy roles from `the reference gateway`: `Engine` timers, controls, symbols, and heartbeat; `MdEngine` subscription drain with a five-failure cap and a copied subscription list; `TdEngine` order, asset, position, and algo handling plus `risk_filter` and working-order timeouts; `StratEngine` picks the same lanes a strategy context picks, and publishes orders, subscribes, and queries.
+- Gateway and strategy roles: `Engine` timers, controls, symbols, and heartbeat; `MdEngine` subscription drain with a five-failure cap and a copied subscription list; `TdEngine` order, asset, position, and algo handling plus `risk_filter` and working-order timeouts; `StratEngine` picks the same lanes a strategy context picks, and publishes orders, subscribes, and queries.
 - Desk layout 5: `subs`, `signals`, `mkt_ords`, and `rebuilds`. `FanRing::poll` skips a slot that is not addressed to the reader.
 - `SimRole`, `order_delay`, `tape_speed`, and `follow_clock` for the four-role paper path. `timer_due` is the matcher clock step. `adjust_offset` closes the opposite book before an open. `order_precheck` rejects a bad child before it is published.
 
@@ -77,7 +77,7 @@
 
 ### Added
 - `Center` is the trading-center step: market-data engine, quote book, strategy engine, then a live trader or the paper lane, plus a heartbeat pulse and an engine route allow-list (`RouteAllow`, zero bits = NoFilter).
-- `TapeMd` replays a caller-owned quote tape (tape engine role).
+- `TapeMd` replays a caller-owned quote tape.
 - `examples/simnow/conf/paper.conf` runs that center with no broker and reports T2T.
 
 ### Changed
@@ -105,8 +105,8 @@
 ## [2.17.0] - 2026-11-12
 
 ### Added
-- Desk layout `kDeskVersion` 4: `pack_reqs` / `pack_rsps` / `logs` FanRings (package lane / log report size roles)
-- trade lane-scale compile-time caps (`kIntentCap`/`kReportCap`/`kAlgoCap` 32768, `kHoldCap` 4096, …)
+- Desk layout `kDeskVersion` 4: `pack_reqs` / `pack_rsps` / `logs` FanRings (package / log lanes)
+- Trade-scale compile-time caps (`kIntentCap`/`kReportCap`/`kAlgoCap` 32768, `kHoldCap` 4096, …)
 - `PaperVenue` SimClock wiring (`VenueCfg::clock` / `set_clock`); larger name/ticket/depth tables
 - `TradeLane` respects `tape_first` (Match.use_ext): prints before intents when set
 - `StratHook` `on_algo` / package / log / control; `strat_stage_algo` / `strat_pause` / `strat_resume` / `desk_log_publish`
@@ -136,7 +136,7 @@
 ### Added
 
 - Local Mongo roles: `FactSeed` / `HoursSeed` / `seed_facts` / `seed_hours` / `seed_holidays` into Yard + `ClosedDays`
-- Local middleware roles: `TopicBus` / `BusNote` / `topic_id` (same-machine topic pub/sub); `RouteBook` (algo route table table)
+- Local middleware roles: `TopicBus` / `BusNote` / `topic_id` (same-machine topic pub/sub); `RouteBook` (algo route table)
 - Tests for shelf/bus/route; perf samples `topic_bus` / `venue_admit`
 
 ### Changed
@@ -150,7 +150,7 @@
 ### Added
 
 - Local MD/TD/strategy framework hubs (pitlane names): `FeedHub` / `feed_push_*`, `TradeLane` / `lane_beat`, `StratHook` / `strat_bind_loop` / `strat_stage_*`, `CashSeed` / `HoldSeed` / `seed_cash` / `seed_hold`
-- PitConf `[venue]` aligned with `paper matcher` `match.ini`: go/pull lags (`go_usN` / `pull_usN` or `delayN` / `cancel_delayN` seconds), `rigid_rule` / `use_ext`, `rigid_extra`, `trade_open`, lot/rate/notional, `cancel_pow_x1000`; `conf_venue_cfg`
+- PitConf `[venue]` paper-match timing: go/pull lags (`go_usN` / `pull_usN` or `delayN` / `cancel_delayN` seconds), `rigid_rule` / `use_ext`, `rigid_extra`, `trade_open`, lot/rate/notional, `cancel_pow_x1000`; `conf_venue_cfg`
 - `VenueCfg::rigid`
 
 ### Changed
@@ -161,7 +161,7 @@
 
 ### Added
 
-- Paper drill surface aligned with `paper matcher` forced fill/session state roles: `DrillCue` / `DrillBook`, `PaperVenue::{force_fill,force_pull,force_deny,hang,drill_apply}`, `Why::Closed` / `VenueCfg::trade_open`
+- Paper drill surface with forced fill / pull / deny cues: `DrillCue` / `DrillBook`, `PaperVenue::{force_fill,force_pull,force_deny,hang,drill_apply}`, `Why::Closed` / `VenueCfg::trade_open`
 - `TouchMode` / `resolve_px` / `tape_keep`; `HoldLine::{sellable,frozen,frozen_yday}` + `sellable_of` / `sell_room` / `acct_ready`
 
 ### Changed
@@ -172,13 +172,13 @@
 
 ### Added
 
-- `Yard` v2 (`PITYARD2`): startup pool-scale startup map — symbol table, quote/order/trade/rebuild/mix tapes (`YardMark` / `YardTick` / `YardPrint`), `YardFacts` / `YardHours` tables; bind + publish/latest APIs; hot path allocation-free; fail-closed when full
-- PitConf `[yard]` (incl. `mix_*`) and `conf_yard_plan`; `[study]` / `StudyPlan` / `conf_study_plan` for study pool-scale factor sizing
+- `Yard` v2 (`PITYARD2`): startup-sized map — symbol table, quote/order/trade/rebuild/mix tapes (`YardMark` / `YardTick` / `YardPrint`), `YardFacts` / `YardHours` tables; bind + publish/latest APIs; hot path allocation-free; fail-closed when full
+- PitConf `[yard]` (incl. `mix_*`) and `conf_yard_plan`; `[study]` / `StudyPlan` / `conf_study_plan` for study-scale factor sizing
 - `TickGrid` / `FactorSeries` / `NamedFactorRing` study helpers
 
 ### Changed
 
-- `QueryFold::kEngines` 16 → 32 (covers cts strategy engine count+trading engine count with headroom)
+- `QueryFold::kEngines` 16 → 32 (covers 9 strategy + 15 trading engines with headroom)
 - Library release version is 2.13.0
 - README QueryFold engine/account counts match headers (32 / 64)
 

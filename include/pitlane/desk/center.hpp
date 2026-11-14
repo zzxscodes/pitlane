@@ -26,7 +26,7 @@ struct RouteAllow {
     }
 };
 
-// Trading-center hub. One step replaces the trading center / paper matcher process loop:
+// Trading-center hub. One step replaces the multi-process trading loop:
 // market-data engine, quote book, strategy engine, then a live trader or the paper lane.
 // Heartbeat lands on the desk pulse ring. Broker sockets stay outside.
 

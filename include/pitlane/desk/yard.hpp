@@ -9,9 +9,9 @@
 
 namespace pitlane {
 
-// Symbol / quote yard: startup-sized shared layout role-aligned with the reference design
-// startup pool pools. Pitlane-owned names and integer hot path. All slots and
-// tape cells are reserved in yard_open. Hot path never allocates. Fail-closed.
+// Symbol / quote yard: startup-sized shared layout with fixed pools.
+// Pitlane-owned names and integer hot path. All slots and tape cells are
+// reserved in yard_open. Hot path never allocates. Fail-closed.
 
 inline constexpr uint32_t kYardVersion = 2;
 inline constexpr uint32_t kYardSymSlotsDefault = 150000;

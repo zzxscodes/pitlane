@@ -39,6 +39,12 @@ void say_err(WireLog* log, const char* what, int id, const char* gbk) noexcept {
     if (log) log->log(0, lit("[td] "), what, lit(" id="), id, lit(" "), utf);
 }
 
+int64_t wall_us() noexcept {
+    timespec ts{};
+    clock_gettime(CLOCK_REALTIME, &ts);
+    return static_cast<int64_t>(ts.tv_sec) * 1000000ll + ts.tv_nsec / 1000;
+}
+
 } // namespace
 
 CtpTdClient::CtpTdClient(Account acct) : acct_(std::move(acct)) {}
@@ -195,12 +201,23 @@ void CtpTdClient::OnRspSettlementInfoConfirm(CThostFtdcSettlementInfoConfirmFiel
 
 void CtpTdClient::OnRspOrderInsert(CThostFtdcInputOrderField* pInputOrder, CThostFtdcRspInfoField* pRspInfo, int,
                                    bool) {
-    if (!ok_rsp(pRspInfo, "RspOrderInsert") && pInputOrder) finish_ref(std::atoi(pInputOrder->OrderRef));
+    if (!ok_rsp(pRspInfo, "RspOrderInsert") && pInputOrder) {
+        const int ref = std::atoi(pInputOrder->OrderRef);
+        const int i = find_live(ref);
+        if (i >= 0 && reject_fn_) reject_fn_(reject_user_, live_slot_[i].tag, pRspInfo->ErrorID, wall_us());
+        finish_ref(ref);
+    }
 }
 
 void CtpTdClient::OnErrRtnOrderInsert(CThostFtdcInputOrderField* pInputOrder, CThostFtdcRspInfoField* pRspInfo) {
     ok_rsp(pRspInfo, "ErrRtnOrderInsert");
-    if (pInputOrder) finish_ref(std::atoi(pInputOrder->OrderRef));
+    if (pInputOrder) {
+        const int ref = std::atoi(pInputOrder->OrderRef);
+        const int i = find_live(ref);
+        if (i >= 0 && reject_fn_)
+            reject_fn_(reject_user_, live_slot_[i].tag, pRspInfo ? pRspInfo->ErrorID : 0, wall_us());
+        finish_ref(ref);
+    }
 }
 
 void CtpTdClient::OnRtnOrder(CThostFtdcOrderField* pOrder) {
@@ -234,6 +251,9 @@ void CtpTdClient::OnRtnOrder(CThostFtdcOrderField* pOrder) {
         if (log_)
             log_->log(2, lit("[td] order ref="), ref, lit(" status="), static_cast<int>(pOrder->OrderStatus),
                       lit(" traded="), pOrder->VolumeTraded, lit("/"), pOrder->VolumeTotalOriginal);
+        const int i = find_live(ref);
+        if (i >= 0 && done_fn_)
+            done_fn_(done_user_, live_slot_[i].tag, pOrder->VolumeTraded, static_cast<int>(pOrder->OrderStatus), wall_us());
         finish_ref(ref);
     }
 }
@@ -243,6 +263,11 @@ void CtpTdClient::OnRtnTrade(CThostFtdcTradeField* pTrade) {
     if (log_)
         log_->log(2, lit("[td] trade "), pTrade->InstrumentID, lit(" px="), pTrade->Price, lit(" vol="), pTrade->Volume,
                   lit(" dir="), static_cast<int>(pTrade->Direction));
+    const int i = find_live(std::atoi(pTrade->OrderRef));
+    if (i >= 0 && trade_fn_) {
+        trade_fn_(trade_user_, live_slot_[i].tag, live_slot_[i].name,
+                  static_cast<int64_t>(pTrade->Price * 10000.0 + 0.5), pTrade->Volume, wall_us());
+    }
 }
 
 int CtpTdClient::insert(const Intent& in) {

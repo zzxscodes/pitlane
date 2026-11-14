@@ -9,7 +9,7 @@
 
 namespace pitlane {
 
-// Local topic bus (topic bus RabbitMQ / AMQP role on one machine).
+// Local topic bus (AMQP-style topics on one machine).
 // Routing key → topic id; publish/consume on a FanRing. No sockets. Hot path no alloc.
 
 inline constexpr uint32_t kBusCap = 1024;

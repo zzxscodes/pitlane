@@ -74,6 +74,17 @@ public:
         return true;
     }
 
+    // A child that was rejected or never sent releases its allocation. The quantity
+    // is treated as lost and is not retried by a later cut.
+    PITLANE_HOT bool on_reject(uint64_t parent_id, int64_t qty) noexcept {
+        EmsRow* row = find(parent_id);
+        if (unlikely(!row || qty <= 0)) return false;
+        if (qty > row->working) return false;
+        if (!slice_release(row->plan, qty)) return false;
+        row->working -= qty;
+        return true;
+    }
+
     // A parent can close only after every slice was either filled or returned.
     bool close(uint64_t parent_id) noexcept {
         EmsRow* row = find(parent_id);

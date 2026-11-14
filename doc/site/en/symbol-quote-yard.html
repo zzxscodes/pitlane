@@ -17,7 +17,7 @@
   <main class="main">
     <div class="meta">Open a section from the left</div>
     <h1>Symbol / quote yard</h1>
-<p><code>Yard</code> is a separate startup map (magic <code>PITYARD2</code>, layout <code>kYardVersion</code> 2) for startup pool-scale pools: dense symbols, quote / order / trade / rebuild / mix tapes, plus <code>YardFacts</code> and <code>YardHours</code> tables. Defaults match trading center (<code>sym</code>/<code>quote</code> 150000×256, order/trade lanes 10×32768, rebuild 10×128, mix 10×32768, facts 35000, hours 500). <code>yard_open</code> sizes once; claim / bind / publish / latest paths never allocate. Full pools fail closed. Names are pitlane-owned (<code>YardTick</code>, <code>YardPrint</code>, <code>YardFacts</code>, <code>YardHours</code>), not borrowed identifiers.</p>
+<p><code>Yard</code> is a separate startup map (magic <code>PITYARD2</code>, layout <code>kYardVersion</code> 2) for startup-sized pools: dense symbols, quote / order / trade / rebuild / mix tapes, plus <code>YardFacts</code> and <code>YardHours</code> tables. Defaults: (<code>sym</code>/<code>quote</code> 150000×256, order/trade lanes 10×32768, rebuild 10×128, mix 10×32768, facts 35000, hours 500). <code>yard_open</code> sizes once; claim / bind / publish / latest paths never allocate. Full pools fail closed. Names are pitlane-owned (<code>YardTick</code>, <code>YardPrint</code>, <code>YardFacts</code>, <code>YardHours</code>).</p>
 <pre><code class="language-cpp">
 pitlane::YardPlan plan = pitlane::conf_yard_plan(conf);  // or a tiny plan in tests
 pitlane::YardView yard{};
@@ -29,7 +29,7 @@ if (!pitlane::yard_publish(yard, id, mark)) return 1;
 pitlane::YardTick tick{/* px qty side ts_us */};
 if (!pitlane::yard_publish_tick(yard, id, tick)) return 1;
 </code></pre>
-<p><code>conf_study_plan</code> copies study pool-scale defaults for caller-side <code>FactorSeries</code> / <code>NamedFactorRing</code> sizing (not a shared mmap).</p>
+<p><code>conf_study_plan</code> copies study-scale defaults for caller-side <code>FactorSeries</code> / <code>NamedFactorRing</code> sizing (not a shared mmap).</p>
   </main>
 </div>
 </body>

@@ -3,6 +3,8 @@
 #   export SIMNOW_PASSWORD=...
 # Run from this directory so work_dir=./run stays under examples/simnow:
 #   cd examples/simnow && ../../build/pitlane_simnow conf/simnow_7x24.conf
+# Full-flow validation (factors -> RMS -> EMS -> SOR -> OMS -> PMS -> WAL -> snapshot):
+#   cd examples/simnow && ../../build/pitlane_simnow --full conf/simnow_7x24.conf
 # Window: trading day 16:00–next 09:00; non-trading day 16:00–next 12:00.
 
 mode = live

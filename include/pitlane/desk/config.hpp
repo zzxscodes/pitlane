@@ -52,7 +52,7 @@ struct PitConf {
     uint32_t hold_cap{kHoldCap};
 
     // [broker] 0 on qty/notional/live turns that axis off.
-    // *_limit_us defaults match trading center HeartBeatIntervalSec (60s) in microseconds.
+    // *_limit_us defaults match a 60-second heartbeat, in microseconds.
     int64_t max_qty{0};
     int64_t max_notional{0};
     int max_live{0};
@@ -91,8 +91,8 @@ struct PitConf {
     int64_t gcra_interval{0};
     int64_t gcra_tolerance{0};
 
-    // [yard] startup-sized symbol/quote layout (role-aligned with startup pools;
-    // pitlane names). Reserved at yard_open; hot path does not allocate.
+    // [yard] startup-sized symbol/quote layout. Reserved at yard_open; the hot
+    // path does not allocate.
     uint32_t yard_sym_slots{kYardSymSlotsDefault};
     uint32_t yard_quote_lanes{kYardQuoteLanesDefault};
     uint32_t yard_quote_depth{kYardQuoteDepthDefault};
@@ -107,7 +107,7 @@ struct PitConf {
     uint32_t yard_base_info_cap{kYardBaseInfoDefault};
     uint32_t yard_trade_time_cap{kYardTradeTimeDefault};
 
-    // [study] study pool-scale defaults for caller-side factor/signal tables
+    // [study] study-scale defaults for caller-side factor/signal tables
     // (NamedFactorRing / FactorSeries). Not a shared mmap; hot path still fixed.
     uint32_t study_signal_pools{1000};
     uint32_t study_sample_pools{1000};
@@ -117,7 +117,7 @@ struct PitConf {
     uint32_t study_factor_depth{20};
     uint32_t study_nonstruct_depth{10};
 
-    // [venue] paper match (paper matcher match.ini role; delays in µs)
+    // [venue] paper match (delays in µs)
     int64_t venue_go_us[9]{};
     int64_t venue_pull_us[9]{};
     int64_t venue_rigid_extra{0};

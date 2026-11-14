@@ -34,8 +34,8 @@ option(PITLANE_BUILD_SHARED "Build libpitlane.so in addition to the static libra
 option(PITLANE_BUILD_TESTS "Build area tests and the latency program" ON)
 option(PITLANE_BUILD_EXAMPLES "Build example programs" ON)
 option(PITLANE_BUILD_CTP "Build the pitlane_simnow example, which contains the CTP gateway" ON)
-# Prefer penetration (_se) libs for SimNow 7×24 handshake.
-set(PITLANE_CTP_API_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../ctp-api/api/v6.6.1_P1_20210406_api" CACHE PATH "CTP API root (_se)")
+# Vendored official CTP API (SimNow). Override to use another unpacked _se package.
+set(PITLANE_CTP_API_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/examples/simnow/third_party/ctp" CACHE PATH "CTP API root (_se)")
 option(PITLANE_NATIVE "Emit code for the build-host CPU (-march=native)" ON)
 option(PITLANE_LTO "Enable link-time optimization across translation units" ON)
 option(PITLANE_SANITIZE "Build with address and undefined-behavior sanitizers" OFF)
@@ -128,16 +128,12 @@ endif()
 
 # SimNow example builds its own CTP gateway on MdEngine / TdClient. The library does not link Thost.
 if(PITLANE_BUILD_CTP AND PITLANE_BUILD_EXAMPLES)
-    set(_PITLANE_CTP_MD_SO "${PITLANE_CTP_API_ROOT}/lib/libthostmduserapi_se.so")
-    set(_PITLANE_CTP_TD_SO "${PITLANE_CTP_API_ROOT}/lib/libthosttraderapi_se.so")
+    # Official Linux packages ship thost*api_se.so without the "lib" prefix.
+    set(_PITLANE_CTP_MD_SO "${PITLANE_CTP_API_ROOT}/lib/thostmduserapi_se.so")
+    set(_PITLANE_CTP_TD_SO "${PITLANE_CTP_API_ROOT}/lib/thosttraderapi_se.so")
     if(NOT EXISTS "${_PITLANE_CTP_MD_SO}")
-        set(_PITLANE_CTP_MD_SO "${PITLANE_CTP_API_ROOT}/lib/libctpthostmduserapi.so")
-        set(_PITLANE_CTP_TD_SO "${PITLANE_CTP_API_ROOT}/lib/libctpthosttraderapi.so")
-        set(_PITLANE_CTP_MD_LIB ctpthostmduserapi)
-        set(_PITLANE_CTP_TD_LIB ctpthosttraderapi)
-    else()
-        set(_PITLANE_CTP_MD_LIB thostmduserapi_se)
-        set(_PITLANE_CTP_TD_LIB thosttraderapi_se)
+        set(_PITLANE_CTP_MD_SO "${PITLANE_CTP_API_ROOT}/lib/libthostmduserapi_se.so")
+        set(_PITLANE_CTP_TD_SO "${PITLANE_CTP_API_ROOT}/lib/libthosttraderapi_se.so")
     endif()
     if(EXISTS "${PITLANE_CTP_API_ROOT}/include/ThostFtdcMdApi.h" AND EXISTS "${_PITLANE_CTP_MD_SO}")
         add_executable(pitlane_simnow
@@ -147,8 +143,7 @@ if(PITLANE_BUILD_CTP AND PITLANE_BUILD_EXAMPLES)
         target_include_directories(pitlane_simnow PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/simnow/ctp
             ${PITLANE_CTP_API_ROOT}/include)
-        target_link_directories(pitlane_simnow PRIVATE ${PITLANE_CTP_API_ROOT}/lib)
-        target_link_libraries(pitlane_simnow PRIVATE pitlane ${_PITLANE_CTP_MD_LIB} ${_PITLANE_CTP_TD_LIB})
+        target_link_libraries(pitlane_simnow PRIVATE pitlane "${_PITLANE_CTP_MD_SO}" "${_PITLANE_CTP_TD_SO}")
         target_compile_options(pitlane_simnow PRIVATE -Wall -Wextra -O3 -DNDEBUG -D_GNU_SOURCE)
         if(PITLANE_NATIVE)
             target_compile_options(pitlane_simnow PRIVATE -march=native -mprefer-vector-width=256 -mno-avx512f)
