@@ -20,6 +20,7 @@
 #include "pitlane/order/rms.hpp"
 #include "pitlane/study/factor.hpp"
 #include "pitlane/study/factor_eval.hpp"
+#include "pitlane/study/perf.hpp"
 #include "pitlane/study/pipeline.hpp"
 #include "pitlane/time/cycle.hpp"
 #include "pitlane/time/mag.hpp"
@@ -59,16 +60,22 @@ struct FlowNote {
     uint8_t pad[3];
 };
 
+struct FlowCfg {
+    uint8_t kind{static_cast<uint8_t>(FactorKind::Momentum)};
+    uint16_t window{16};
+    int8_t sign{1};
+    int64_t signal_ppm{10};
+};
+
 class FullFlow {
 public:
     static constexpr int kParentQty = 3;
     static constexpr int kChildCap = 64;
     static constexpr int kEventCap = 256;
-    static constexpr int kSignalPpm = 10;
 
     using SendFn = int (*)(void* user, const Intent& in);
 
-    bool open(const Account& acct, int mode, WireLog* log) {
+    bool open(const Account& acct, int mode, WireLog* log, const FlowCfg& cfg = FlowCfg{}) {
         if (open_) return false;
         log_ = log;
         mode_ = mode;
@@ -102,20 +109,25 @@ public:
                                      (1u << static_cast<int>(TailLane::Report)) |
                                      (1u << static_cast<int>(TailLane::Signal)));
 
-        FactorSpec mom{};
-        mom.kind = static_cast<uint8_t>(FactorKind::Momentum);
-        mom.window = 16;
-        mom.scale = 1000000;
-        FactorSpec ofi{};
-        ofi.kind = static_cast<uint8_t>(FactorKind::Ofi);
-        ofi.window = 2;
-        ofi.scale = 1000000;
-        FactorSpec z{};
-        z.kind = static_cast<uint8_t>(FactorKind::ZScore);
-        z.window = 16;
-        z.scale = 1000000;
-        if (!pipe_.add(mom) || !pipe_.add(ofi) || !pipe_.add(z)) return false;
+        FactorSpec sig{};
+        sig.kind = cfg.kind;
+        sig.window = cfg.window;
+        sig.scale = 1000000;
+        if (!pipe_.add(sig)) return false;
+        confirm_slot_ = -1;
+        if (cfg.kind != static_cast<uint8_t>(FactorKind::Ofi)) {
+            FactorSpec ofi{};
+            ofi.kind = static_cast<uint8_t>(FactorKind::Ofi);
+            ofi.window = 2;
+            ofi.scale = 1000000;
+            if (!pipe_.add(ofi)) return false;
+            confirm_slot_ = 1;
+        }
         if (!pipe_.set_stage(stage_)) return false;
+        signal_ppm_ = cfg.signal_ppm;
+        sign_ = cfg.sign;
+        cfg_kind_ = cfg.kind;
+        cfg_window_ = cfg.window;
 
         ::unlink(wal_path_);
         MapOpt opt{};
@@ -188,18 +200,23 @@ public:
         }
 
         SigNote sig{};
-        if (!pipe_.signal(0, kSignalPpm, sig, name, "mom", now)) return;
+        if (!pipe_.signal(0, signal_ppm_, sig, name, cfg_kind_ == static_cast<uint8_t>(FactorKind::Ofi) ? "ofi" : "sig",
+                          now))
+            return;
         mom_ppm_.store(sig.value, std::memory_order_relaxed);
-        SigNote ofi{};
         int64_t ofi_v = 0;
-        if (pipe_.signal(1, 0, ofi, name, "ofi", now)) ofi_v = ofi.value;
-        ofi_ppm_.store(ofi_v, std::memory_order_relaxed);
+        if (confirm_slot_ >= 0) {
+            SigNote ofi{};
+            if (pipe_.signal(confirm_slot_, 0, ofi, name, "ofi", now)) ofi_v = ofi.value;
+        }
+        ofi_ppm_.store(confirm_slot_ >= 0 ? ofi_v : 0, std::memory_order_relaxed);
         if (has_parent_.load(std::memory_order_acquire) != 0) return;
         if (now - last_parent_us_.load(std::memory_order_relaxed) < parent_gap_us_) return;
-        if (ofi_v != 0 && ((ofi_v > 0) != (sig.value > 0))) return;
+        if (confirm_slot_ >= 0 && ofi_v != 0 && ((ofi_v > 0) != (sig.value > 0))) return;
         want_name_.store(name, std::memory_order_relaxed);
         want_stamp_.store(now, std::memory_order_relaxed);
-        want_side_.store(sig.value > 0 ? static_cast<uint8_t>(Side::Buy) : static_cast<uint8_t>(Side::Sell),
+        const int64_t dir = sign_ > 0 ? sig.value : -sig.value;
+        want_side_.store(dir > 0 ? static_cast<uint8_t>(Side::Buy) : static_cast<uint8_t>(Side::Sell),
                          std::memory_order_release);
     }
 
@@ -448,6 +465,22 @@ public:
         std::printf("ems     parents_closed=%lld lost=%lld working_parent=%d\n",
                     static_cast<long long>(parents_closed_), static_cast<long long>(parent_lost_total_),
                     has_parent_.load(std::memory_order_relaxed));
+        std::printf("study   kind=%u window=%u sign=%d signal_ppm=%lld horizon_us=%lld\n",
+                    static_cast<unsigned>(cfg_kind_), static_cast<unsigned>(cfg_window_), static_cast<int>(sign_),
+                    static_cast<long long>(signal_ppm_), static_cast<long long>(horizon_us_));
+        PerfCurve<4096>::Stats ps{};
+        if (perf_.result(ps))
+            std::printf("perf    n=%lld start=%lld end=%lld peak=%lld min=%lld maxdd=%lld maxdd_ppm=%lld sharpe_ppm=%lld\n",
+                        static_cast<long long>(ps.n), static_cast<long long>(ps.start), static_cast<long long>(ps.end),
+                        static_cast<long long>(ps.peak), static_cast<long long>(ps.min),
+                        static_cast<long long>(ps.max_drawdown), static_cast<long long>(ps.max_drawdown_ppm),
+                        static_cast<long long>(ps.sharpe_ppm));
+        else
+            std::printf("perf    n=%d (insufficient samples)\n", perf_.size());
+        std::printf("cost    turnover=%lld fees=%lld parents_lost=%lld zero_fill=%lld send_fail=%lld rms_reject=%lld\n",
+                    static_cast<long long>(daily_notional_), static_cast<long long>(fees),
+                    static_cast<long long>(parent_lost_total_), static_cast<long long>(zero_fill_),
+                    static_cast<long long>(send_fail_), static_cast<long long>(rms_reject_));
         if (ev_ok)
             std::printf("factor  samples=%lld quotes=%lld eval_n=%lld ic_ppm=%lld rank_ic=%lld hit=%lld mom=%lld ofi=%lld\n",
                         static_cast<long long>(samples_), static_cast<long long>(quotes_),
@@ -791,6 +824,16 @@ private:
         if (!snap_) return;
         FlowSnap s{};
         s.seq = snap_->published() + 1;
+        int64_t equity = 0;
+        int64_t mark = last_px_.load(std::memory_order_relaxed);
+        for (uint32_t nm = 1; nm <= 2; ++nm) {
+            const PmsPos* p = pms_.find(1, nm);
+            if (!p) continue;
+            equity += p->realized;
+            int64_t u = 0;
+            if (mark > 0 && pms_.unrealized(1, nm, mark, u)) equity += u;
+        }
+        if (perf_.size() < 4096) (void)perf_.mark(equity);
         if (const PmsPos* p = pms_.find(1, 1)) {
             s.net_qty = p->long_qty - p->short_qty;
             s.realized = p->realized;
@@ -862,6 +905,12 @@ private:
     std::atomic<int64_t> last_parent_us_{0};
 
     int64_t prev_px_{0};
+    int64_t signal_ppm_{10};
+    int8_t sign_{1};
+    uint8_t cfg_kind_{2};
+    uint16_t cfg_window_{16};
+    int32_t confirm_slot_{-1};
+    PerfCurve<4096> perf_{};
     int64_t parent_gap_us_{5000000};
     int64_t horizon_us_{60000000};
     int64_t interval_us_{20000000};

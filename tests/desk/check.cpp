@@ -1202,6 +1202,59 @@ static void check_replay() {
     expect(out3.dropped == 1 && out3.published == 5, "replay drop");
 }
 
+void check_tape_rec() {
+    const char* path = "/tmp/pitlane_tape_rec_test.csv";
+    std::remove(path);
+    {
+        pitlane::TapeRecorder rec;
+        expect(!rec.note(pitlane::Quote{}), "tape rec closed note");
+        expect(rec.open(path), "tape rec open");
+        pitlane::Quote q{};
+        q.name = 1;
+        q.exch_us = 1000;
+        q.bid_px = 100;
+        q.ask_px = 102;
+        q.last_px = 101;
+        q.bid_qty = 3;
+        q.ask_qty = 4;
+        expect(rec.note(q), "tape rec note 1");
+        q.exch_us = 2000;
+        q.ask_qty = 9;
+        expect(rec.note(q), "tape rec note 2");
+        q.exch_us = 3000;
+        q.bid_qty = 7;
+        expect(rec.note(q), "tape rec note 3");
+        rec.close();
+        expect(rec.written() == 3 && rec.dropped() == 0, "tape rec counters");
+        expect(!rec.active(), "tape rec closed");
+    }
+    std::FILE* f = std::fopen(path, "r");
+    expect(f != nullptr, "tape rec file");
+    if (f) {
+        char line[256];
+        expect(std::fgets(line, sizeof line, f) && line[0] == '#', "tape rec header");
+        int rows = 0;
+        long long last_bq = 0;
+        long long last_aq = 0;
+        while (std::fgets(line, sizeof line, f)) {
+            long long t = 0, nm = 0, bp = 0, ap = 0, lp = 0, bq = 0, aq = 0;
+            if (std::sscanf(line, "%lld,%lld,%lld,%lld,%lld,%lld,%lld", &t, &nm, &bp, &ap, &lp, &bq, &aq) != 7) break;
+            ++rows;
+            last_bq = bq;
+            last_aq = aq;
+        }
+        std::fclose(f);
+        expect(rows == 3 && last_bq == 7 && last_aq == 9, "tape rec rows");
+    }
+    {
+        pitlane::TapeRecorder rec;
+        expect(rec.open(path), "tape rec reopen");
+        rec.close();
+        expect(rec.written() == 0, "tape rec truncate");
+    }
+    std::remove(path);
+}
+
 int main() {
     expect(pitlane::kVersionMajor == 2 && pitlane::kVersionMinor == 23 && pitlane::kVersionPatch == 0, "release");
     expect(std::strcmp(pitlane::kVersion, "2.23.0") == 0, "release text");
@@ -1226,6 +1279,7 @@ int main() {
     check_snapring();
     check_routebook();
     check_replay();
+    check_tape_rec();
     if (g_fails) {
         std::fprintf(stderr, "%d desk check(s) failed\n", g_fails);
         return 1;

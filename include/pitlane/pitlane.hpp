@@ -11,6 +11,7 @@
 #include "pitlane/desk/center.hpp"
 #include "pitlane/desk/plane.hpp"
 #include "pitlane/desk/tape_md.hpp"
+#include "pitlane/desk/tape_rec.hpp"
 #include "pitlane/desk/md_engine.hpp"
 #include "pitlane/desk/td_engine.hpp"
 #include "pitlane/desk/risk.hpp"
@@ -122,6 +123,7 @@
 #include "pitlane/study/study.hpp"
 #include "pitlane/study/factor.hpp"
 #include "pitlane/study/factor_eval.hpp"
+#include "pitlane/study/perf.hpp"
 #include "pitlane/study/pipeline.hpp"
 
 #include "pitlane/host/affinity.hpp"

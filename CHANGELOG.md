@@ -3,6 +3,9 @@
 ## [Unreleased] - 2026-11-14
 
 ### Added
+- `desk/tape_rec.hpp`: `TapeRecorder` records any quote stream into the replayable seven-column CSV tape. One producer pushes into a bounded ring that drops and counts on overflow; a writer thread batches rows, fsyncs, and renames `FILE.tmp` onto `FILE` on close.
+- `study/perf.hpp`: `PerfCurve` keeps an integer equity curve and reports start/end/peak/min, max drawdown in units and ppm, and per-sample Sharpe.
+- `examples/simnow`: `--record`, `--research`, `--study`, and `--out` complete the collect → research → backtest → live loop. Research sweeps factor kind/window/horizon with IC, rank IC, hit rate, and quintile spreads, writes `run/research.conf`, and both backtest and live consume it. Backtest loads the whole tape, signs the factor from rank IC, runs 64 seconds of tail playback, and prints `perf`/`cost`/`study` sections.
 - `order/pace.hpp`: `SlicePacer`, `ChasePacer`, `SizePacer`, `PaceCtl`, and `PaceBook` add the execution-pacing decision layer. A time-sliced parent emits one lot-aligned child per due cut with an end-game catch-up; a two-leg release posts inside the spread, chases the touch, refuses a cross unless allowed, and reports stale children for cancel/resend; a size-threshold pacer joins or takes according to the opposite touch. All objects are caller-owned, fixed-size, allocation-free, integer-only, and fail-closed. Terminal states are sticky.
 - `tests/order`: pacing coverage for slice cuts and end-game, partial fill and reject restore, pause/resume/stop, chase clip/split/cross guard/retry, threshold join/take/clip, and fixed-table capacity.
 

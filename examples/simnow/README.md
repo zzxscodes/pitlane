@@ -86,6 +86,48 @@ cd examples/simnow
 ../../build/pitlane_simnow --full conf/simnow_7x24.conf
 ```
 
+### Research loop
+
+`--record` taps the quote stream from either the CTP callback thread (live) or
+the paper center, pushes it into a bounded ring (full = drop and count, never
+block), and lets a writer thread flush CSV; `close()` fsyncs and renames
+`FILE.tmp` onto `FILE`. All four stages share the tape format above:
+
+```bash
+cd examples/simnow
+
+# 1. Collect quotes only, no orders. Ctrl-C when done (live needs market hours).
+../../build/pitlane_simnow --record run/tape.csv conf/simnow_7x24.conf
+
+# 2. Research: clean the tape, sweep factor kind x window x horizon, write run/research.conf.
+../../build/pitlane_simnow --research --tape run/tape.csv conf/paper.conf
+
+# 3. Backtest the product: whole tape, many parents, PnL/cost/drawdown/Sharpe.
+../../build/pitlane_simnow --backtest --tape run/tape.csv conf/paper.conf
+
+# 4. Live: the same product drives the real IOC strategy.
+../../build/pitlane_simnow --full conf/simnow_7x24.conf
+```
+
+`--record` also works with `--backtest` or `--full` to capture a paper session.
+`--study FILE` overrides the default `<work_dir>/research.conf`, and `--out FILE`
+overrides the research output path. Without a product the strategy keeps the
+built-in Momentum(16) / 10 ppm default.
+
+The grid prints IC, rank IC, hit rate, and top/bottom quintile means.
+`research.conf` stores `factor_kind`, `factor_window`, `factor_sign` (the side
+with positive rank IC; `-1` trades the inverse), `signal_ppm` (75th percentile
+of |factor|), `horizon_bars`, and the evaluation numbers. Backtest and live log
+`study kind=.. window=.. sign=.. signal_ppm=..` so runs are identifiable, and
+the summary adds:
+
+- `perf` — equity start/end/peak/min, max drawdown in ticks and ppm, per-sample Sharpe.
+- `cost` — turnover, fees, lost parents, zero fills, failed sends, RMS rejects.
+- `study` — the resolved factor and threshold.
+
+For `--backtest`, 64 extra seconds run after the last row so the final parent
+finishes its slices and fills.
+
 `--backtest` without `--tape` falls back to the built-in synthetic tape. The
 CSV tape has one quote per row, header optional, no spaces required:
 

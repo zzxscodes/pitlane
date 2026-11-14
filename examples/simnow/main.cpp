@@ -5,11 +5,14 @@
 #include "md_engine.hpp"
 #include "td_client.hpp"
 #include "full_flow.hpp"
+#include "research.hpp"
+#include "study_conf.hpp"
 #include "pitlane/book/venue.hpp"
 #include "pitlane/desk/center.hpp"
 #include "pitlane/desk/config.hpp"
 #include "pitlane/desk/session.hpp"
 #include "pitlane/desk/tape_md.hpp"
+#include "pitlane/desk/tape_rec.hpp"
 #include "pitlane/util/wirelog.hpp"
 #include "pitlane/desk/ids.hpp"
 #include "pitlane/desk/region.hpp"
@@ -29,6 +32,7 @@
 #include <string>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <vector>
 
 namespace {
 
@@ -45,6 +49,7 @@ struct App {
     pitlane::CtpTdClient* td{nullptr};
     pitlane::Desk* desk{nullptr};
     pitlane::FullFlow* flow{nullptr};
+    pitlane::TapeRecorder* rec{nullptr};
     pitlane::CycleScale scale{};
     pitlane::IdMint mint{1, 1};
     bool full{false};
@@ -119,6 +124,7 @@ int send_live(void* user, const pitlane::Intent& in) {
 
 void on_tick_hot(void* user, uint32_t name, const pitlane::Quote& q, uint64_t t0_cycles) {
     auto* app = static_cast<App*>(user);
+    if (app->rec) (void)app->rec->note(q);
     if (app->stop.load(std::memory_order_relaxed)) return;
     if (app->flow) {
         uint64_t t1 = 0;
@@ -126,6 +132,8 @@ void on_tick_hot(void* user, uint32_t name, const pitlane::Quote& q, uint64_t t0
         app->flow->on_tick(name, q, t0_cycles, t1);
         return;
     }
+    // Collection mode: --record without --full taps quotes but sends no orders.
+    if (app->rec) return;
     if (!app->td || !app->td->ready()) return;
     if (q.bid_px <= 0 || q.ask_px < q.bid_px || q.ask_qty <= 0) return;
     const int64_t spread = q.ask_px - q.bid_px;
@@ -259,10 +267,45 @@ bool ensure_dir(const char* path) {
     return ::mkdir(tmp, 0755) == 0 || errno == EEXIST;
 }
 
-int run_paper(const pitlane::Account& acct, const pitlane::StratCfg& cfg, const pitlane::VenueCfg& vc) {
+// Resolves the strategy config: explicit --study, else work_dir/research.conf,
+// else the built-in default. Prints which source was used.
+bool load_study(const char* study_path, const pitlane::Account& acct, pitlane::FlowCfg& fc) {
+    char def[600];
+    std::snprintf(def, sizeof def, "%s/research.conf", acct.work_dir.c_str());
+    const char* p = study_path ? study_path : def;
+    pitlane::StudyCfg sc{};
+    if (!pitlane::study_conf_load(p, sc)) {
+        if (study_path) {
+            std::fprintf(stderr, "study: load %s failed\n", study_path);
+            return false;
+        }
+        std::printf("[study] %s unavailable; default kind=%u window=%u signal_ppm=%lld\n", def,
+                    static_cast<unsigned>(fc.kind), static_cast<unsigned>(fc.window),
+                    static_cast<long long>(fc.signal_ppm));
+        return true;
+    }
+    fc.kind = sc.kind;
+    fc.window = sc.window;
+    fc.sign = sc.sign;
+    fc.signal_ppm = sc.signal_ppm;
+    std::printf("[study] %s kind=%u window=%u sign=%d signal_ppm=%lld horizon=%d samples=%lld rank_ic=%lld\n", p,
+                static_cast<unsigned>(sc.kind), static_cast<unsigned>(sc.window), static_cast<int>(sc.sign),
+                static_cast<long long>(sc.signal_ppm), sc.horizon_bars, static_cast<long long>(sc.samples),
+                static_cast<long long>(sc.rank_ic_ppm));
+    return true;
+}
+
+int run_paper(const pitlane::Account& acct, const pitlane::StratCfg& cfg, const pitlane::VenueCfg& vc,
+              const char* record_path) {
     if (!ensure_dir(acct.work_dir.c_str())) return 2;
     pitlane::WireLog wlog(acct.log_path.c_str(), 3);
     wlog.log(2, pitlane::lit("simnow paper center"));
+
+    pitlane::TapeRecorder rec;
+    if (record_path && !rec.open(record_path)) {
+        std::fprintf(stderr, "record: open %s failed\n", record_path);
+        return 2;
+    }
 
     ::unlink(acct.desk_path.c_str());
     pitlane::MapOpt opt{};
@@ -296,6 +339,7 @@ int run_paper(const pitlane::Account& acct, const pitlane::StratCfg& cfg, const 
 
     struct Hot : pitlane::StratEngine {
         pitlane::StratCfg cfg{};
+        pitlane::TapeRecorder* rec{nullptr};
         pitlane::CycleScale scale{};
         pitlane::IdMint mint{1, 1};
         int orders{0};
@@ -308,6 +352,7 @@ int run_paper(const pitlane::Account& acct, const pitlane::StratCfg& cfg, const 
         uint64_t tags[64]{};
 
         void on_quote(const pitlane::Quote& q) override {
+            if (rec) (void)rec->note(q);
             if (cfg.t2t_samples > 0 && orders >= cfg.t2t_samples) return;
             if (q.ask_qty <= 0 || q.ask_px < q.bid_px) return;
             if (q.ask_px - q.bid_px > cfg.max_spread_x10000) return;
@@ -360,6 +405,7 @@ int run_paper(const pitlane::Account& acct, const pitlane::StratCfg& cfg, const 
     } hot;
     hot.cfg = cfg;
     hot.scale = scale;
+    hot.rec = record_path ? &rec : nullptr;
 
     auto* venue = new (std::nothrow) pitlane::PaperVenue(vc);
     if (!venue) return 1;
@@ -379,6 +425,11 @@ int run_paper(const pitlane::Account& acct, const pitlane::StratCfg& cfg, const 
 
     const int want = cfg.t2t_samples > 0 ? cfg.t2t_samples : 8;
     for (int i = 0; i < kTape + want + 4 && hot.fills < want; ++i) center.step(1000 + i);
+    if (record_path) {
+        rec.close();
+        std::printf("[record] %s written=%llu dropped=%llu\n", record_path, static_cast<unsigned long long>(rec.written()),
+                    static_cast<unsigned long long>(rec.dropped()));
+    }
 
     uint64_t local[64];
     uint64_t rt[64];
@@ -422,8 +473,10 @@ int run_paper(const pitlane::Account& acct, const pitlane::StratCfg& cfg, const 
 
 struct FlowStrat : pitlane::StratEngine {
     pitlane::FullFlow* flow{nullptr};
+    pitlane::TapeRecorder* rec{nullptr};
 
     void on_quote(const pitlane::Quote& q) override {
+        if (rec) (void)rec->note(q);
         if (!flow) return;
         flow->on_tick(q.name, q, 0, 0);
         flow->on_beat(q.local_us > 0 ? q.local_us : 1);
@@ -459,41 +512,20 @@ int build_synth_tape(pitlane::Quote* tape, int cap) {
     return cap;
 }
 
-// CSV columns: exch_us,name,bid_px,ask_px,last_px,bid_qty,ask_qty. Header optional.
-int load_tape_csv(const char* path, pitlane::Quote* tape, int cap) {
-    std::FILE* f = std::fopen(path, "r");
-    if (!f) return -1;
-    char line[256];
-    int n = 0;
-    while (n < cap && std::fgets(line, sizeof line, f)) {
-        char* p = line;
-        while (*p == ' ' || *p == '\t') ++p;
-        if (*p == '#' || *p == '\n' || *p == '\0') continue;
-        long long exch_us = 0, name = 0, bp = 0, ap = 0, lp = 0, bq = 0, aq = 0;
-        if (std::sscanf(p, "%lld,%lld,%lld,%lld,%lld,%lld,%lld", &exch_us, &name, &bp, &ap, &lp, &bq, &aq) != 7)
-            continue;
-        pitlane::Quote& q = tape[n];
-        q.name = static_cast<uint32_t>(name);
-        q.bid_px = bp;
-        q.ask_px = ap;
-        q.last_px = lp;
-        q.bid_qty = bq;
-        q.ask_qty = aq;
-        q.exch_us = exch_us;
-        q.local_us = exch_us;
-        ++n;
-    }
-    std::fclose(f);
-    return n > 0 ? n : -1;
-}
-
 int run_sim_flow(const pitlane::Account& acct, const pitlane::StratCfg& cfg, const pitlane::VenueCfg& vc,
-                 const pitlane::Quote* tape, int tape_n, bool replay_all, int mode) {
+                 const pitlane::Quote* tape, int tape_n, bool replay_all, int mode, const pitlane::FlowCfg& fcfg,
+                 const char* record_path) {
     (void)cfg;
     if (!tape || tape_n <= 0) return 2;
     if (!ensure_dir(acct.work_dir.c_str())) return 2;
     pitlane::WireLog wlog(acct.log_path.c_str(), 3);
     wlog.log(2, pitlane::lit("simnow full flow paper"));
+
+    pitlane::TapeRecorder rec;
+    if (record_path && !rec.open(record_path)) {
+        std::fprintf(stderr, "record: open %s failed\n", record_path);
+        return 2;
+    }
 
     ::unlink(acct.desk_path.c_str());
     pitlane::MapOpt opt{};
@@ -506,7 +538,7 @@ int run_sim_flow(const pitlane::Account& acct, const pitlane::StratCfg& cfg, con
     if (!desk) return 1;
 
     pitlane::FullFlow flow;
-    if (!flow.open(acct, mode, &wlog)) {
+    if (!flow.open(acct, mode, &wlog, fcfg)) {
         pitlane::map_release(&map);
         ::unlink(acct.desk_path.c_str());
         return 1;
@@ -532,6 +564,7 @@ int run_sim_flow(const pitlane::Account& acct, const pitlane::StratCfg& cfg, con
 
     FlowStrat strat;
     strat.flow = &flow;
+    strat.rec = record_path ? &rec : nullptr;
     flow.set_send(paper_send, &strat);
 
     pitlane::Center center{};
@@ -551,6 +584,20 @@ int run_sim_flow(const pitlane::Account& acct, const pitlane::StratCfg& cfg, con
     }
 
     for (int i = 0; i < tape_n && (replay_all || !flow.complete()); ++i) center.step(tape[i].local_us);
+    if (replay_all) {
+        // Let the last parent finish its slices and fills after the tape ends.
+        const int64_t end_us = tape[tape_n - 1].local_us;
+        for (int k = 1; k <= 64; ++k) {
+            const int64_t t = end_us + static_cast<int64_t>(k) * 1000000;
+            center.step(t);
+            flow.on_beat(t);
+        }
+    }
+    if (record_path) {
+        rec.close();
+        std::printf("[record] %s written=%llu dropped=%llu\n", record_path, static_cast<unsigned long long>(rec.written()),
+                    static_cast<unsigned long long>(rec.dropped()));
+    }
 
     flow.summarize(&wlog);
     const bool ok = flow.pass();
@@ -562,39 +609,59 @@ int run_sim_flow(const pitlane::Account& acct, const pitlane::StratCfg& cfg, con
     return ok ? 0 : 1;
 }
 
-int run_paper_flow(const pitlane::Account& acct, const pitlane::StratCfg& cfg, const pitlane::VenueCfg& vc) {
+int run_paper_flow(const pitlane::Account& acct, const pitlane::StratCfg& cfg, const pitlane::VenueCfg& vc,
+                   const pitlane::FlowCfg& fcfg, const char* record_path) {
     constexpr int kTape = 512;
     static pitlane::Quote tape[kTape]{};
-    return run_sim_flow(acct, cfg, vc, tape, build_synth_tape(tape, kTape), false, 2);
+    return run_sim_flow(acct, cfg, vc, tape, build_synth_tape(tape, kTape), false, 2, fcfg, record_path);
 }
 
 int run_backtest(const pitlane::Account& acct, const pitlane::StratCfg& cfg, const pitlane::VenueCfg& vc,
-                 const char* tape_path) {
-    constexpr int kTape = 4096;
-    static pitlane::Quote tape[kTape]{};
-    int n = tape_path ? load_tape_csv(tape_path, tape, kTape) : -1;
-    if (n < 0) {
-        std::printf("[backtest] tape %s unavailable, using synthetic tape\n", tape_path ? tape_path : "(none)");
-        n = build_synth_tape(tape, 512);
+                 const char* tape_path, const char* study_path, const char* record_path) {
+    std::vector<pitlane::Quote> tape;
+    simnow_study::TapeStats st{};
+    if (tape_path && simnow_study::tape_load_csv(tape_path, tape, st)) {
+        std::printf("[backtest] tape %s rows=%d skipped=%d span_us=%lld\n", tape_path, st.rows, st.skipped,
+                    static_cast<long long>(st.last_us - st.first_us));
     } else {
-        std::printf("[backtest] tape %s rows=%d\n", tape_path, n);
+        if (tape_path)
+            std::printf("[backtest] tape %s unusable (%d rows, %d skipped), using synthetic tape\n", tape_path,
+                        st.rows, st.skipped);
+        else
+            std::printf("[backtest] no --tape, using synthetic tape\n");
+        tape.resize(512);
+        build_synth_tape(tape.data(), static_cast<int>(tape.size()));
     }
-    return run_sim_flow(acct, cfg, vc, tape, n, true, 3);
+    pitlane::FlowCfg fcfg{};
+    if (!load_study(study_path, acct, fcfg)) return 2;
+    return run_sim_flow(acct, cfg, vc, tape.data(), static_cast<int>(tape.size()), true, 3, fcfg, record_path);
 }
 
 int main(int argc, char** argv) {
     // Prefer running from examples/simnow so ./run stays local to the example.
     const char* conf_path = "conf/simnow_7x24.conf";
     const char* tape_path = nullptr;
+    const char* record_path = nullptr;
+    const char* study_path = nullptr;
+    const char* out_path = nullptr;
     bool full = false;
     bool backtest = false;
+    bool research = false;
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--full") == 0)
             full = true;
         else if (std::strcmp(argv[i], "--backtest") == 0)
             backtest = true;
+        else if (std::strcmp(argv[i], "--research") == 0)
+            research = true;
         else if (std::strcmp(argv[i], "--tape") == 0 && i + 1 < argc)
             tape_path = argv[++i];
+        else if (std::strcmp(argv[i], "--record") == 0 && i + 1 < argc)
+            record_path = argv[++i];
+        else if (std::strcmp(argv[i], "--study") == 0 && i + 1 < argc)
+            study_path = argv[++i];
+        else if (std::strcmp(argv[i], "--out") == 0 && i + 1 < argc)
+            out_path = argv[++i];
         else
             conf_path = argv[i];
     }
@@ -605,7 +672,8 @@ int main(int argc, char** argv) {
     if (!pitlane::load_account_conf(conf_path, acct, strat, err)) {
         std::fprintf(stderr, "load conf %s: %s\n", conf_path, err.c_str());
         std::fprintf(stderr,
-                     "usage: cd examples/simnow && ../../build/pitlane_simnow [--full|--backtest [--tape FILE]] conf.conf\n");
+                     "usage: cd examples/simnow && ../../build/pitlane_simnow [--full|--backtest|--research] "
+                     "[--tape FILE] [--record FILE] [--study FILE] [--out FILE] conf.conf\n");
         return 2;
     }
     pitlane::apply_account_env(acct);
@@ -615,9 +683,38 @@ int main(int argc, char** argv) {
     pitlane::VenueCfg vc{};
     if (pitlane::conf_load(conf_path, pit)) vc = pitlane::conf_venue_cfg(pit);
 
+    if (research) {
+        if (!tape_path) {
+            std::fprintf(stderr, "--research needs --tape FILE\n");
+            return 2;
+        }
+        if (!ensure_dir(acct.work_dir.c_str())) return 2;
+        std::vector<pitlane::Quote> tape;
+        simnow_study::TapeStats st{};
+        if (!simnow_study::tape_load_csv(tape_path, tape, st)) {
+            std::fprintf(stderr, "research: no usable rows in %s (%d skipped)\n", tape_path, st.skipped);
+            return 1;
+        }
+        std::printf("[research] tape %s rows=%d skipped=%d span_us=%lld\n", tape_path, st.rows, st.skipped,
+                    static_cast<long long>(st.last_us - st.first_us));
+        char out_buf[600];
+        const char* out = out_path;
+        if (!out) {
+            std::snprintf(out_buf, sizeof out_buf, "%s/research.conf", acct.work_dir.c_str());
+            out = out_buf;
+        }
+        pitlane::StudyCfg best{};
+        return simnow_study::research_run(tape, out, best) ? 0 : 1;
+    }
+
     if (strat.paper) {
-        if (backtest) return run_backtest(acct, strat, vc, tape_path);
-        return full ? run_paper_flow(acct, strat, vc) : run_paper(acct, strat, vc);
+        if (backtest) return run_backtest(acct, strat, vc, tape_path, study_path, record_path);
+        if (full) {
+            pitlane::FlowCfg fcfg{};
+            if (!load_study(study_path, acct, fcfg)) return 2;
+            return run_paper_flow(acct, strat, vc, fcfg, record_path);
+        }
+        return run_paper(acct, strat, vc, record_path);
     }
     if (backtest) {
         std::fprintf(stderr, "--backtest needs a paper conf (paper = 1)\n");
@@ -670,9 +767,18 @@ int main(int argc, char** argv) {
     md.set_tick_fn(on_tick_hot, &app);
     md.quote_mask = 0;
 
+    pitlane::TapeRecorder rec;
+    if (record_path && !rec.open(record_path)) {
+        std::fprintf(stderr, "record: open %s failed\n", record_path);
+        return 2;
+    }
+    app.rec = record_path ? &rec : nullptr;
+
     pitlane::FullFlow flow;
     if (full) {
-        if (!flow.open(acct, 1, &wlog)) return 1;
+        pitlane::FlowCfg fcfg{};
+        if (!load_study(study_path, acct, fcfg)) return 2;
+        if (!flow.open(acct, 1, &wlog, fcfg)) return 1;
         flow.set_send(send_live, &app);
         flow.set_timing(5000000, 60000000, 20000000);
         app.flow = &flow;
@@ -757,6 +863,11 @@ int main(int argc, char** argv) {
     md.request_stop();
     md.post_run();
     td.stop();
+    if (record_path) {
+        rec.close();
+        std::printf("[record] %s written=%llu dropped=%llu\n", record_path, static_cast<unsigned long long>(rec.written()),
+                    static_cast<unsigned long long>(rec.dropped()));
+    }
     wlog.flush();
     pitlane::map_release(&map);
     ::unlink(acct.desk_path.c_str());

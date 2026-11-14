@@ -296,6 +296,19 @@ static void check_shadow() {
     expect(book.name(twap) && std::strcmp(book.name(twap), "twap") == 0, "shadow book name");
 }
 
+void check_perf() {
+    pitlane::PerfCurve<8> curve;
+    pitlane::PerfCurve<8>::Stats stats{};
+    expect(!curve.result(stats), "perf empty");
+    const int64_t eq[] = {0, 10, 5, 15, 3};
+    for (int64_t v : eq) expect(curve.mark(v), "perf mark");
+    expect(curve.result(stats), "perf result");
+    expect(stats.n == 5 && stats.start == 0 && stats.end == 3 && stats.peak == 15 && stats.min == 0, "perf bounds");
+    expect(stats.max_drawdown == 12, "perf maxdd");
+    for (int i = 0; i < 3; ++i) expect(curve.mark(1), "perf fill");
+    expect(!curve.mark(1), "perf full");
+}
+
 int main() {
     check_feat_and_mark();
     check_tables();
@@ -310,6 +323,7 @@ int main() {
     check_fair();
     check_factorcal();
     check_shadow();
+    check_perf();
     if (g_fails) {
         std::fprintf(stderr, "%d study check(s) failed\n", g_fails);
         return 1;

@@ -16,6 +16,7 @@ set(PITLANE_SOURCES
     src/desk/runtime.cpp
     src/desk/signal.cpp
     src/desk/store.cpp
+    src/desk/tape_rec.cpp
     src/desk/yard.cpp
     src/book/calendar.cpp
     src/book/cross.cpp
@@ -162,9 +163,17 @@ endif()
 if(TARGET pitlane_simnow AND PITLANE_BUILD_TESTS AND BUILD_TESTING)
     add_test(NAME simnow_paper COMMAND pitlane_simnow --full conf/paper.conf)
     add_test(NAME simnow_backtest COMMAND pitlane_simnow --backtest conf/paper.conf)
-    set_tests_properties(simnow_paper simnow_backtest PROPERTIES
+    add_test(NAME simnow_record COMMAND pitlane_simnow --backtest --record run/tape_ci.csv conf/paper.conf)
+    add_test(NAME simnow_research
+        COMMAND pitlane_simnow --research --tape run/tape_ci.csv --out run/research_ci.conf conf/paper.conf)
+    add_test(NAME simnow_study_backtest
+        COMMAND pitlane_simnow --backtest --tape run/tape_ci.csv --study run/research_ci.conf conf/paper.conf)
+    set_tests_properties(simnow_paper simnow_backtest simnow_record simnow_research simnow_study_backtest PROPERTIES
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/examples/simnow
         RUN_SERIAL TRUE)
+    set_tests_properties(simnow_record PROPERTIES FIXTURES_SETUP tape_ci)
+    set_tests_properties(simnow_research PROPERTIES FIXTURES_REQUIRED tape_ci FIXTURES_SETUP study_ci)
+    set_tests_properties(simnow_study_backtest PROPERTIES FIXTURES_REQUIRED "tape_ci;study_ci")
 endif()
 
 # Paper-center timings. No broker library, so CI runs this with the other examples.
