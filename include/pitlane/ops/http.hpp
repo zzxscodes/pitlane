@@ -61,7 +61,10 @@ public:
     static constexpr uint32_t kMaxDoc = 262144;
     static constexpr uint32_t kMaxReq = 8192;
 
-    bool start(uint16_t port, HttpHandler fn, void* user, const char* doc_root = nullptr) noexcept;
+    // `bind_addr` empty or null keeps the console on loopback; pass an IPv4
+    // literal such as "0.0.0.0" to expose it to other hosts.
+    bool start(uint16_t port, HttpHandler fn, void* user, const char* doc_root = nullptr,
+               const char* bind_addr = nullptr) noexcept;
     void stop() noexcept;
     uint16_t port() const noexcept { return port_; }
     bool running() const noexcept { return running_; }

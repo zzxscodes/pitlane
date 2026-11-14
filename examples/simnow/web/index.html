@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>pitlane ops console</title>
+<title>pitlane 交易控制台</title>
 <style>
   :root { color-scheme: dark; --bg:#0e1116; --panel:#161b22; --line:#26303b; --ink:#d7dde5; --dim:#8b98a7;
           --ok:#3fb950; --warn:#d29922; --bad:#f85149; --accent:#58a6ff; }
@@ -22,6 +22,7 @@
   button:hover { border-color:var(--accent); }
   button.bad { border-color:#6e2a25; color:#ffb3ad; }
   button.bad:hover { border-color:var(--bad); }
+  #langBtn { min-width:58px; }
   main { padding:14px 16px 40px; display:grid; gap:12px; grid-template-columns:repeat(12,1fr); }
   .card { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:10px 12px; }
   .card h2 { font-size:11px; text-transform:uppercase; letter-spacing:.12em; color:var(--dim); margin:0 0 8px; font-weight:600; }
@@ -57,97 +58,104 @@
 </head>
 <body>
 <header>
-  <h1>PITLANE OPS</h1>
+  <h1>PITLANE</h1>
   <span id="st" class="pill">init</span>
   <span id="md" class="pill">MD</span>
   <span id="td" class="pill">TD</span>
   <span id="ver" class="pill">v-</span>
   <span id="up" class="pill">-</span>
   <span class="grow"></span>
-  <button onclick="ctl('pause')">Pause</button>
-  <button onclick="ctl('resume')">Resume</button>
-  <button class="bad" onclick="ctl('halt')">Halt</button>
-  <button onclick="ctl('resume_risk')">Resume risk</button>
-  <button onclick="ctl('cancel_all')">Cancel all</button>
-  <button onclick="ctl('reload')">Reload</button>
-  <button class="bad" onclick="ctl('stop')">Stop</button>
+  <button onclick="ctl('pause')" data-t="pause">暂停</button>
+  <button onclick="ctl('resume')" data-t="resume">恢复</button>
+  <button class="bad" onclick="ctl('halt')" data-t="halt">熔断</button>
+  <button onclick="ctl('resume_risk')" data-t="resumeRisk">解除熔断</button>
+  <button onclick="ctl('cancel_all')" data-t="cancelAll">全撤</button>
+  <button onclick="ctl('reload')" data-t="reload">重载配置</button>
+  <button class="bad" onclick="ctl('stop')" data-t="stop">停止</button>
+  <button id="langBtn" onclick="toggleLang()">EN</button>
 </header>
 
 <main>
   <section class="kpis">
-    <div class="kpi"><div class="l">equity</div><div class="v" id="k_equity">-</div></div>
-    <div class="kpi"><div class="l">net qty</div><div class="v" id="k_net">-</div></div>
-    <div class="kpi"><div class="l">realized</div><div class="v" id="k_real">-</div></div>
-    <div class="kpi"><div class="l">unrealized</div><div class="v" id="k_unreal">-</div></div>
-    <div class="kpi"><div class="l">drawdown</div><div class="v" id="k_dd">-</div></div>
-    <div class="kpi"><div class="l">turnover</div><div class="v" id="k_turn">-</div></div>
-    <div class="kpi"><div class="l">fills / rej</div><div class="v" id="k_fill">-</div></div>
-    <div class="kpi"><div class="l">orders 1s</div><div class="v" id="k_rate">-</div></div>
-    <div class="kpi"><div class="l">reject ppm</div><div class="v" id="k_rej">-</div></div>
-    <div class="kpi"><div class="l">quotes</div><div class="v" id="k_quotes">-</div></div>
-    <div class="kpi"><div class="l">cpu / mem</div><div class="v" id="k_cpu">-</div></div>
-    <div class="kpi"><div class="l">load / threads</div><div class="v" id="k_load">-</div></div>
+    <div class="kpi"><div class="l" data-t="equity">权益</div><div class="v" id="k_equity">-</div></div>
+    <div class="kpi"><div class="l" data-t="netQty">净仓</div><div class="v" id="k_net">-</div></div>
+    <div class="kpi"><div class="l" data-t="realized">已实现</div><div class="v" id="k_real">-</div></div>
+    <div class="kpi"><div class="l" data-t="unrealized">未实现</div><div class="v" id="k_unreal">-</div></div>
+    <div class="kpi"><div class="l" data-t="drawdown">回撤</div><div class="v" id="k_dd">-</div></div>
+    <div class="kpi"><div class="l" data-t="turnover">成交额</div><div class="v" id="k_turn">-</div></div>
+    <div class="kpi"><div class="l" data-t="fillsRej">成交 / 拒单</div><div class="v" id="k_fill">-</div></div>
+    <div class="kpi"><div class="l" data-t="orders1s">1 秒下单</div><div class="v" id="k_rate">-</div></div>
+    <div class="kpi"><div class="l" data-t="rejectPpm">拒单率 ppm</div><div class="v" id="k_rej">-</div></div>
+    <div class="kpi"><div class="l" data-t="quotes">行情数</div><div class="v" id="k_quotes">-</div></div>
+    <div class="kpi"><div class="l" data-t="cpuMem">CPU / 内存</div><div class="v" id="k_cpu">-</div></div>
+    <div class="kpi"><div class="l" data-t="loadThreads">负载 / 线程</div><div class="v" id="k_load">-</div></div>
   </section>
 
   <section class="card span8">
-    <h2>positions</h2>
-    <table><thead><tr><th>name</th><th>today</th><th>yday</th><th>avg px</th><th>realized</th><th>unrealized</th></tr></thead>
+    <h2 data-t="positions">持仓</h2>
+    <table><thead><tr><th data-t="name">合约</th><th data-t="today">今仓</th><th data-t="yday">昨仓</th>
+      <th data-t="avgPx">均价</th><th data-t="realized">已实现</th><th data-t="unrealized">未实现</th></tr></thead>
       <tbody id="pos"></tbody></table>
   </section>
 
   <section class="card span4">
-    <h2>note</h2>
+    <h2 data-t="note">状态说明</h2>
     <div id="note" class="hint">-</div>
-    <h2 style="margin-top:12px">risk</h2>
+    <h2 style="margin-top:12px" data-t="risk">风险</h2>
     <table><tbody id="risk"></tbody></table>
   </section>
 
   <section class="card span8">
-    <h2>recent orders</h2>
-    <table><thead><tr><th>tag</th><th>name</th><th>side</th><th>state</th><th>qty</th><th>filled</th><th>px</th><th>ts</th></tr></thead>
+    <h2 data-t="recentOrders">最近订单</h2>
+    <table><thead><tr><th data-t="tag">标签</th><th data-t="name">合约</th><th data-t="side">方向</th>
+      <th data-t="state">状态</th><th data-t="qty">数量</th><th data-t="filled">已成</th>
+      <th data-t="px">价格</th><th data-t="ts">时间</th></tr></thead>
       <tbody id="orders"></tbody></table>
   </section>
 
   <section class="card span4">
-    <h2>events</h2>
-    <table><thead><tr><th>seq</th><th>kind</th><th>code</th><th>ts</th></tr></thead>
+    <h2 data-t="events">事件</h2>
+    <table><thead><tr><th data-t="seq">序号</th><th data-t="kind">类型</th>
+      <th data-t="result">结果</th><th data-t="ts">时间</th></tr></thead>
       <tbody id="events"></tbody></table>
   </section>
 
   <section class="card span4">
-    <h2>direct order</h2>
+    <h2 data-t="directOrder">直通单</h2>
     <form onsubmit="return sendOrder(event)">
       <div class="row">
-        <label>name<input id="d_name" type="number" min="1" value="1"></label>
-        <label>side<select id="d_side"><option value="1">buy</option><option value="2">sell</option></select></label>
-        <label>qty<input id="d_qty" type="number" min="1" value="1"></label>
-        <label>px (0=top)<input id="d_px" type="number" min="0" value="0"></label>
+        <label><span data-t="name">合约</span><input id="d_name" type="number" min="1" value="1"></label>
+        <label><span data-t="side">方向</span><select id="d_side">
+          <option value="1" data-t="buy">买</option><option value="2" data-t="sell">卖</option></select></label>
+        <label><span data-t="qty">数量</span><input id="d_qty" type="number" min="1" value="1"></label>
+        <label><span data-t="pxZeroTop">价格（0=对手价）</span><input id="d_px" type="number" min="0" value="0"></label>
       </div>
-      <button type="submit">Send IOC</button>
+      <button type="submit" data-t="sendIoc">发送 IOC</button>
     </form>
   </section>
 
   <section class="card span4">
-    <h2>basket (target position)</h2>
+    <h2 data-t="basket">篮子单（目标仓）</h2>
     <form onsubmit="return sendBasket(event)">
       <div class="legs" id="legs"></div>
-      <button type="submit">Apply basket</button>
+      <button type="submit" data-t="applyBasket">执行篮子</button>
     </form>
   </section>
 
   <section class="card span4">
-    <h2>twap algo</h2>
+    <h2 data-t="twap">TWAP 算法单</h2>
     <form onsubmit="return sendAlgo(event)">
       <div class="row">
-        <label>name<input id="a_name" type="number" min="1" value="1"></label>
-        <label>side<select id="a_side"><option value="1">buy</option><option value="2">sell</option></select></label>
-        <label>qty<input id="a_qty" type="number" min="1" value="4"></label>
+        <label><span data-t="name">合约</span><input id="a_name" type="number" min="1" value="1"></label>
+        <label><span data-t="side">方向</span><select id="a_side">
+          <option value="1" data-t="buy">买</option><option value="2" data-t="sell">卖</option></select></label>
+        <label><span data-t="qty">数量</span><input id="a_qty" type="number" min="1" value="4"></label>
       </div>
       <div class="row">
-        <label>horizon ms<input id="a_h" type="number" min="100" value="8000"></label>
-        <label>slice ms<input id="a_s" type="number" min="100" value="1000"></label>
+        <label><span data-t="horizonMs">总时长 ms</span><input id="a_h" type="number" min="100" value="8000"></label>
+        <label><span data-t="sliceMs">切片 ms</span><input id="a_s" type="number" min="100" value="1000"></label>
       </div>
-      <button type="submit">Start TWAP</button>
+      <button type="submit" data-t="startTwap">启动 TWAP</button>
     </form>
   </section>
 </main>
@@ -155,10 +163,68 @@
 <div id="toast"></div>
 <script>
 const $ = (id) => document.getElementById(id);
-const stateName = ["init", "running", "paused", "halted", "stopping"];
-const phaseName = ["", "staged", "working", "partial", "pending", "filled", "cancelled", "rejected"];
-const sideName = ["", "buy", "sell"];
+const I18N = {
+  zh: {
+    title: "pitlane 交易控制台",
+    init: "初始", running: "运行中", paused: "已暂停", halted: "已熔断", stopping: "停止中",
+    staged: "已登记", working: "挂单中", partial: "部分成交", pending: "待报", filled: "已成交",
+    cancelled: "已撤单", rejected: "已拒绝", buy: "买", sell: "卖",
+    pause: "暂停", resume: "恢复", halt: "熔断", resumeRisk: "解除熔断", cancelAll: "全撤", reload: "重载配置", stop: "停止",
+    equity: "权益", netQty: "净仓", realized: "已实现", unrealized: "未实现", drawdown: "回撤", turnover: "成交额",
+    fillsRej: "成交 / 拒单", orders1s: "1 秒下单", rejectPpm: "拒单率 ppm", quotes: "行情数", cpuMem: "CPU / 内存",
+    loadThreads: "负载 / 线程", positions: "持仓", name: "合约", today: "今仓", yday: "昨仓", avgPx: "均价",
+    note: "状态说明", risk: "风险", peak: "峰值", fees: "手续费", parents: "父单", children: "子单", cancels: "撤单",
+    recentOrders: "最近订单", tag: "标签", side: "方向", state: "状态", qty: "数量", filled: "已成", px: "价格", ts: "时间",
+    events: "事件", seq: "序号", kind: "类型", result: "结果",
+    directOrder: "直通单", pxZeroTop: "价格（0=对手价）", sendIoc: "发送 IOC",
+    basket: "篮子单（目标仓）", applyBasket: "执行篮子", twap: "TWAP 算法单", horizonMs: "总时长 ms",
+    sliceMs: "切片 ms", startTwap: "启动 TWAP", flat: "空仓", noOrders: "暂无订单",
+    order: "下单", algo: "算法单", controlFailed: "控制失败", requestFailed: "请求失败", pending2: "（待确认）",
+    basketNeedsLeg: "篮子单至少需要一个合约", stateUp: "正常", stateDown: "断开",
+    cfg: "配置版本", uptime: "运行", riskNote: "风险状态"
+  },
+  en: {
+    title: "pitlane ops console",
+    init: "init", running: "running", paused: "paused", halted: "halted", stopping: "stopping",
+    staged: "staged", working: "working", partial: "partial", pending: "pending", filled: "filled",
+    cancelled: "cancelled", rejected: "rejected", buy: "buy", sell: "sell",
+    pause: "Pause", resume: "Resume", halt: "Halt", resumeRisk: "Resume risk", cancelAll: "Cancel all",
+    reload: "Reload", stop: "Stop",
+    equity: "equity", netQty: "net qty", realized: "realized", unrealized: "unrealized", drawdown: "drawdown",
+    turnover: "turnover", fillsRej: "fills / rej", orders1s: "orders 1s", rejectPpm: "reject ppm", quotes: "quotes",
+    cpuMem: "cpu / mem", loadThreads: "load / threads", positions: "positions", name: "name", today: "today",
+    yday: "yday", avgPx: "avg px", note: "note", risk: "risk", peak: "peak", fees: "fees", parents: "parents",
+    children: "children", cancels: "cancels", recentOrders: "recent orders", tag: "tag", side: "side", state: "state",
+    qty: "qty", filled: "filled", px: "px", ts: "ts", events: "events", seq: "seq", kind: "kind", result: "result",
+    directOrder: "direct order", pxZeroTop: "px (0=top)", sendIoc: "Send IOC", basket: "basket (target position)",
+    applyBasket: "Apply basket", twap: "twap algo", horizonMs: "horizon ms", sliceMs: "slice ms",
+    startTwap: "Start TWAP", flat: "flat", noOrders: "no orders", order: "order", algo: "algo",
+    controlFailed: "control failed", requestFailed: "request failed", pending2: " (pending)",
+    basketNeedsLeg: "basket needs at least one leg", stateUp: "up", stateDown: "down", cfg: "cfg v", uptime: "up ",
+    riskNote: "risk"
+  }
+};
+let lang = localStorage.getItem("pitlane_lang") || "zh";
+function t(k) { return (I18N[lang] && I18N[lang][k]) || I18N.en[k] || k; }
+
+const STATE = ["init", "running", "paused", "halted", "stopping"];
+const PHASE = ["", "staged", "working", "partial", "pending", "filled", "cancelled", "rejected"];
+const ACTION = { pause: "pause", resume: "resume", halt: "halt", resume_risk: "resumeRisk",
+                 cancel_all: "cancelAll", reload: "reload", stop: "stop" };
 let cursor = 0;
+
+function applyLang() {
+  document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
+  document.title = t("title");
+  document.querySelectorAll("[data-t]").forEach((el) => { el.textContent = t(el.dataset.t); });
+  $("langBtn").textContent = lang === "zh" ? "EN" : "中文";
+  localStorage.setItem("pitlane_lang", lang);
+}
+function toggleLang() {
+  lang = lang === "zh" ? "en" : "zh";
+  applyLang();
+  tick();
+}
 
 function toast(text, ok) {
   const d = document.createElement("div");
@@ -175,21 +241,21 @@ async function ctl(action) {
     const r = await fetch("/api/control", { method: "POST", headers: { "Content-Type": "application/json" },
                                             body: JSON.stringify({ action }) });
     const j = await r.json();
-    toast(action + ": " + (j.msg || j.code), j.code === 0);
-  } catch (e) { toast("control failed: " + e, false); }
+    toast(t(ACTION[action] || action) + ": " + (j.msg || j.code), j.code === 0);
+  } catch (e) { toast(t("controlFailed") + ": " + e, false); }
 }
 
 async function post(path, body, label) {
   try {
     const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     const j = await r.json();
-    toast(label + ": " + (j.msg || j.code) + (j.pending ? " (pending)" : ""), j.code === 0);
-  } catch (e) { toast(label + " failed: " + e, false); }
+    toast(label + ": " + (j.msg || j.code) + (j.pending ? t("pending2") : ""), j.code === 0);
+  } catch (e) { toast(label + " " + t("requestFailed") + ": " + e, false); }
 }
 
 function sendOrder(ev) {
   ev.preventDefault();
-  post("/api/order", { name: num("d_name"), side: num("d_side"), qty: num("d_qty"), px: num("d_px") }, "order");
+  post("/api/order", { name: num("d_name"), side: num("d_side"), qty: num("d_qty"), px: num("d_px") }, t("order"));
   return false;
 }
 function sendBasket(ev) {
@@ -200,14 +266,14 @@ function sendBasket(ev) {
     const target = Number(row.querySelector(".btarget").value || 0);
     if (name > 0) legs.push({ name, target });
   });
-  if (!legs.length) { toast("basket needs at least one leg", false); return false; }
-  post("/api/basket", { legs }, "basket");
+  if (!legs.length) { toast(t("basketNeedsLeg"), false); return false; }
+  post("/api/basket", { legs }, t("basket"));
   return false;
 }
 function sendAlgo(ev) {
   ev.preventDefault();
   post("/api/algo", { name: num("a_name"), side: num("a_side"), qty: num("a_qty"),
-                      horizon_ms: num("a_h"), slice_ms: num("a_s") }, "algo");
+                      horizon_ms: num("a_h"), slice_ms: num("a_s") }, t("algo"));
   return false;
 }
 
@@ -215,20 +281,20 @@ for (let i = 0; i < 3; ++i) {
   const row = document.createElement("div");
   row.className = "leg";
   row.innerHTML = '<span class="n">' + (i + 1) + '</span>' +
-    '<input class="bname" type="number" min="0" value="' + (i === 0 ? 1 : 0) + '" title="name">' +
-    '<input class="btarget" type="number" value="0" title="target">';
+    '<input class="bname" type="number" min="0" value="' + (i === 0 ? 1 : 0) + '" title="' + t("name") + '">' +
+    '<input class="btarget" type="number" value="0" title="' + t("qty") + '">';
   $("legs").appendChild(row);
 }
 
 function renderStatus(j) {
-  $("st").textContent = stateName[j.state] || "?";
+  $("st").textContent = t(STATE[j.state] || "init");
   $("st").className = "pill " + (j.state === 1 ? "on" : j.state === 3 ? "off" : "warn");
-  $("md").textContent = "MD " + (j.md_up ? "up" : "down");
+  $("md").textContent = "MD " + t(j.md_up ? "stateUp" : "stateDown");
   $("md").className = "pill " + (j.md_up ? "on" : "off");
-  $("td").textContent = "TD " + (j.td_up ? "up" : "down");
+  $("td").textContent = "TD " + t(j.td_up ? "stateUp" : "stateDown");
   $("td").className = "pill " + (j.td_up ? "on" : "off");
-  $("ver").textContent = "cfg v" + j.version;
-  $("up").textContent = "up " + Math.round(j.uptime_us / 1e6) + "s";
+  $("ver").textContent = t("cfg") + j.version;
+  $("up").textContent = t("uptime") + Math.round(j.uptime_us / 1e6) + (lang === "zh" ? " 秒" : "s");
 
   const r = j.risk, c = j.counters, h = j.host;
   $("k_equity").textContent = fmt(r.equity);
@@ -247,24 +313,25 @@ function renderStatus(j) {
   $("note").textContent = j.note || "-";
 
   $("risk").innerHTML =
-    '<tr><td>peak</td><td>' + fmt(r.peak) + '</td></tr>' +
-    '<tr><td>fees</td><td>' + fmt(r.fees) + '</td></tr>' +
-    '<tr><td>parents</td><td>' + fmt(c.parents) + '</td></tr>' +
-    '<tr><td>children</td><td>' + fmt(c.children) + '</td></tr>' +
-    '<tr><td>cancels</td><td>' + fmt(c.cancels) + '</td></tr>';
+    '<tr><td>' + t("peak") + '</td><td>' + fmt(r.peak) + '</td></tr>' +
+    '<tr><td>' + t("fees") + '</td><td>' + fmt(r.fees) + '</td></tr>' +
+    '<tr><td>' + t("parents") + '</td><td>' + fmt(c.parents) + '</td></tr>' +
+    '<tr><td>' + t("children") + '</td><td>' + fmt(c.children) + '</td></tr>' +
+    '<tr><td>' + t("cancels") + '</td><td>' + fmt(c.cancels) + '</td></tr>';
 
   const pos = j.pos || [];
   $("pos").innerHTML = pos.length ? pos.map((p) =>
     '<tr><td>' + p.name + '</td><td>' + fmt(p.today) + '</td><td>' + fmt(p.yday) + '</td><td>' + fmt(p.avg_px) +
     '</td><td>' + fmt(p.realized) + '</td><td>' + fmt(p.unrealized) + '</td></tr>').join("")
-    : '<tr><td colspan="6" class="empty">flat</td></tr>';
+    : '<tr><td colspan="6" class="empty">' + t("flat") + '</td></tr>';
 
   const rows = (j.orders || []).slice().reverse();
   $("orders").innerHTML = rows.length ? rows.map((o) =>
-    '<tr><td>' + o.tag + '</td><td>' + o.name + '</td><td>' + (sideName[o.side] || o.side) + '</td><td>' +
-    (phaseName[o.phase] || o.phase) + '</td><td>' + fmt(o.qty) + '</td><td>' + fmt(o.filled) + '</td><td>' +
+    '<tr><td>' + o.tag + '</td><td>' + o.name + '</td><td>' +
+    (o.side === 1 ? t("buy") : o.side === 2 ? t("sell") : o.side) + '</td><td>' +
+    (PHASE[o.phase] ? t(PHASE[o.phase]) : o.phase) + '</td><td>' + fmt(o.qty) + '</td><td>' + fmt(o.filled) + '</td><td>' +
     fmt(o.px) + '</td><td>' + Math.round(o.ts / 1000) + '</td></tr>').join("")
-    : '<tr><td colspan="8" class="empty">no orders</td></tr>';
+    : '<tr><td colspan="8" class="empty">' + t("noOrders") + '</td></tr>';
 }
 
 function renderEvents(j) {
@@ -286,6 +353,7 @@ async function tick() {
   } catch (err) { /* keep polling */ }
 }
 
+applyLang();
 setInterval(tick, 500);
 tick();
 </script>

@@ -93,7 +93,9 @@ inline int key_legs(const char* s, uint32_t n, pitlane::OpsLeg* legs, int max) n
 }
 
 // Reads `key = value` pairs. Returns false only when the file cannot be opened.
-inline bool load_ops_conf(const char* path, pitlane::OpsPolicy& pol, uint16_t& port, char* root, int cap) noexcept {
+// `bind` may be null when the caller does not want to reload the listen address.
+inline bool load_ops_conf(const char* path, pitlane::OpsPolicy& pol, uint16_t& port, char* root, int cap,
+                          char* bind = nullptr, int bind_cap = 0) noexcept {
     std::FILE* f = std::fopen(path, "r");
     if (!f) return false;
     char line[256];
@@ -114,6 +116,8 @@ inline bool load_ops_conf(const char* path, pitlane::OpsPolicy& pol, uint16_t& p
         const long long v = std::strtoll(val, nullptr, 10);
         if (std::strcmp(key, "port") == 0) port = static_cast<uint16_t>(v);
         else if (std::strcmp(key, "doc_root") == 0) std::snprintf(root, static_cast<std::size_t>(cap), "%s", val);
+        else if (std::strcmp(key, "bind") == 0 && bind && bind_cap > 0)
+            std::snprintf(bind, static_cast<std::size_t>(bind_cap), "%s", val);
         else if (std::strcmp(key, "max_manual_qty") == 0) pol.max_manual_qty = v;
         else if (std::strcmp(key, "max_manual_notional") == 0) pol.max_manual_notional = v;
         else if (std::strcmp(key, "max_manual_per_min") == 0) pol.max_manual_per_min = static_cast<int32_t>(v);
@@ -130,13 +134,17 @@ class SimOps {
 public:
     ~SimOps() { close(); }
 
-    bool open(pitlane::FullFlow& flow, bool paper, uint16_t port, const char* doc_root, const char* ops_conf) noexcept {
+    bool open(pitlane::FullFlow& flow, bool paper, uint16_t port, const char* doc_root, const char* ops_conf,
+              const char* bind_addr = nullptr) noexcept {
         flow_ = &flow;
         paper_ = paper;
         pol_ = pitlane::OpsPolicy{};
         std::snprintf(root_, sizeof root_, "%s", doc_root && doc_root[0] ? doc_root : "web");
+        std::snprintf(bind_, sizeof bind_, "127.0.0.1");
         std::snprintf(conf_path_, sizeof conf_path_, "%s", ops_conf ? ops_conf : "run/ops.conf");
-        const bool have_conf = simnow_ops::load_ops_conf(conf_path_, pol_, port, root_, sizeof root_);
+        const bool have_conf =
+            simnow_ops::load_ops_conf(conf_path_, pol_, port, root_, sizeof root_, bind_, sizeof bind_);
+        if (bind_addr && bind_addr[0]) std::snprintf(bind_, sizeof bind_, "%s", bind_addr);
         if (!have_conf) {
             std::printf("[ops] %s not found, using defaults\n", conf_path_);
         }
@@ -166,8 +174,9 @@ public:
             std::printf("[ops] web disabled\n");
             return true;
         }
-        if (!http_.start(port, &SimOps::http_cb, this, root_)) {
-            std::printf("[ops] HTTP bind on %u failed; trading continues without web\n", static_cast<unsigned>(port));
+        if (!http_.start(port, &SimOps::http_cb, this, root_, bind_)) {
+            std::printf("[ops] HTTP bind on %s:%u failed; trading continues without web\n", bind_,
+                        static_cast<unsigned>(port));
         }
         return true;
     }
@@ -183,6 +192,7 @@ public:
 
     bool web() const noexcept { return http_.running(); }
     uint16_t port() const noexcept { return http_.port(); }
+    const char* bind_addr() const noexcept { return bind_; }
 
     pitlane::ControlPlane& control() noexcept { return cp_; }
     const pitlane::OpsPolicy& policy() const noexcept { return pol_; }
@@ -584,6 +594,7 @@ private:
     uint64_t snap_seq_{0};
     uint8_t last_risk_code_{0};
     char root_[256]{};
+    char bind_[48]{};
     char conf_path_[512]{};
     char* json_{nullptr};
     int json_len_{0};

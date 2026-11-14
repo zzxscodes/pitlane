@@ -158,6 +158,8 @@ curl -s -X POST -d '{"action":"halt"}' http://127.0.0.1:8080/api/control
 curl -s 'http://127.0.0.1:8080/api/events?since=0'
 ```
 
+The console listens on loopback. To open it from another host, pass `--web-bind 0.0.0.0` or set `bind = 0.0.0.0` in `run/ops.conf`. The server has no authentication, so only do that on a network you trust.
+
 `run/ops.conf` sets the port, the document root, and the policy limits: manual quantity and notional, manual tickets per minute, daily loss, drawdown in ppm, reject-rate ceiling in ppm, and the stale-quote horizon. `reload` re-reads that file and bumps the version shown on the page. `max_daily_loss` and `max_drawdown_ppm` of 0 disable those checks.
 
 | Code | Meaning |

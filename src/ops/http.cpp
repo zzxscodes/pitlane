@@ -250,7 +250,8 @@ void HttpServer::serve(int fd) noexcept {
     if (resp.body && resp.body_len > 0) send_all(fd, resp.body, resp.body_len);
 }
 
-bool HttpServer::start(uint16_t port, HttpHandler fn, void* user, const char* doc_root) noexcept {
+bool HttpServer::start(uint16_t port, HttpHandler fn, void* user, const char* doc_root,
+                       const char* bind_addr) noexcept {
     if (running_) return false;
     fn_ = fn;
     user_ = user;
@@ -282,6 +283,11 @@ bool HttpServer::start(uint16_t port, HttpHandler fn, void* user, const char* do
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
     addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    if (bind_addr && bind_addr[0] && ::inet_pton(AF_INET, bind_addr, &addr.sin_addr) != 1) {
+        ::close(listen_fd_);
+        listen_fd_ = -1;
+        return false;
+    }
     addr.sin_port = htons(port);
     if (::bind(listen_fd_, reinterpret_cast<sockaddr*>(&addr), sizeof addr) != 0 || ::listen(listen_fd_, 16) != 0) {
         ::close(listen_fd_);
