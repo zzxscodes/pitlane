@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <dirent.h>
 #include <new>
 #include <unistd.h>
@@ -331,6 +332,98 @@ static void check_replay() {
     expect(ok && sink == 500ull * 64ull * 63ull / 2ull, "replay state");
 }
 
+static void check_net() {
+    static pitlane::TermLog<1024, 3> log;
+    const int reader = log.add_reader();
+    uint8_t frame[128]{};
+    uint8_t payload[sizeof(Item)]{};
+
+    const Mark m = mark();
+    bool ok = true;
+    for (int i = 0; i < 500; ++i) {
+        Item body{static_cast<uint64_t>(i), static_cast<uint64_t>(i + 1)};
+        std::size_t written = 0;
+        ok = pitlane::net_pack<Item>(pitlane::NetKind::Signal, static_cast<uint64_t>(i), i, body, frame,
+                                     sizeof(frame), &written) &&
+             ok;
+        pitlane::NetHeader head{};
+        Item back{};
+        std::size_t used = 0;
+        ok = pitlane::net_unpack<Item>(frame, written, head, back, &used) && ok;
+        ok = back.a == body.a && ok;
+        std::memcpy(payload, &body, sizeof(body));
+        ok = log.publish(payload, static_cast<uint32_t>(sizeof(payload)), 1) && ok;
+        uint32_t len = 0;
+        uint16_t type = 0;
+        Item got{};
+        ok = log.poll(reader, &got, static_cast<uint32_t>(sizeof(got)), len, type) == 1 && ok;
+        ok = len == sizeof(Item) && got.a == body.a && ok;
+    }
+    expect_quiet(m, "net pack/log");
+    expect(ok && log.reader_pos(reader) == log.tail(), "net state");
+}
+
+static void check_oms() {
+    pitlane::Oms<64> oms;
+    pitlane::VenueTop venues[2]{};
+    venues[0].venue = 1;
+    venues[0].ask_px = 100;
+    venues[0].ask_qty = 100;
+    venues[0].taker_fee_bps = 100;
+    venues[1].venue = 2;
+    venues[1].ask_px = 100;
+    venues[1].ask_qty = 100;
+    venues[1].taker_fee_bps = 0;
+    pitlane::SorSlice slices[4]{};
+
+    const Mark m = mark();
+    bool ok = true;
+    for (int i = 0; i < 48; ++i) {
+        pitlane::OmsOrder draft{};
+        draft.local = static_cast<uint64_t>(i + 1);
+        draft.client = static_cast<uint64_t>(i + 100);
+        draft.name = 7;
+        draft.acct = 1;
+        draft.px = 100;
+        draft.qty = 10;
+        draft.side = 1;
+        ok = oms.submit(draft) && ok;
+        ok = oms.ack(draft.local, static_cast<uint64_t>(i + 1000), 1, i) && ok;
+        pitlane::OmsFill fill{};
+        ok = oms.fill(draft.local, static_cast<uint64_t>(i + 2000), 10, 100, i, fill) && ok;
+        ok = fill.phase == static_cast<uint8_t>(pitlane::Phase::Filled) && ok;
+    }
+    for (int i = 0; i < 500; ++i) {
+        const int n = pitlane::sor_aggressive_buy(venues, 2, 100, slices, 4);
+        ok = n == 1 && slices[0].venue == 2 && ok;
+    }
+    expect_quiet(m, "oms/sor hot path");
+    expect(ok && oms.active() == 0 && oms.size() == 48, "oms state");
+}
+
+static void check_factor() {
+    pitlane::FactorPipeline<4, 64, 128> pipe;
+    pitlane::FactorSpec spec{};
+    spec.id = 1;
+    spec.kind = static_cast<uint8_t>(pitlane::FactorKind::Return);
+    spec.window = 2;
+    spec.scale = 1000000;
+    expect(pipe.add(spec), "factor add");
+
+    const Mark m = mark();
+    bool ok = true;
+    pitlane::SigNote sig{};
+    for (int i = 0; i < 500; ++i) {
+        ok = pipe.on_sample(100 + (i % 7), i, (i % 2) ? 1 : -1) && ok;
+        if (i >= 2) {
+            ok = pipe.signal(0, 0, sig, 1, "factor", i) && ok;
+            ok = sig.value != 0 && ok;
+        }
+    }
+    expect_quiet(m, "factor sample/signal");
+    expect(ok && sig.value != 0, "factor state");
+}
+
 int main() {
     check_counter_live();
     const int fds_before = count_fds();
@@ -342,6 +435,9 @@ int main() {
     check_mbo();
     check_ring();
     check_replay();
+    check_net();
+    check_oms();
+    check_factor();
     expect(count_fds() == fds_before, "descriptor count unchanged");
 
     if (g_fails) {

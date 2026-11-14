@@ -20,7 +20,7 @@ find_package(pitlane REQUIRED)
 target_link_libraries(your_target PRIVATE pitlane::pitlane)
 ```
 
-pitlane 是给**同一台机器**上多个交易进程用的 C++17 辅助库：一块定容共享工作区，负责委托、持仓、交易日和纸面撮合。价格用整数，时间用微秒。库本身不连交易所，也不接券商柜台 API。
+pitlane 是给**同一台机器或同一组机器**上多个交易进程用的 C++17 辅助库：一块定容共享工作区，负责委托、持仓、交易日和纸面撮合。价格用整数，时间用微秒。库本身不连交易所，也不接券商柜台 API；可选的 UDP 链路只承载 pitlane 与 pitlane 之间的消息。
 
 名字取自赛道边的维修通道：单子和行情从这里进来，检查、排队、撮合后再交回你的柜台或策略。
 
@@ -28,17 +28,17 @@ pitlane 是给**同一台机器**上多个交易进程用的 C++17 辅助库：�
 
 行情、策略、报单经常分属不同进程。它们在这里通过同一份内存映射 desk 交换委托、回报、行情、信号和查询：消息定长，容量编译期固定；环满则写入失败（不扩容、不覆盖未确认槽）。委托槽、账本和在途单都在定长数组里；资金与持仓原地改，临界区很短。
 
-包含 `pitlane/pitlane.hpp`，链接 `libpitlane.a`（或 `libpitlane.so`）。类型都在命名空间 `pitlane`。这是本机辅助接口，不是拿来热替换另一套在跑系统的兼容层。
+包含 `pitlane/pitlane.hpp`，链接 `libpitlane.a`（或 `libpitlane.so`）。类型都在命名空间 `pitlane`。这是本机与跨机共用的交易枢纽接口，不是拿来热替换另一套在跑系统的兼容层。
 
-发行版 **2.22.0**（`pitlane::kVersion`）。动态库 soname 仍是 `libpitlane.so.1`。desk 布局版本 `kDeskVersion` 为 5。标的/行情池 `Yard`（魔数 `PITYARD2`，`kYardVersion` 2）是另一块启动期映射，体量对齐 startup pool。
+发行版 **2.23.0**（`pitlane::kVersion`）。动态库 soname 仍是 `libpitlane.so.1`。desk 布局版本 `kDeskVersion` 为 5。标的/行情池 `Yard`（魔数 `PITYARD2`，`kYardVersion` 2）是另一块启动期映射，体量对齐 startup pool。
 
-2.22.0 增加：文件后备的 WAL（`wal_open` / `wal_append` / `wal_recover`）、序号锁的跨语言快照环（`SnapRing` / `snap_open`）、启动校准的 TSC 时钟（`TscClock`）、按 lane 的尾延迟直方图与触发冻结 tape（`TailBoard` / `TailTape`）、影子成交对比（`ShadowStats` / `ShadowBook`）、确定性的环序列回放与故障注入（`ReplayTape` / `replay_ring` / `FaultPlan`）、逐单盘口构建器（`MboBook`），以及不重启 desk 的路由热加载和可选的策略绑核（`RouteBook::unbind`、`route_control`、`StratEngine::routes` / `pin_cpu`）。desk 布局仍为 5；WAL 与快照文件各自带魔数和版本。
+2.23.0 增加 Aeron 式跨机层：32 字节帧编解码（`net_pack` / `net_unpack`）、带 pad 帧和流控的 term log（`TermLog`）、非阻塞 IPv4 `UdpLink`、带多数派提交的 leader/follower 复制日志（`ReplicaLog`），以及把 desk 环与远端委托/回报对接的 `RemoteHub`。同时补齐执行层：`Oms`、`Ems`、`Sor`、`Pms`、`Rms`；并加入统一的因子路径 `FactorEngine` -> `FactorEval` -> `FactorPipeline`，在研究、回测、纸面和实盘阶段复用同一套代码。desk 布局仍为 5；新传输使用自己的帧格式。
 
-别处用 Mongo / RabbitMQ 承担的职责，在这里用**本地实现**对齐：`seed_facts` / `seed_hours` / `seed_holidays` / `load_facts` / `load_hours` / `load_holidays` 写入合约与日历；`TopicBus` + `RouteBook` 做本机 topic 分发与算法路由。真正留在库外的是券商/CTP 等外部柜台接入。启动期可以分配或 mmap；辅助热路径不分配、不销毁资源。
+别处用 Mongo / RabbitMQ 承担的职责，在这里用**本机或跨机实现**对齐：`seed_facts` / `seed_hours` / `seed_holidays` / `load_facts` / `load_hours` / `load_holidays` 写入合约与日历；`TopicBus` + `RouteBook` 做本机 topic 分发与算法路由；`TermLog` + `UdpLink` + `ReplicaLog` 负责跨机帧与确定性复制。真正留在库外的是券商/CTP 等外部柜台接入。启动期可以分配或 mmap；辅助热路径不分配、不销毁资源。
 
 启动配置是可选 INI（`examples/demo/pitlane.conf`）。`conf_load` 叠到默认值上，空值保留默认；`conf_normalize` 把不安全取值压进合法范围（例如环深取不超过编译期上限的 2 的幂），并写出提示行。用 `conf_map_opt` / `conf_arena_opt` / `desk_apply_conf` / `conf_venue_cfg` 在建图时应用一次即可，热路径不再读文件。
 
-头文件和源文件按区域再分一层目录。`desk` 放共享区和上面的记录。`book` 放行情、交易日和纸面撮合。`order` 放委托生命周期、检查和持仓。`time` 放时钟和延迟记录。`study` 放特征、事后偏移和调用方决策辅助。`util` 放数值、文本、组帧和定长缓冲。`host` 放进程侧的 `sched_setaffinity`、调度策略、IRQ 亲和性、显式大页池、`mlockall` 与 NUMA membind。某个区域若有编译单元，源文件在 `src` 下的同名目录里。某个区域的测试在 `tests` 下的同名目录里。延迟程序是 `tests/time/perf.cpp`。单独包含某个头文件时写上区域，例如 `pitlane/order/sheet.hpp`。`version.hpp` 和 `pitlane.hpp` 放在同一层。
+头文件和源文件按区域再分一层目录。`desk` 放共享区和上面的记录。`book` 放行情、交易日和纸面撮合。`order` 放委托生命周期、检查、持仓以及 OMS/EMS/SOR/PMS/RMS 层。`time` 放时钟和延迟记录。`study` 放特征、事后偏移、因子评估和调用方决策辅助。`net` 放帧、term log、UDP 链路、复制与远端 hub。`util` 放数值、文本、组帧和定长缓冲。`host` 放进程侧的 `sched_setaffinity`、调度策略、IRQ 亲和性、显式大页池、`mlockall` 与 NUMA membind。某个区域若有编译单元，源文件在 `src` 下的同名目录里。某个区域的测试在 `tests` 下的同名目录里。延迟程序是 `tests/time/perf.cpp`。单独包含某个头文件时写上区域，例如 `pitlane/order/sheet.hpp`。`version.hpp` 和 `pitlane.hpp` 放在同一层。
 
 `PriceWindow` 在固定的价格步长上存放数量。最优价沿着占用位往前找，空档按字跳过。`publish_batch` 一次写入多条环槽，尾指针只推进一次。其中一条还忙着，整批都不写入。`SlotPool` 用固定槽保存调用方的记录，并按编号查找。`margin_both` 取按金额和按手数两笔保证金里较大的一笔。`right_value` 给出认购或认沽处于实值的幅度。这些调用都不发单。
 

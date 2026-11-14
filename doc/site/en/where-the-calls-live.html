@@ -577,6 +577,58 @@
 <td><code>util/wirepx.hpp</code></td>
 <td>Mantissa/exponent wire price helpers</td>
 </tr>
+<tr>
+<td><code>net/frame.hpp</code></td>
+<td><code>NetHeader</code>, <code>NetKind</code>, <code>net_pack</code>, <code>net_unpack</code>, CRC32C</td>
+</tr>
+<tr>
+<td><code>net/logbuf.hpp</code></td>
+<td><code>TermLog</code> term buffer with pad frames and flow control</td>
+</tr>
+<tr>
+<td><code>net/udp.hpp</code></td>
+<td><code>UdpAddr</code>, <code>udp_addr</code>, <code>udp_parse</code>, <code>UdpLink</code></td>
+</tr>
+<tr>
+<td><code>net/replicate.hpp</code></td>
+<td>Leader/follower <code>ReplicaLog</code> with quorum commit</td>
+</tr>
+<tr>
+<td><code>net/hub.hpp</code></td>
+<td><code>RemoteHub</code> desk-to-log and log-to-desk bridge</td>
+</tr>
+<tr>
+<td><code>order/oms.hpp</code></td>
+<td><code>Oms</code>, <code>OmsOrder</code>, <code>OmsFill</code> order state and parent/child progress</td>
+</tr>
+<tr>
+<td><code>order/sor.hpp</code></td>
+<td>Venue effective price, aggressive/passive routing, <code>ShownHold</code></td>
+</tr>
+<tr>
+<td><code>order/ems.hpp</code></td>
+<td><code>Ems</code> parent slicing through <code>SlicePlan</code> and the SOR</td>
+</tr>
+<tr>
+<td><code>order/pms.hpp</code></td>
+<td><code>Pms</code> average-cost positions and PnL</td>
+</tr>
+<tr>
+<td><code>order/rms.hpp</code></td>
+<td><code>Rms</code> pre-trade limit checks</td>
+</tr>
+<tr>
+<td><code>study/factor.hpp</code></td>
+<td><code>FactorEngine</code> integer factor series</td>
+</tr>
+<tr>
+<td><code>study/factor_eval.hpp</code></td>
+<td><code>FactorEval</code> IC, rank IC, hit rate, quintiles</td>
+</tr>
+<tr>
+<td><code>study/pipeline.hpp</code></td>
+<td><code>FactorPipeline</code> research/backtest/paper/live stages</td>
+</tr>
 </tbody></table>
   </main>
 </div>

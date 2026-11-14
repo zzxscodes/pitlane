@@ -1,5 +1,28 @@
 # Changelog
 
+## [2.23.0] - 2026-11-14
+
+### Added
+- `net/frame.hpp`: `NetHeader` / `NetKind` / `net_pack` / `net_unpack` with magic, version, length, and CRC32C validation for fixed-size desk records up to 512 bytes.
+- `net/logbuf.hpp`: `TermLog` is an Aeron-style term log with 32-byte frames, data/pad/heartbeat frames, term rotation, multiple reader positions, and fail-closed flow control.
+- `net/udp.hpp`: `UdpAddr` / `udp_addr` / `udp_parse` and a non-blocking IPv4 `UdpLink` for host-to-host datagrams. The real network path is exercised on loopback in this release.
+- `net/replicate.hpp`: `ReplicaLog` is a leader/follower log with `prev_index` / `prev_term` validation, per-node match positions, quorum commit, and ordered apply. It is the deterministic replication core, not a full election protocol.
+- `net/hub.hpp`: `RemoteHub` bridges desk report/quote rings to an outbound term log and inbound `Intent` frames back into `Desk::intents`, so `Center` remains the single hub across hosts.
+- `order/oms.hpp`: `Oms` / `OmsOrder` / `OmsFill` provide submit, ack, partial and full fill, duplicate venue-fill rejection, cancel, confirm-cancel, reject, optimistic-version amend, parent/child progress, and local/client/venue lookup on a fixed pool.
+- `order/sor.hpp`: venue effective price with taker fees, aggressive buy/sell routing, passive weight allocation, venue caps and lots, and `ShownHold` freshness accounting.
+- `order/ems.hpp`: `Ems` parents schedule child slices through `SlicePlan`, allocate them with the SOR, and track working/filled quantity.
+- `order/pms.hpp`: `Pms` keeps average-cost long/short positions, today/yesterday quantity, realized PnL, fees, net quantity, and unrealized PnL.
+- `order/rms.hpp`: `Rms` performs pure pre-trade checks for quantity, notional, daily notional, position, live orders, order rate, price band, cash, and a halt flag.
+- `study/factor.hpp`: `FactorEngine` computes Return, Momentum, Volatility, ZScore, Ema, Rsi, Ofi, and Imbalance in integer scaled units from fixed rings.
+- `study/factor_eval.hpp`: `FactorEval` reports Pearson IC, Spearman rank IC, hit rate, and top/bottom quintile returns.
+- `study/pipeline.hpp`: `FactorPipeline` runs the same factor path in Research, Backtest, Paper, and Live stages; only Research/Backtest record evaluation and Live emits `SigNote`.
+- `tests/net`, `tests/oms`, `tests/factor`: new area tests. `tests/alloc` now covers frame pack/unpack, term-log publish/poll, OMS submit/ack/fill, SOR routing, factor sampling, and pipeline signal emission after startup.
+
+### Notes
+- Library release version is 2.23.0. Desk layout stays `kDeskVersion` 5; no `Desk` layout change.
+- The cross-host path is a transport, replication, and bridge layer. It is verified over loopback UDP; no TLS, discovery, kernel bypass, or election protocol is included.
+- All new library containers are caller-owned and allocation-free. Socket open/close happens only at startup and teardown.
+
 ## [2.22.0] - 2026-11-14
 
 ### Added

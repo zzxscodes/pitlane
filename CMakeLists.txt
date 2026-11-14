@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(pitlane VERSION 2.22.0 LANGUAGES CXX)
+project(pitlane VERSION 2.23.0 LANGUAGES CXX)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -105,7 +105,7 @@ if(PITLANE_BUILD_SHARED)
 endif()
 
 set(PITLANE_EXAMPLES demo desk book order study time lane own pace)
-set(PITLANE_AREAS desk book order time study util host alloc)
+set(PITLANE_AREAS desk book order time study util host net oms factor alloc)
 set(PITLANE_SAN_TARGETS pitlane)
 
 if(PITLANE_BUILD_EXAMPLES)

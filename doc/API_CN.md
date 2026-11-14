@@ -10,11 +10,11 @@
 
 所有名字都在命名空间 `pitlane` 里。链接 `libpitlane.a`，或者用 `-lpitlane` 链接动态库。动态库的 soname 是 `libpitlane.so.1`。两种链接方式使用同一套头文件。
 
-发行版本是 `kVersion`，当前是 2.22.0，并拆成 `kVersionMajor`、`kVersionMinor` 和 `kVersionPatch`。`kDeskVersion` 是 desk 映射文件的布局版本，当前是 5。`kYardVersion` 是独立的标的/行情池布局版本，当前是 2。库的一次新发行可以保持任一布局版本不动。
+发行版本是 `kVersion`，当前是 2.23.0，并拆成 `kVersionMajor`、`kVersionMinor` 和 `kVersionPatch`。`kDeskVersion` 是 desk 映射文件的布局版本，当前是 5。`kYardVersion` 是独立的标的/行情池布局版本，当前是 2。库的一次新发行可以保持任一布局版本不动。
 
 带左侧分节导航的静态网页在 `doc/site/zh/`（`python3 doc/gen_site.py` 生成）。打开本地 `doc/site/zh/index.html` 或 GitHub Pages；在 `github.com/.../blob/...` 里打开只会看到源码。启动期设置见 **启动配置**。
 
-头文件分在 `pitlane/desk/`、`pitlane/book/`、`pitlane/order/`、`pitlane/time/`、`pitlane/study/`、`pitlane/util/` 和 `pitlane/host/` 下面。`version.hpp` 与 `pitlane.hpp` 同一层。下面的表在路径里写了区域。
+头文件分在 `pitlane/desk/`、`pitlane/book/`、`pitlane/order/`、`pitlane/time/`、`pitlane/study/`、`pitlane/net/`、`pitlane/util/` 和 `pitlane/host/` 下面。`version.hpp` 与 `pitlane.hpp` 同一层。下面的表在路径里写了区域。
 
 价格和数量是整数。时间是微秒。方向 1 是买入，2 是卖出。普通拒绝通过 `false`、负数，或不是 `Why::None` 的 `Why` 表示。这些情况不抛异常。环或队列写满时，这次写入失败，已有内容保持不变。
 
@@ -22,7 +22,7 @@
 
 库在进程启动时接受的可调项，都放在可选的 INI 风格文件里（见 `examples/demo/pitlane.conf`）。默认值是 `desk/config.hpp` 里 `PitConf` 的成员初值。省略某个键，或把值留空，就保留该默认值。未知键忽略。硬解析错误（截断行、该写数字却写了别的）时 `conf_load` 返回 false。
 
-`broker` 的 `ack_limit_us` / `life_limit_us` / `pull_limit_us` 默认 `60000000`（60 秒），对齐常见的 `trading center` `HeartBeatIntervalSec`；设为 `0` 关闭该轴。`host` 默认打开 `thp_disable` 与 `mlockall`。Desk FanRing 软容量仍停在编译期上限（`kIntentCap` 等）。十万级标的/行情池在独立的 `[yard]` / `Yard` 映射里（启动期一次建好，热路径不再分配）。Mongo 文档与 RabbitMQ topic 的职责由本地 API 承担（`seed_facts` / `TopicBus` / `RouteBook`），不会把连接串或券商 URI 写进库里。
+`broker` 的 `ack_limit_us` / `life_limit_us` / `pull_limit_us` 默认 `60000000`（60 秒），对齐常见的 `trading center` `HeartBeatIntervalSec`；设为 `0` 关闭该轴。`host` 默认打开 `thp_disable` 与 `mlockall`。Desk FanRing 软容量仍停在编译期上限（`kIntentCap` 等）。十万级标的/行情池在独立的 `[yard]` / `Yard` 映射里（启动期一次建好，热路径不再分配）。Mongo 文档与 RabbitMQ topic 的职责由本机或跨机 API 承担（`seed_facts` / `TopicBus` / `RouteBook` / `TermLog` / `ReplicaLog`），不会把连接串或券商 URI 写进库里。
 
 `conf_normalize` 在加载后只跑一次。它把环容量压到 `[2, 编译期 Cap]` 内的 2 的幂，把仅编译期定长的尺寸（`QueryFold`、`BrokerWatch::kCap`）恢复并写提示，并把每条调整写成一行可读文字放进调用方缓冲。启动时打印这些行。热路径不再打开配置文件。
 
@@ -398,6 +398,12 @@ book.apply(edits, 1);
 
 `MboBook` 用固定槽保存活动委托，并用固定桶链按编号索引。`apply` 接受新增、修改、撤单和成交。`best`、`depth`、`qty_at` 与 `invariant` 从活动委托推导视图。`RouteBook::unbind` 去掉一条绑定，`generation` 每次真实变化都前进，`route_control` 解析 `strategy|algo` 控制文本。`StratEngine::routes` 应用这些控制，`pin_cpu` 在建图时给策略线程绑核。
 
+`net_pack` / `net_unpack` 在 32 字节 `NetHeader` 后面放定长 desk 记录，头里有魔数、版本、长度和 CRC32C。`TermLog` 是单写多读的 term log：data、pad、heartbeat 三种帧；term 用 pad 帧轮转；每个读者有自己的绝对位置；最慢读者将被覆盖时 `publish` 直接失败。`UdpLink` 是非阻塞 IPv4 数据报 socket，只承载 pitlane 与 pitlane 之间的流量；`open` / `close` 属于启动和退出。`ReplicaLog` 是 leader/follower 日志：`follower_append` 校验 `prev_index` / `prev_term`，leader 按 `match` 的多数派提交，`apply` 按 index 顺序返回已提交条目。`RemoteHub` 把 desk 的回报和行情抽到出站日志，并把解出的远端 `Intent` 帧写入 `Desk::intents`，本机 `Center` 仍是唯一枢纽。
+
+`Oms` 用固定池保存调用方委托。`submit` / `ack` / `fill` / `cancel` / `confirm_cancel` / `reject` / `amend` 推动 `Phase`，拒绝重复的柜台成交编号，并维护 `filled`、`leaves`、`avg_px`。`parent_progress` 聚合子单。`sor` 按含 taker 费用的有效买价/卖价比较柜台，遵守柜台上限和最小变动单位，按成交权重分配被动单，`ShownHold` 记录已发出但尚未回来的可见数量。`Ems` 打开父单切片计划，在 `slice_poll` 切出数量时通过 SOR 产生子单，并记录成交。`Pms` 用平均成本维护多空持仓、今昨仓、已实现盈亏、费用和未实现盈亏。`Rms` 是纯盘前检查，覆盖数量、名义金额、当日名义、持仓、在场委托、下单速率、价格带、现金和停机标志。
+
+`FactorEngine` 用一条固定价格环和一条行情环，以整数缩放单位计算 Return、Momentum、Volatility、ZScore、Ema、Rsi、Ofi 和 Imbalance。`FactorEval` 记录因子与未来收益，输出 Pearson IC、Spearman rank IC、命中率和分位收益。`FactorPipeline` 在研究、回测、纸面和实盘阶段复用同一条因子路径；只有研究和回测写入评估，`signal` 在任意阶段超过阈值时发出 `SigNote`。
+
 ## 调用所在的头文件
 
 | 头文件 | 内容 |
@@ -541,3 +547,16 @@ book.apply(edits, 1);
 | `util/textbuf.hpp` | 定长文本 |
 | `util/touch.hpp` | 按缓存行预取并加载 |
 | `util/wirepx.hpp` | 尾数指数价格与定点换算 |
+| `net/frame.hpp` | `NetHeader`、`NetKind`、`net_pack`、`net_unpack`、CRC32C |
+| `net/logbuf.hpp` | `TermLog` term 缓冲，含 pad 帧与流控 |
+| `net/udp.hpp` | `UdpAddr`、`udp_addr`、`udp_parse`、`UdpLink` |
+| `net/replicate.hpp` | leader/follower `ReplicaLog`，多数派提交 |
+| `net/hub.hpp` | `RemoteHub`，desk 与日志双向桥接 |
+| `order/oms.hpp` | `Oms`、`OmsOrder`、`OmsFill`，订单状态与父子进度 |
+| `order/sor.hpp` | 柜台有效价格、主动/被动路由、`ShownHold` |
+| `order/ems.hpp` | `Ems` 通过 `SlicePlan` 和 SOR 切父单 |
+| `order/pms.hpp` | `Pms` 平均成本持仓与盈亏 |
+| `order/rms.hpp` | `Rms` 盘前限额检查 |
+| `study/factor.hpp` | `FactorEngine` 整数因子序列 |
+| `study/factor_eval.hpp` | `FactorEval` IC、rank IC、命中率、分位 |
+| `study/pipeline.hpp` | `FactorPipeline` 研究/回测/纸面/实盘阶段 |

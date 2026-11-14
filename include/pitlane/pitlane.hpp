@@ -85,6 +85,11 @@
 #include "pitlane/order/sign.hpp"
 #include "pitlane/order/ticket.hpp"
 #include "pitlane/order/typed.hpp"
+#include "pitlane/order/oms.hpp"
+#include "pitlane/order/sor.hpp"
+#include "pitlane/order/ems.hpp"
+#include "pitlane/order/pms.hpp"
+#include "pitlane/order/rms.hpp"
 
 #include "pitlane/time/clock.hpp"
 #include "pitlane/time/cut.hpp"
@@ -114,6 +119,9 @@
 #include "pitlane/study/strathook.hpp"
 #include "pitlane/study/strat_engine.hpp"
 #include "pitlane/study/study.hpp"
+#include "pitlane/study/factor.hpp"
+#include "pitlane/study/factor_eval.hpp"
+#include "pitlane/study/pipeline.hpp"
 
 #include "pitlane/host/affinity.hpp"
 #include "pitlane/host/hugepage.hpp"
@@ -121,6 +129,12 @@
 #include "pitlane/host/numa.hpp"
 #include "pitlane/host/irq.hpp"
 #include "pitlane/host/priority.hpp"
+
+#include "pitlane/net/frame.hpp"
+#include "pitlane/net/logbuf.hpp"
+#include "pitlane/net/udp.hpp"
+#include "pitlane/net/replicate.hpp"
+#include "pitlane/net/hub.hpp"
 
 #include "pitlane/util/arena.hpp"
 #include "pitlane/util/authbits.hpp"

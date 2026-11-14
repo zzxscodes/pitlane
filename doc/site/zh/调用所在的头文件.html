@@ -577,6 +577,58 @@
 <td><code>util/wirepx.hpp</code></td>
 <td>尾数指数价格与定点换算</td>
 </tr>
+<tr>
+<td><code>net/frame.hpp</code></td>
+<td><code>NetHeader</code>、<code>NetKind</code>、<code>net_pack</code>、<code>net_unpack</code>、CRC32C</td>
+</tr>
+<tr>
+<td><code>net/logbuf.hpp</code></td>
+<td><code>TermLog</code> term 缓冲，含 pad 帧与流控</td>
+</tr>
+<tr>
+<td><code>net/udp.hpp</code></td>
+<td><code>UdpAddr</code>、<code>udp_addr</code>、<code>udp_parse</code>、<code>UdpLink</code></td>
+</tr>
+<tr>
+<td><code>net/replicate.hpp</code></td>
+<td>leader/follower <code>ReplicaLog</code>，多数派提交</td>
+</tr>
+<tr>
+<td><code>net/hub.hpp</code></td>
+<td><code>RemoteHub</code>，desk 与日志双向桥接</td>
+</tr>
+<tr>
+<td><code>order/oms.hpp</code></td>
+<td><code>Oms</code>、<code>OmsOrder</code>、<code>OmsFill</code>，订单状态与父子进度</td>
+</tr>
+<tr>
+<td><code>order/sor.hpp</code></td>
+<td>柜台有效价格、主动/被动路由、<code>ShownHold</code></td>
+</tr>
+<tr>
+<td><code>order/ems.hpp</code></td>
+<td><code>Ems</code> 通过 <code>SlicePlan</code> 和 SOR 切父单</td>
+</tr>
+<tr>
+<td><code>order/pms.hpp</code></td>
+<td><code>Pms</code> 平均成本持仓与盈亏</td>
+</tr>
+<tr>
+<td><code>order/rms.hpp</code></td>
+<td><code>Rms</code> 盘前限额检查</td>
+</tr>
+<tr>
+<td><code>study/factor.hpp</code></td>
+<td><code>FactorEngine</code> 整数因子序列</td>
+</tr>
+<tr>
+<td><code>study/factor_eval.hpp</code></td>
+<td><code>FactorEval</code> IC、rank IC、命中率、分位</td>
+</tr>
+<tr>
+<td><code>study/pipeline.hpp</code></td>
+<td><code>FactorPipeline</code> 研究/回测/纸面/实盘阶段</td>
+</tr>
 </tbody></table>
   </main>
 </div>

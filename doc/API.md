@@ -10,11 +10,11 @@ Include one header:
 
 Everything is in the namespace `pitlane`. Link `libpitlane.a`, or link the shared library with `-lpitlane`. The shared library's soname is `libpitlane.so.1`. The headers are the same for both.
 
-The release is `kVersion`, currently 2.22.0, also split into `kVersionMajor`, `kVersionMinor`, and `kVersionPatch`. `kDeskVersion` is the desk mapping-file layout and is currently 5. `kYardVersion` is the separate symbol/quote yard layout and is currently 2. A new library release can leave either layout number where it is.
+The release is `kVersion`, currently 2.23.0, also split into `kVersionMajor`, `kVersionMinor`, and `kVersionPatch`. `kDeskVersion` is the desk mapping-file layout and is currently 5. `kYardVersion` is the separate symbol/quote yard layout and is currently 2. A new library release can leave either layout number where it is.
 
 A browsable static site with a left-hand section list is generated into `doc/site/en/` (`python3 doc/gen_site.py`). Open a local `doc/site/en/index.html` or the GitHub Pages deployment — viewing the file on `github.com/.../blob/...` shows source only. Startup settings are covered under **Startup configuration**.
 
-Headers live under `pitlane/desk/`, `pitlane/book/`, `pitlane/order/`, `pitlane/time/`, `pitlane/study/`, `pitlane/util/`, and `pitlane/host/`. `version.hpp` stays beside `pitlane.hpp`. The table below names the area in the path.
+Headers live under `pitlane/desk/`, `pitlane/book/`, `pitlane/order/`, `pitlane/time/`, `pitlane/study/`, `pitlane/net/`, `pitlane/util/`, and `pitlane/host/`. `version.hpp` stays beside `pitlane.hpp`. The table below names the area in the path.
 
 Prices and quantities are integers. Timestamps are microseconds. A side value of 1 buys and 2 sells. Most calls report failure by a `false`, a negative count, or a `Why` other than `Why::None`. They do not throw for ordinary rejects. A full ring or a full queue fails the write and leaves the previous contents in place.
 
@@ -398,6 +398,12 @@ These calls do not open a socket, do not send an order, and do not start a threa
 
 `MboBook` stores live orders in fixed slots and indexes them by id with fixed bucket chains. `apply` accepts add, modify, cancel, and trade. `best`, `depth`, `qty_at`, and `invariant` derive the view from the live orders. `RouteBook::unbind` removes one binding, `generation` advances on every change, and `route_control` parses `strategy|algo` control text. `StratEngine::routes` applies those notes and `pin_cpu` pins the strategy thread at setup.
 
+`net_pack` / `net_unpack` put a fixed desk record behind a 32-byte `NetHeader` with magic, version, length, and CRC32C. `TermLog` is a single-writer, multi-reader term log: data, pad, and heartbeat frames; a term rotates with a pad frame; each reader owns one absolute position; `publish` fails closed when the slowest reader would be overwritten. `UdpLink` is a non-blocking IPv4 datagram socket for pitlane-to-pitlane traffic; `open` / `close` belong to startup and teardown. `ReplicaLog` is a leader/follower log: `follower_append` validates `prev_index` / `prev_term`, the leader commits at a quorum of `match` positions, and `apply` returns committed entries in index order. `RemoteHub` drains desk reports and quotes into the outbound log and publishes decoded remote `Intent` frames into `Desk::intents`, so the local `Center` remains the hub.
+
+`Oms` keeps caller-owned orders in a fixed pool. `submit` / `ack` / `fill` / `cancel` / `confirm_cancel` / `reject` / `amend` move `Phase`, reject duplicate venue fill ids, and keep `filled`, `leaves`, and `avg_px`. `parent_progress` aggregates children. `sor` compares venues by effective buy or sell price including taker fees, respects venue caps and lots, allocates passive quantity by fill weight, and `ShownHold` accounts for visible quantity already sent. `Ems` opens a parent slice plan, emits child slices through the SOR when `slice_poll` cuts one, and records fills. `Pms` uses average cost for long and short positions with today/yesterday quantity, realized PnL, fees, and unrealized PnL. `Rms` is a pure pre-trade check over quantity, notional, daily notional, position, live orders, order rate, price band, cash, and a halt flag.
+
+`FactorEngine` keeps one fixed price ring and one quote ring and derives Return, Momentum, Volatility, ZScore, Ema, Rsi, Ofi, and Imbalance in integer scaled units. `FactorEval` records factor/forward-return pairs and reports Pearson IC, Spearman rank IC, hit rate, and quintile returns. `FactorPipeline` runs the same factor path in Research, Backtest, Paper, and Live stages; only Research and Backtest evaluate, and `signal` emits a `SigNote` in any stage when the factor clears a threshold.
+
 ## Where the calls live
 
 | Header | What it covers |
@@ -541,3 +547,16 @@ These calls do not open a socket, do not send an order, and do not start a threa
 | `util/textbuf.hpp` | A fixed text buffer |
 | `util/touch.hpp` | Prefetch and load by cache line |
 | `util/wirepx.hpp` | Mantissa/exponent wire price helpers |
+| `net/frame.hpp` | `NetHeader`, `NetKind`, `net_pack`, `net_unpack`, CRC32C |
+| `net/logbuf.hpp` | `TermLog` term buffer with pad frames and flow control |
+| `net/udp.hpp` | `UdpAddr`, `udp_addr`, `udp_parse`, `UdpLink` |
+| `net/replicate.hpp` | Leader/follower `ReplicaLog` with quorum commit |
+| `net/hub.hpp` | `RemoteHub` desk-to-log and log-to-desk bridge |
+| `order/oms.hpp` | `Oms`, `OmsOrder`, `OmsFill` order state and parent/child progress |
+| `order/sor.hpp` | Venue effective price, aggressive/passive routing, `ShownHold` |
+| `order/ems.hpp` | `Ems` parent slicing through `SlicePlan` and the SOR |
+| `order/pms.hpp` | `Pms` average-cost positions and PnL |
+| `order/rms.hpp` | `Rms` pre-trade limit checks |
+| `study/factor.hpp` | `FactorEngine` integer factor series |
+| `study/factor_eval.hpp` | `FactorEval` IC, rank IC, hit rate, quintiles |
+| `study/pipeline.hpp` | `FactorPipeline` research/backtest/paper/live stages |
