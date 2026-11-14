@@ -5,7 +5,7 @@
 
 namespace pitlane {
 
-// Two-phase ledger freeze (notes §26). Compute first; then first-writer CAS; then commit.
+// Two-phase ledger freeze (notes §26). Compute first; then a first-writer compare-and-swap; then commit.
 // The library does not send. Fail-closed: a lost race leaves the caller's intent unsent.
 
 struct FreezeSlot {

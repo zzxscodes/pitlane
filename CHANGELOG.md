@@ -1,5 +1,15 @@
 # Changelog
 
+## [Unreleased] - 2026-11-14
+
+### Added
+- `order/pace.hpp`: `SlicePacer`, `ChasePacer`, `SizePacer`, `PaceCtl`, and `PaceBook` add the execution-pacing decision layer. A time-sliced parent emits one lot-aligned child per due cut with an end-game catch-up; a two-leg release posts inside the spread, chases the touch, refuses a cross unless allowed, and reports stale children for cancel/resend; a size-threshold pacer joins or takes according to the opposite touch. All objects are caller-owned, fixed-size, allocation-free, integer-only, and fail-closed. Terminal states are sticky.
+- `tests/order`: pacing coverage for slice cuts and end-game, partial fill and reject restore, pause/resume/stop, chase clip/split/cross guard/retry, threshold join/take/clip, and fixed-table capacity.
+
+### Notes
+- Desk layout is unchanged.
+- No existing order path changed; the pacing layer is additive.
+
 ## [2.23.0] - 2026-11-14
 
 ### Added

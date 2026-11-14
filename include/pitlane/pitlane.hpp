@@ -74,6 +74,7 @@
 #include "pitlane/order/lots.hpp"
 #include "pitlane/order/notion.hpp"
 #include "pitlane/order/parent.hpp"
+#include "pitlane/order/pace.hpp"
 #include "pitlane/order/quoteprice.hpp"
 #include "pitlane/order/plan.hpp"
 #include "pitlane/order/pool.hpp"

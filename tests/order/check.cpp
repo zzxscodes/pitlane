@@ -819,6 +819,181 @@ static void check_interleave_locks() {
     expect(paths == 2, "interleave paths");
 }
 
+static pitlane::QuoteTop pace_quote(int64_t bid, int64_t ask, int64_t bid_qty = 100, int64_t ask_qty = 100) {
+    pitlane::QuoteTop q{};
+    q.bid[0] = bid;
+    q.ask[0] = ask;
+    q.bid_qty = bid_qty;
+    q.ask_qty = ask_qty;
+    q.last = bid;
+    return q;
+}
+
+static void check_pace_slice() {
+    pitlane::SlicePacer<8> pacer;
+    pitlane::SliceCfg cfg{};
+    cfg.total = 100;
+    cfg.horizon_us = 1000;
+    cfg.interval_us = 100;
+    cfg.lot = 1;
+    cfg.side = static_cast<uint8_t>(pitlane::Side::Buy);
+    cfg.mode = 0;
+    expect(pacer.open(1, cfg), "slice open");
+    expect(!pacer.open(1, cfg), "slice no reopen");
+    const pitlane::QuoteTop q = pace_quote(9990, 10000);
+    pitlane::PaceOrder out[2]{};
+    expect(pacer.poll(0, q, out, 2) == 1, "slice first cut");
+    expect(out[0].qty == 10 && out[0].px == 10000 && out[0].side == 1 && out[0].last == 0, "slice first shape");
+    expect(pacer.poll(50, q, out, 2) == 0, "slice not due");
+    expect(pacer.on_child(out[0].id, 4, false), "slice partial");
+    expect(pacer.on_child(out[0].id, 6, true), "slice child done");
+    int64_t done = 0;
+    int64_t working = 0;
+    expect(pacer.progress(done, working) && done == 10 && working == 0, "slice progress");
+    expect(pacer.poll(100, q, out, 2) == 1, "slice second cut");
+    expect(pacer.pause() && pacer.poll(200, q, out, 2) == 0, "slice paused");
+    expect(pacer.resume() && pacer.poll(200, q, out, 2) == 1, "slice resumed");
+    expect(pacer.stop() && !pacer.stop(), "slice stop once");
+    expect(pacer.state() == pitlane::PaceState::Stopped, "slice stopped state");
+    expect(!pacer.close(), "slice cannot close while working");
+
+    pitlane::SlicePacer<8> late;
+    pitlane::SliceCfg lc{};
+    lc.total = 10;
+    lc.horizon_us = 100;
+    lc.interval_us = 33;
+    lc.lot = 2;
+    lc.side = static_cast<uint8_t>(pitlane::Side::Buy);
+    lc.mode = 0;
+    expect(late.open(2, lc), "late open");
+    int64_t t = 0;
+    int64_t emitted = 0;
+    for (int round = 0; round < 8; ++round) {
+        pitlane::PaceOrder o[2]{};
+        const int n = late.poll(t, q, o, 2);
+        if (n == 1) {
+            emitted += o[0].qty;
+            expect(o[0].qty % 2 == 0, "late lot aligned");
+            expect(late.on_child(o[0].id, o[0].qty, true), "late child done");
+        }
+        t += 33;
+    }
+    expect(emitted == 10, "late end-game total");
+    expect(late.close(), "late closed");
+}
+
+static void check_pace_chase() {
+    pitlane::ChaseBook book{};
+    book.target = 0;
+    book.split_yday = false;
+    book.open_cap = 10000;
+    book.lng.pos = 1000;
+    book.lng.today = 1000;
+    pitlane::ChaseCfg cfg{};
+    cfg.max_lot = 400;
+    cfg.min_lot = 100;
+    cfg.tick = 1;
+    cfg.chase_steps = 1;
+    cfg.retry_us = 1000;
+    cfg.cross_ok = 0;
+    pitlane::ChasePacer<8> pacer;
+    expect(pacer.open(7, book, cfg), "chase open");
+    const pitlane::QuoteTop q = pace_quote(9990, 10000);
+    pitlane::PaceOrder out[2]{};
+    expect(pacer.tick(0, q, out, 2) == 1, "chase emit");
+    expect(out[0].side == static_cast<uint8_t>(pitlane::Side::Sell) && out[0].qty == 400, "chase clip");
+    expect(out[0].px == 9999, "chase passive inside spread");
+    expect(out[0].off == static_cast<uint8_t>(pitlane::Off::Close), "chase close offset");
+    const uint64_t first = out[0].id;
+    expect(pacer.on_child(first, 400, true), "chase fill");
+    expect(pacer.net() == 600 && !pacer.at_target(), "chase progress");
+    expect(pacer.tick(1, q, out, 2) == 0, "chase retry gate");
+    expect(pacer.tick(1000, q, out, 2) == 1, "chase resend");
+    expect(pacer.on_reject(out[0].id), "chase reject");
+    expect(pacer.stop() && !pacer.stop(), "chase stop once");
+    expect(pacer.on_child(first, 1, true) == false, "chase dead child ignored");
+
+    pitlane::ChaseBook flat{};
+    flat.target = 0;
+    pitlane::ChasePacer<8> done;
+    expect(done.open(8, flat, cfg), "chase flat open");
+    expect(done.tick(0, q, out, 2) == 0, "chase flat no move");
+    expect(done.state() == pitlane::PaceState::Done, "chase flat done");
+
+    pitlane::ChaseBook capped{};
+    capped.target = 100;
+    capped.open_cap = 0;
+    pitlane::ChasePacer<8> stuck;
+    expect(stuck.open(9, capped, cfg), "chase capped open");
+    expect(stuck.tick(0, q, out, 2) == 0, "chase capped no move");
+    expect(stuck.state() != pitlane::PaceState::Done && !stuck.at_target(), "chase capped waiting");
+}
+
+static void check_pace_size() {
+    pitlane::SizeCfg cfg{};
+    cfg.total = 500;
+    cfg.threshold = 300;
+    cfg.lot = 100;
+    cfg.max_child = 200;
+    cfg.side = static_cast<uint8_t>(pitlane::Side::Buy);
+    cfg.mode = 0;
+    pitlane::SizePacer<8> pacer;
+    expect(pacer.open(11, cfg), "size open");
+    const pitlane::QuoteTop big = pace_quote(9990, 10000, 100, 500);
+    pitlane::PaceOrder out[2]{};
+    expect(pacer.poll(big, out, 2) == 1 && out[0].qty == 200 && out[0].px == 10000, "size take big");
+    expect(pacer.on_child(out[0].id, 200, true), "size child one");
+    expect(pacer.poll(big, out, 2) == 1 && out[0].qty == 200, "size child two");
+    expect(pacer.on_child(out[0].id, 200, true), "size child two fill");
+    expect(pacer.poll(big, out, 2) == 1 && out[0].qty == 100, "size final clip");
+    expect(pacer.on_child(out[0].id, 100, true), "size final fill");
+    expect(pacer.state() == pitlane::PaceState::Done, "size done");
+    expect(!pacer.open(0, cfg), "size rejects zero id");
+
+    pitlane::SizeCfg join{};
+    join.total = 100;
+    join.threshold = 500;
+    join.lot = 1;
+    join.side = static_cast<uint8_t>(pitlane::Side::Buy);
+    join.mode = 0;
+    pitlane::SizePacer<8> maker;
+    expect(maker.open(12, join), "size join open");
+    expect(maker.poll(pace_quote(9990, 10000, 10, 10), out, 2) == 1 && out[0].px == 9990, "size joins own top");
+    expect(maker.on_reject(out[0].id), "size reject");
+    expect(maker.stop() && !maker.stop(), "size stop once");
+}
+
+static void check_pace_book() {
+    pitlane::PaceBook<2, 8> book;
+    pitlane::SliceCfg sc{};
+    sc.total = 100;
+    sc.horizon_us = 1000;
+    sc.interval_us = 100;
+    sc.lot = 1;
+    sc.side = static_cast<uint8_t>(pitlane::Side::Buy);
+    pitlane::SizeCfg zc{};
+    zc.total = 100;
+    zc.lot = 1;
+    zc.max_child = 100;
+    zc.side = static_cast<uint8_t>(pitlane::Side::Buy);
+    expect(book.add_slice(1, sc) != nullptr, "book add slice");
+    expect(book.add_size(2, zc) != nullptr, "book add size");
+    expect(book.add_slice(1, sc) == nullptr, "book duplicate");
+    expect(book.add_size(3, zc) == nullptr, "book full");
+    expect(book.count() == 2, "book count");
+    expect(book.kind(1) == pitlane::PaceBook<2, 8>::Kind::Slice, "book kind slice");
+    expect(book.kind(2) == pitlane::PaceBook<2, 8>::Kind::Size, "book kind size");
+    expect(book.pause(1) && book.resume(1), "book pause resume");
+    const pitlane::QuoteTop q = pace_quote(9990, 10000);
+    pitlane::PaceOrder out[4]{};
+    const int n = book.tick_all(0, q, out, 4);
+    expect(n == 2, "book tick all");
+    expect(book.stop(1) && !book.stop(1), "book stop once");
+    expect(book.retire(1), "book retire stopped");
+    expect(!book.retire(2), "book cannot retire working");
+    expect(book.count() == 1, "book retired count");
+}
+
 int main() {
     check_lots();
     check_ledger();
@@ -846,6 +1021,10 @@ int main() {
     check_prelock_credit_curve_wash();
     check_align_220();
     check_interleave_locks();
+    check_pace_slice();
+    check_pace_chase();
+    check_pace_size();
+    check_pace_book();
     if (g_fails) {
         std::fprintf(stderr, "%d order check(s) failed\n", g_fails);
         return 1;

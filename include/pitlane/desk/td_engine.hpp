@@ -10,7 +10,7 @@
 
 namespace pitlane {
 
-// Counter client the gateway implements (cts::broker::TraderClient).
+// Counter client the gateway implements.
 // Sockets stay in the gateway. The library only calls these.
 struct TdClient {
     virtual ~TdClient() = default;
@@ -31,7 +31,7 @@ struct TdClient {
     }
 };
 
-// Trader gateway (cts::broker::Trader).
+// Trader gateway.
 // Loop: orders, asset queries, position queries, algo orders, then timeouts.
 // risk_filter runs before insert. A hit is a denied report and the client is not called.
 

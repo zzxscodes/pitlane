@@ -84,7 +84,7 @@ inline int64_t walk_down(const PxBand* bands, int n, int64_t px, int steps, int6
     return clamp_px(px, down, up);
 }
 
-// Per-instrument tick table with a cached band cursor (notes §21 / cts::TickSizeHandler).
+// Per-instrument tick table with a cached band cursor (notes §21).
 // Integer prices only. At most 10 bands. load() is cold; floor/ceil/walk are hot.
 struct TickGrid {
     static constexpr int kMaxBands = 10;

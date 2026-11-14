@@ -39,7 +39,7 @@ public:
         }
     }
 
-    // Contended path: brief sleep so waiters drop the lock line before the next CAS.
+    // Contended path: brief sleep so waiters drop the lock line before the next compare-and-swap.
     PITLANE_HOT void lock_rest() noexcept {
         for (;;) {
             int expected = 0;

@@ -24,7 +24,7 @@ inline Why order_precheck(const Intent& in, uint64_t id_base = 0) noexcept {
     return Why::None;
 }
 
-// Strategy role (cts::shmdb::Strategy) and its context.
+// Strategy role and its context.
 // loop_task picks reports, quotes, rebuilds, market orders, prints, algo jobs,
 // asset and position replies, signals, then packages. Inserts go out on the desk.
 

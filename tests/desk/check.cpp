@@ -757,8 +757,8 @@ static void check_local_shelf_bus() {
     expect(std::memcmp(got.data, "ack", 3) == 0, "bus payload");
 
     pitlane::RouteBook routes;
-    expect(routes.bind("algo_book", "TwapAlgo") && routes.bind("algo_book", "TwapControl"), "route bind");
-    expect(routes.has("algo_book", "TwapAlgo"), "route has");
+    expect(routes.bind("algo_book", "slice_plan") && routes.bind("algo_book", "slice_ctl"), "route bind");
+    expect(routes.has("algo_book", "slice_plan"), "route has");
     char names[4][pitlane::RouteBook::kName]{};
     expect(routes.lookup("algo_book", names, 4) == 2, "route lookup");
 

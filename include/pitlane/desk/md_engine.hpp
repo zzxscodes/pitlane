@@ -33,7 +33,7 @@ struct SubSnap {
     }
 };
 
-// Market-data gateway (cts::broker::MarketData).
+// Market-data gateway.
 // The subclass talks to a vendor. This class only moves notes on the desk.
 // Five subscribe failures in a row stop further sends until one succeeds (notes §3).
 

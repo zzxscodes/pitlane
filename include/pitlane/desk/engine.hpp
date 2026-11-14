@@ -10,7 +10,7 @@
 
 namespace pitlane {
 
-// Process role aligned with the reference design::shmdb::Engine:
+// Process role for the desk engine:
 // set_up → pre_run → (loop_task until stop) → post_run.
 // Timers, control notes, and the heartbeat stay on the engine. No heap on the hot path.
 
