@@ -172,11 +172,12 @@ void HttpServer::serve(int fd) noexcept {
         *qmark = 0;
         std::snprintf(req.query, sizeof req.query, "%s", qmark + 1);
     }
-    if (target[0] != '/' || std::strlen(target) >= sizeof req.path || std::strstr(target, "..")) {
+    const std::size_t target_len = std::strlen(target);
+    if (target[0] != '/' || target_len >= sizeof req.path || std::strstr(target, "..")) {
         fail(fd, 400);
         return;
     }
-    std::snprintf(req.path, sizeof req.path, "%s", target);
+    std::memcpy(req.path, target, target_len + 1);
 
     uint32_t content_length = 0;
     char* p = line_end + 2;
