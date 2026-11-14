@@ -74,6 +74,7 @@ bool load_account_conf(const char* path, Account& acct, StratCfg& strat, std::st
     while (std::fgets(line, sizeof line, f)) {
         char* p = trim(line);
         if (!*p || *p == '#' || *p == ';') continue;
+        if (*p == '[') continue; // section headers belong to conf_load (e.g. [venue])
         char* eq = std::strchr(p, '=');
         if (!eq) {
             err = "bad line";

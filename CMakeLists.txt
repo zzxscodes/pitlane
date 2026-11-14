@@ -158,6 +158,15 @@ if(PITLANE_BUILD_CTP AND PITLANE_BUILD_EXAMPLES)
     endif()
 endif()
 
+# End-to-end example checks: strategy -> backtest -> paper trading, no broker.
+if(TARGET pitlane_simnow AND PITLANE_BUILD_TESTS AND BUILD_TESTING)
+    add_test(NAME simnow_paper COMMAND pitlane_simnow --full conf/paper.conf)
+    add_test(NAME simnow_backtest COMMAND pitlane_simnow --backtest conf/paper.conf)
+    set_tests_properties(simnow_paper simnow_backtest PROPERTIES
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/examples/simnow
+        RUN_SERIAL TRUE)
+endif()
+
 # Paper-center timings. No broker library, so CI runs this with the other examples.
 if(PITLANE_BUILD_EXAMPLES)
     add_executable(pitlane_simnow_bench examples/simnow/bench.cpp)

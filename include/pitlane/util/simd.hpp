@@ -62,9 +62,6 @@ PITLANE_IVDEP
             _mm256_storeu_si256(reinterpret_cast<__m256i*>(dst + i), z256);
         }
     }
-#if defined(__AVX__)
-    _mm256_zeroupper();
-#endif
 #endif
 #if defined(__SSE2__)
     const __m128i z = _mm_setzero_si128();
@@ -141,9 +138,6 @@ PITLANE_IVDEP
         const __m256i v = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(s + i));
         _mm256_storeu_si256(reinterpret_cast<__m256i*>(d + i), v);
     }
-#if defined(__AVX__)
-    _mm256_zeroupper();
-#endif
 #endif
 #if defined(__SSE2__)
 PITLANE_IVDEP

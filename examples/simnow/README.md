@@ -57,25 +57,50 @@ Runtime files only under `./run` (or `work_dir` in conf).
 
 ## Full-flow validation
 
-`--full` runs one instance of every core pitlane path in a single process:
+`--full` and `--backtest` run one instance of every core pitlane path in a
+single process:
 
 ```
-SimNow quote -> FactorPipeline (Momentum / OFI / ZScore) -> signal
+tape quotes -> FactorPipeline (Momentum / OFI / ZScore) -> signal
   -> RMS pre-trade check -> EMS parent slice -> SOR venue choice
-  -> OMS state machine -> real CTP IOC (live) or PaperVenue (paper)
+  -> OMS state machine -> PaperVenue (paper/backtest) or real CTP IOC (live)
   -> PMS position/PnL -> WAL append + recover -> snapshot publish -> tail latency
 ```
 
 Only the first subscribed instrument is used as the factor series; other
 instruments still connect and receive quotes.
 
-```bash
-# paper: no broker login, deterministic tape
-cd examples/simnow && ../../build/pitlane_simnow --full conf/paper.conf
+Three stages of the same code path:
 
-# live: real SimNow orders
-cd examples/simnow && ../../build/pitlane_simnow --full conf/simnow_7x24.conf
+```bash
+cd examples/simnow
+
+# 1. Strategy development / backtest: replay a recorded tape, no broker.
+#    The tape is replayed to the end so every parent gets a chance to complete.
+../../build/pitlane_simnow --backtest --tape tape.csv conf/paper.conf
+
+# 2. Paper trading: same desk, synthetic tape, stops as soon as the flow passes.
+../../build/pitlane_simnow --full conf/paper.conf
+
+# 3. Live: real SimNow market data and orders.
+../../build/pitlane_simnow --full conf/simnow_7x24.conf
 ```
+
+`--backtest` without `--tape` falls back to the built-in synthetic tape. The
+CSV tape has one quote per row, header optional, no spaces required:
+
+```
+exch_us,name,bid_px,ask_px,last_px,bid_qty,ask_qty
+1710000000000000,1,999950,1000050,1000000,5,5
+```
+
+Prices are integer ticks as used by `pitlane::Quote` (`px_x10000`). `exch_us`
+and `local_us` are both set to the timestamp column. Lines that do not parse
+as seven integers are skipped; `#` starts a comment.
+
+Paper matching timing comes from the `[venue]` section of the conf
+(`go_us0`, `pull_us0`, `tape_first`); `conf_load` fills `VenueCfg` and both
+`run_paper` and `run_sim_flow` use it.
 
 A run is `PASS` when at least one parent completes, at least one child fills,
 the WAL replay count matches what was appended, the snapshot latest sequence

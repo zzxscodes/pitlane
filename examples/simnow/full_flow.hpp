@@ -77,6 +77,7 @@ public:
                 stage_ = PipeStage::Live;
                 break;
             case 2:
+            case 3:
                 stage_ = PipeStage::Research;
                 break;
             default:
@@ -88,12 +89,13 @@ public:
         RmsLimits lim{};
         lim.max_order_qty = 10;
         lim.max_order_notional = 200000000;
-        lim.max_pos_long = 100;
-        lim.max_pos_short = 100;
+        lim.max_pos_long = mode == 1 ? 100 : 100000;
+        lim.max_pos_short = mode == 1 ? 100 : 100000;
         lim.max_daily_notional = 2000000000;
-        lim.max_orders_per_sec = 5;
+        // Research/backtest replay compresses many slices into one second.
+        lim.max_orders_per_sec = mode == 1 ? 5 : 64;
         lim.price_band_ppm = 100000;
-        lim.max_live_orders = 4;
+        lim.max_live_orders = mode == 1 ? 4 : 16;
         rms_.set(lim);
 
         tail_arm(tail_, 5000000, (1u << static_cast<int>(TailLane::Quote)) |
@@ -253,7 +255,7 @@ public:
             v[0].venue_limit = 0;
             v[0].lot = 1;
             nv = 1;
-            if (mode_ == 2) {
+            if (mode_ == 2 || mode_ == 3) {
                 v[1] = v[0];
                 v[1].venue = 2;
                 v[1].taker_fee_bps = 0;
@@ -434,7 +436,8 @@ public:
         const bool q_ok = tail_report(tail_, TailLane::Quote, qr);
         const bool r_ok = tail_report(tail_, TailLane::Report, rr);
 
-        std::printf("\n=== pitlane %s simnow full flow (%s) ===\n", kVersion, mode_ == 2 ? "paper" : "live");
+        const char* mode_label = mode_ == 3 ? "backtest" : (mode_ == 2 ? "paper" : "live");
+        std::printf("\n=== pitlane %s simnow full flow (%s) ===\n", kVersion, mode_label);
         std::printf("oms     submitted=%lld acked=%lld filled_orders=%lld rejects=%lld cancels=%lld active=%d size=%d\n",
                     static_cast<long long>(submitted_), static_cast<long long>(acked_),
                     static_cast<long long>(fills_), static_cast<long long>(rejects_),

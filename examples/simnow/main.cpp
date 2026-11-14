@@ -7,6 +7,7 @@
 #include "full_flow.hpp"
 #include "pitlane/book/venue.hpp"
 #include "pitlane/desk/center.hpp"
+#include "pitlane/desk/config.hpp"
 #include "pitlane/desk/session.hpp"
 #include "pitlane/desk/tape_md.hpp"
 #include "pitlane/util/wirelog.hpp"
@@ -258,7 +259,7 @@ bool ensure_dir(const char* path) {
     return ::mkdir(tmp, 0755) == 0 || errno == EEXIST;
 }
 
-int run_paper(const pitlane::Account& acct, const pitlane::StratCfg& cfg) {
+int run_paper(const pitlane::Account& acct, const pitlane::StratCfg& cfg, const pitlane::VenueCfg& vc) {
     if (!ensure_dir(acct.work_dir.c_str())) return 2;
     pitlane::WireLog wlog(acct.log_path.c_str(), 3);
     wlog.log(2, pitlane::lit("simnow paper center"));
@@ -360,7 +361,6 @@ int run_paper(const pitlane::Account& acct, const pitlane::StratCfg& cfg) {
     hot.cfg = cfg;
     hot.scale = scale;
 
-    pitlane::VenueCfg vc{};
     auto* venue = new (std::nothrow) pitlane::PaperVenue(vc);
     if (!venue) return 1;
     pitlane::TradeLane lane{};
@@ -439,8 +439,59 @@ int paper_send(void* user, const pitlane::Intent& in) {
     return static_cast<FlowStrat*>(user)->insert_order(in) ? 0 : 1;
 }
 
-int run_paper_flow(const pitlane::Account& acct, const pitlane::StratCfg& cfg) {
+int build_synth_tape(pitlane::Quote* tape, int cap) {
+    uint32_t rng = 0x12345u;
+    int64_t px = 1000000;
+    for (int i = 0; i < cap; ++i) {
+        rng = rng * 1664525u + 1013904223u;
+        const int dir = static_cast<int>((rng >> 16) % 3u) - 1;
+        px += dir * 100;
+        if (px < 900000 || px > 1100000) px = 1000000;
+        pitlane::Quote& q = tape[i];
+        q.name = 1;
+        q.bid_px = px - 50;
+        q.ask_px = px + 50;
+        q.last_px = px;
+        q.bid_qty = 5;
+        q.ask_qty = 5;
+        q.exch_us = 1000000 + static_cast<int64_t>(i) * 1000000;
+        q.local_us = q.exch_us;
+    }
+    return cap;
+}
+
+// CSV columns: exch_us,name,bid_px,ask_px,last_px,bid_qty,ask_qty. Header optional.
+int load_tape_csv(const char* path, pitlane::Quote* tape, int cap) {
+    std::FILE* f = std::fopen(path, "r");
+    if (!f) return -1;
+    char line[256];
+    int n = 0;
+    while (n < cap && std::fgets(line, sizeof line, f)) {
+        char* p = line;
+        while (*p == ' ' || *p == '\t') ++p;
+        if (*p == '#' || *p == '\n' || *p == '\0') continue;
+        long long exch_us = 0, name = 0, bp = 0, ap = 0, lp = 0, bq = 0, aq = 0;
+        if (std::sscanf(p, "%lld,%lld,%lld,%lld,%lld,%lld,%lld", &exch_us, &name, &bp, &ap, &lp, &bq, &aq) != 7)
+            continue;
+        pitlane::Quote& q = tape[n];
+        q.name = static_cast<uint32_t>(name);
+        q.bid_px = bp;
+        q.ask_px = ap;
+        q.last_px = lp;
+        q.bid_qty = bq;
+        q.ask_qty = aq;
+        q.exch_us = exch_us;
+        q.local_us = exch_us;
+        ++n;
+    }
+    std::fclose(f);
+    return n > 0 ? n : -1;
+}
+
+int run_sim_flow(const pitlane::Account& acct, const pitlane::StratCfg& cfg, const pitlane::VenueCfg& vc,
+                 const pitlane::Quote* tape, int tape_n, bool replay_all, int mode) {
     (void)cfg;
+    if (!tape || tape_n <= 0) return 2;
     if (!ensure_dir(acct.work_dir.c_str())) return 2;
     pitlane::WireLog wlog(acct.log_path.c_str(), 3);
     wlog.log(2, pitlane::lit("simnow full flow paper"));
@@ -456,41 +507,19 @@ int run_paper_flow(const pitlane::Account& acct, const pitlane::StratCfg& cfg) {
     if (!desk) return 1;
 
     pitlane::FullFlow flow;
-    if (!flow.open(acct, 2, &wlog)) {
+    if (!flow.open(acct, mode, &wlog)) {
         pitlane::map_release(&map);
         ::unlink(acct.desk_path.c_str());
         return 1;
     }
     flow.set_timing(2000000, 6000000, 2000000);
 
-    constexpr int kTape = 512;
-    static pitlane::Quote tape[kTape]{};
-    uint32_t rng = 0x12345u;
-    int64_t px = 1000000;
-    for (int i = 0; i < kTape; ++i) {
-        rng = rng * 1664525u + 1013904223u;
-        const int dir = static_cast<int>((rng >> 16) % 3u) - 1;
-        px += dir * 100;
-        if (px < 900000) px = 1000000;
-        if (px > 1100000) px = 1000000;
-        pitlane::Quote& q = tape[i];
-        q.name = 1;
-        q.bid_px = px - 50;
-        q.ask_px = px + 50;
-        q.last_px = px;
-        q.bid_qty = 5;
-        q.ask_qty = 5;
-        q.exch_us = 1000000 + static_cast<int64_t>(i) * 1000000;
-        q.local_us = q.exch_us;
-    }
-
     pitlane::TapeMd md;
     md.src = tape;
-    md.n = kTape;
+    md.n = tape_n;
     md.burst = 1;
     md.quote_mask = (1ull << pitlane::kBookReader) | (1ull << pitlane::kLoopReader);
 
-    pitlane::VenueCfg vc{};
     auto* venue = new (std::nothrow) pitlane::PaperVenue(vc);
     if (!venue) {
         flow.close();
@@ -522,7 +551,7 @@ int run_paper_flow(const pitlane::Account& acct, const pitlane::StratCfg& cfg) {
         return 1;
     }
 
-    for (int i = 0; i < kTape && !flow.complete(); ++i) center.step(tape[i].local_us);
+    for (int i = 0; i < tape_n && (replay_all || !flow.complete()); ++i) center.step(tape[i].local_us);
 
     flow.summarize(&wlog);
     const bool ok = flow.pass();
@@ -534,13 +563,39 @@ int run_paper_flow(const pitlane::Account& acct, const pitlane::StratCfg& cfg) {
     return ok ? 0 : 1;
 }
 
+int run_paper_flow(const pitlane::Account& acct, const pitlane::StratCfg& cfg, const pitlane::VenueCfg& vc) {
+    constexpr int kTape = 512;
+    static pitlane::Quote tape[kTape]{};
+    return run_sim_flow(acct, cfg, vc, tape, build_synth_tape(tape, kTape), false, 2);
+}
+
+int run_backtest(const pitlane::Account& acct, const pitlane::StratCfg& cfg, const pitlane::VenueCfg& vc,
+                 const char* tape_path) {
+    constexpr int kTape = 4096;
+    static pitlane::Quote tape[kTape]{};
+    int n = tape_path ? load_tape_csv(tape_path, tape, kTape) : -1;
+    if (n < 0) {
+        std::printf("[backtest] tape %s unavailable, using synthetic tape\n", tape_path ? tape_path : "(none)");
+        n = build_synth_tape(tape, 512);
+    } else {
+        std::printf("[backtest] tape %s rows=%d\n", tape_path, n);
+    }
+    return run_sim_flow(acct, cfg, vc, tape, n, true, 3);
+}
+
 int main(int argc, char** argv) {
     // Prefer running from examples/simnow so ./run stays local to the example.
     const char* conf_path = "conf/simnow_7x24.conf";
+    const char* tape_path = nullptr;
     bool full = false;
+    bool backtest = false;
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--full") == 0)
             full = true;
+        else if (std::strcmp(argv[i], "--backtest") == 0)
+            backtest = true;
+        else if (std::strcmp(argv[i], "--tape") == 0 && i + 1 < argc)
+            tape_path = argv[++i];
         else
             conf_path = argv[i];
     }
@@ -550,12 +605,25 @@ int main(int argc, char** argv) {
     std::string err;
     if (!pitlane::load_account_conf(conf_path, acct, strat, err)) {
         std::fprintf(stderr, "load conf %s: %s\n", conf_path, err.c_str());
-        std::fprintf(stderr, "usage: cd examples/simnow && ../../build/pitlane_simnow [--full] conf/simnow_7x24.conf\n");
+        std::fprintf(stderr,
+                     "usage: cd examples/simnow && ../../build/pitlane_simnow [--full|--backtest [--tape FILE]] conf.conf\n");
         return 2;
     }
     pitlane::apply_account_env(acct);
     pitlane::resolve_runtime_paths(acct);
-    if (strat.paper) return full ? run_paper_flow(acct, strat) : run_paper(acct, strat);
+
+    pitlane::PitConf pit{};
+    pitlane::VenueCfg vc{};
+    if (pitlane::conf_load(conf_path, pit)) vc = pitlane::conf_venue_cfg(pit);
+
+    if (strat.paper) {
+        if (backtest) return run_backtest(acct, strat, vc, tape_path);
+        return full ? run_paper_flow(acct, strat, vc) : run_paper(acct, strat, vc);
+    }
+    if (backtest) {
+        std::fprintf(stderr, "--backtest needs a paper conf (paper = 1)\n");
+        return 2;
+    }
     if (acct.password.empty() || acct.investor_id.empty() || acct.instruments.empty()) {
         std::fprintf(stderr, "need investor_id/password/instruments\n");
         return 2;
