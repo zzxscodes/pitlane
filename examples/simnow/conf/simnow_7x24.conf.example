@@ -11,14 +11,18 @@ mode = live
 broker_id = 9999
 investor_id = 249674
 password =
+# Set only while the front reports 141 (password expired), then move the new
+# value to password and clear this. Requires >=10 chars and 3 character types.
+# new_password =
+
 app_id = simnow_client_test
 auth_code = 0000000000000000
 
 md_front = tcp://182.254.243.31:40011
 td_front = tcp://182.254.243.31:40001
 
-# Prefer liquid night-session contracts on 7×24; adjust month codes as listed.
-instruments = au2602,ag2602
+# Active contracts for the front's trading day; adjust month codes as listed.
+instruments = au2612,ag2612
 
 # Runtime stays under this example (never the repo root).
 work_dir = ./run

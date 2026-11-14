@@ -31,6 +31,9 @@ struct LiveOrder {
 class CtpTdClient : public TdClient, public CThostFtdcTraderSpi {
 public:
     static constexpr int kLive = 64;
+    // Terminal order reports can arrive before their trade reports. Keep a
+    // short ring of ref -> tag so a late trade still finds its child.
+    static constexpr int kRecent = 256;
     using AcceptFn = void (*)(void* user, const LiveOrder& lo, int64_t now_us, uint64_t roundtrip_ns);
     using TradeFn = void (*)(void* user, uint64_t tag, uint32_t name, int64_t px, int64_t qty, int64_t now_us);
     using DoneFn = void (*)(void* user, uint64_t tag, int64_t filled, int status, int64_t now_us);
@@ -93,6 +96,7 @@ private:
     void rotate_password() noexcept;
     int find_live(int ref) const noexcept;
     int find_t0(uint64_t tag) const noexcept;
+    bool find_tag(int ref, uint64_t& tag, uint32_t& name) const noexcept;
 
     Account acct_;
     CThostFtdcTraderApi* api_{nullptr};
@@ -124,6 +128,14 @@ private:
     LiveOrder live_slot_[kLive]{};
     int live_ref_[kLive]{};
     uint8_t live_used_[kLive]{};
+
+    struct RecentRef {
+        int ref;
+        uint64_t tag;
+        uint32_t name;
+    };
+    RecentRef recent_[kRecent]{};
+    uint32_t recent_pos_{0};
 };
 
 } // namespace pitlane

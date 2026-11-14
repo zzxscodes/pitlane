@@ -315,7 +315,7 @@ public:
                 if (ci < 0) continue;
                 apply_fill(ci, e.px, e.qty, now_us);
             } else if (e.type == 3) {
-                finish_child(e.tag, now_us);
+                done_child(e.tag, e.filled, now_us);
             } else if (e.type == 4) {
                 reject_child(e.tag, now_us, e.code);
             }
@@ -511,6 +511,8 @@ private:
         uint8_t side{0};
         uint8_t venue{0};
         uint8_t used{0};
+        uint8_t done_seen{0};
+        int64_t done_expect{0};
     };
 
     struct CtpEvent {
@@ -723,6 +725,20 @@ private:
         note.name = child_[ci].name;
         note.kind = static_cast<uint8_t>(WalKind::Report);
         wal_note(note, now_us);
+        // A terminal order report may arrive before its trade reports.
+        const uint64_t tag = child_[ci].tag;
+        if (child_[ci].done_seen && child_[ci].filled >= child_[ci].done_expect) finish_child(tag, now_us);
+    }
+
+    void done_child(uint64_t tag, int64_t filled, int64_t now_us) noexcept {
+        const int ci = child_index(tag);
+        if (ci < 0) return;
+        if (filled <= 0 || child_[ci].filled >= filled) {
+            finish_child(tag, now_us);
+            return;
+        }
+        child_[ci].done_seen = 1;
+        child_[ci].done_expect = filled;
     }
 
     void finish_child(uint64_t tag, int64_t now_us) noexcept {

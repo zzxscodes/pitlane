@@ -383,7 +383,6 @@ int run_paper(const pitlane::Account& acct, const pitlane::StratCfg& cfg, const 
     uint64_t local[64];
     uint64_t rt[64];
     int nl = 0, nr = 0;
-    const int use = hot.fills < 64 ? hot.fills : 64;
     for (int i = 0; i < hot.orders && i < 64; ++i) {
         if (hot.local_ns[i]) local[nl++] = hot.local_ns[i];
         if (hot.round_ns[i]) rt[nr++] = hot.round_ns[i];

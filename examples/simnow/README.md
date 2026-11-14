@@ -115,7 +115,17 @@ Files created under `run/`:
 - `wire.log` — same progress log as the T2T mode.
 
 Live failures are reported with the CTP error id in `run/wire.log`. Common
-cases: wrong/expired password (`141`), missing authentication (`3`), contract
-not trading in this session, or settlement not confirmed (`7`). The example
-does not change the account password automatically.
+cases: expired password (`141`), wrong password (`3`), missing authentication,
+contract not trading in this session, or settlement not confirmed (`7`).
+
+SimNow expires passwords periodically. When the trader front returns `141`,
+set `new_password` in the conf (at least 10 characters and 3 character types).
+The gateway answers with `ReqUserPasswordUpdate`, then logs in again with the
+new password. Once that succeeds, replace `password` with the new value and
+remove `new_password`; the account password really changes, so update any
+other tool that uses the same account.
+
+The instrument list must contain contracts that are still listed on the
+trading day reported by the front (e.g. `au2612,ag2612` in late 2026); expired
+contracts subscribe successfully but never tick.
 

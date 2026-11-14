@@ -107,6 +107,23 @@ int CtpTdClient::find_live(int ref) const noexcept {
     return -1;
 }
 
+bool CtpTdClient::find_tag(int ref, uint64_t& tag, uint32_t& name) const noexcept {
+    const int i = find_live(ref);
+    if (i >= 0) {
+        tag = live_slot_[i].tag;
+        name = live_slot_[i].name;
+        return true;
+    }
+    for (int k = 0; k < kRecent; ++k) {
+        if (recent_[k].ref == ref) {
+            tag = recent_[k].tag;
+            name = recent_[k].name;
+            return true;
+        }
+    }
+    return false;
+}
+
 void CtpTdClient::finish_ref(int ref) noexcept {
     const int i = find_live(ref);
     if (i >= 0) live_used_[i] = 0;
@@ -263,10 +280,11 @@ void CtpTdClient::OnRtnTrade(CThostFtdcTradeField* pTrade) {
     if (log_)
         log_->log(2, lit("[td] trade "), pTrade->InstrumentID, lit(" px="), pTrade->Price, lit(" vol="), pTrade->Volume,
                   lit(" dir="), static_cast<int>(pTrade->Direction));
-    const int i = find_live(std::atoi(pTrade->OrderRef));
-    if (i >= 0 && trade_fn_) {
-        trade_fn_(trade_user_, live_slot_[i].tag, live_slot_[i].name,
-                  static_cast<int64_t>(pTrade->Price * 10000.0 + 0.5), pTrade->Volume, wall_us());
+    uint64_t tag = 0;
+    uint32_t name = 0;
+    if (trade_fn_ && find_tag(std::atoi(pTrade->OrderRef), tag, name)) {
+        trade_fn_(trade_user_, tag, name, static_cast<int64_t>(pTrade->Price * 10000.0 + 0.5), pTrade->Volume,
+                  wall_us());
     }
 }
 
@@ -306,11 +324,8 @@ int CtpTdClient::insert(const Intent& in) {
     req.ContingentCondition = THOST_FTDC_CC_Immediately;
     req.ForceCloseReason = THOST_FTDC_FCC_NotForceClose;
 
-    uint64_t gate = 0;
-    const int rc = api_->ReqOrderInsert(&req, ++req_);
-    (void)cycles_ordered(gate);
-    if (rc != 0) return rc;
-
+    // Register the slot before sending: a fast venue can report the ack or a
+    // fill on the callback thread before ReqOrderInsert returns.
     int slot = -1;
     for (int i = 0; i < kLive; ++i) {
         if (!live_used_[i]) {
@@ -324,8 +339,19 @@ int CtpTdClient::insert(const Intent& in) {
     live_slot_[slot] = t0;
     live_slot_[slot].tag = in.tag;
     live_slot_[slot].name = in.name;
-    live_slot_[slot].gate_ns = to_ns(scale_, (t0.t0_cycles && gate > t0.t0_cycles) ? gate - t0.t0_cycles : 0);
     std::memcpy(live_slot_[slot].instrument, inst, 32);
+
+    recent_[recent_pos_] = RecentRef{ref, in.tag, in.name};
+    recent_pos_ = (recent_pos_ + 1) % static_cast<uint32_t>(kRecent);
+
+    uint64_t gate = 0;
+    const int rc = api_->ReqOrderInsert(&req, ++req_);
+    if (rc != 0) {
+        live_used_[slot] = 0;
+        return rc;
+    }
+    (void)cycles_ordered(gate);
+    live_slot_[slot].gate_ns = to_ns(scale_, (t0.t0_cycles && gate > t0.t0_cycles) ? gate - t0.t0_cycles : 0);
     return 0;
 }
 
