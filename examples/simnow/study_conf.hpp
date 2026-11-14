@@ -20,6 +20,11 @@ struct StudyCfg {
     int64_t ic_ppm{0};
     int64_t rank_ic_ppm{0};
     int64_t hit_rate_ppm{0};
+    // Held-out validation (last 30% of the tape) and its turnover.
+    int64_t oos_rank_ic_ppm{0};
+    int64_t oos_samples{0};
+    int64_t turnover_ppm{0};
+    int64_t score_ppm{0};
 };
 
 inline char* study_trim(char* s) noexcept {
@@ -57,6 +62,10 @@ inline bool study_conf_save(const char* path, const StudyCfg& cfg) {
     std::fprintf(f, "ic_ppm = %lld\n", static_cast<long long>(cfg.ic_ppm));
     std::fprintf(f, "rank_ic_ppm = %lld\n", static_cast<long long>(cfg.rank_ic_ppm));
     std::fprintf(f, "hit_rate_ppm = %lld\n", static_cast<long long>(cfg.hit_rate_ppm));
+    std::fprintf(f, "oos_rank_ic_ppm = %lld\n", static_cast<long long>(cfg.oos_rank_ic_ppm));
+    std::fprintf(f, "oos_samples = %lld\n", static_cast<long long>(cfg.oos_samples));
+    std::fprintf(f, "turnover_ppm = %lld\n", static_cast<long long>(cfg.turnover_ppm));
+    std::fprintf(f, "score_ppm = %lld\n", static_cast<long long>(cfg.score_ppm));
     const bool ok = std::fflush(f) == 0;
     if (std::fclose(f) != 0 || !ok) {
         std::fprintf(stderr, "study conf: write %s failed\n", path);
@@ -113,6 +122,18 @@ inline bool study_conf_load(const char* path, StudyCfg& cfg) {
         } else if (std::strcmp(key, "hit_rate_ppm") == 0) {
             if (!study_i64(val, v)) bad = true;
             else out.hit_rate_ppm = v;
+        } else if (std::strcmp(key, "oos_rank_ic_ppm") == 0) {
+            if (!study_i64(val, v)) bad = true;
+            else out.oos_rank_ic_ppm = v;
+        } else if (std::strcmp(key, "oos_samples") == 0) {
+            if (!study_i64(val, v)) bad = true;
+            else out.oos_samples = v;
+        } else if (std::strcmp(key, "turnover_ppm") == 0) {
+            if (!study_i64(val, v)) bad = true;
+            else out.turnover_ppm = v;
+        } else if (std::strcmp(key, "score_ppm") == 0) {
+            if (!study_i64(val, v)) bad = true;
+            else out.score_ppm = v;
         }
     }
     std::fclose(f);

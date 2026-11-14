@@ -22,6 +22,8 @@ set(PITLANE_SOURCES
     src/book/cross.cpp
     src/book/venue.cpp
     src/order/lots.cpp
+    src/ops/host.cpp
+    src/ops/http.cpp
     src/time/simclock.cpp
     src/util/textutil.cpp
     src/util/wirelog.cpp)
@@ -106,7 +108,7 @@ if(PITLANE_BUILD_SHARED)
 endif()
 
 set(PITLANE_EXAMPLES demo desk book order study time lane own pace)
-set(PITLANE_AREAS desk book order time study util host net oms factor alloc)
+set(PITLANE_AREAS desk book order time study util host net oms factor alloc ops)
 set(PITLANE_SAN_TARGETS pitlane)
 
 if(PITLANE_BUILD_EXAMPLES)

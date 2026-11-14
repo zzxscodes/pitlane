@@ -5,6 +5,7 @@
 #include "md_engine.hpp"
 #include "td_client.hpp"
 #include "full_flow.hpp"
+#include "ops.hpp"
 #include "research.hpp"
 #include "study_conf.hpp"
 #include "pitlane/book/venue.hpp"
@@ -63,8 +64,10 @@ struct App {
 };
 
 App* g_app = nullptr;
+std::atomic<bool> g_stop_flag{false};
 
 void on_sig(int) {
+    g_stop_flag.store(true, std::memory_order_release);
     if (g_app) g_app->stop.store(true, std::memory_order_release);
 }
 
@@ -514,7 +517,7 @@ int build_synth_tape(pitlane::Quote* tape, int cap) {
 
 int run_sim_flow(const pitlane::Account& acct, const pitlane::StratCfg& cfg, const pitlane::VenueCfg& vc,
                  const pitlane::Quote* tape, int tape_n, bool replay_all, int mode, const pitlane::FlowCfg& fcfg,
-                 const char* record_path) {
+                 const char* record_path, bool web, uint16_t web_port, const char* web_root, const char* ops_conf) {
     (void)cfg;
     if (!tape || tape_n <= 0) return 2;
     if (!ensure_dir(acct.work_dir.c_str())) return 2;
@@ -583,6 +586,18 @@ int run_sim_flow(const pitlane::Account& acct, const pitlane::StratCfg& cfg, con
         return 1;
     }
 
+    simnow_ops::SimOps* ops = nullptr;
+    if (web) {
+        ops = new (std::nothrow) simnow_ops::SimOps();
+        if (ops && ops->open(flow, true, web_port, web_root, ops_conf) && ops->web()) {
+            std::printf("[web] ops console http://127.0.0.1:%u/\n", static_cast<unsigned>(ops->port()));
+        } else if (ops) {
+            ops->close();
+            delete ops;
+            ops = nullptr;
+        }
+    }
+
     for (int i = 0; i < tape_n && (replay_all || !flow.complete()); ++i) center.step(tape[i].local_us);
     if (replay_all) {
         // Let the last parent finish its slices and fills after the tape ends.
@@ -593,6 +608,22 @@ int run_sim_flow(const pitlane::Account& acct, const pitlane::StratCfg& cfg, con
             flow.on_beat(t);
         }
     }
+    if (ops && ops->web()) {
+        // Keep the hub alive so the browser can drive manual orders and controls.
+        std::signal(SIGINT, on_sig);
+        std::signal(SIGTERM, on_sig);
+        g_stop_flag.store(false, std::memory_order_release);
+        const int64_t sim_base = tape[tape_n - 1].local_us + 65000000ll;
+        const int64_t wall_base = wall_us();
+        std::printf("[web] replay done; serving until Ctrl-C (manual orders match at the last top)\n");
+        while (!g_stop_flag.load(std::memory_order_acquire)) {
+            const int64_t now = sim_base + (wall_us() - wall_base);
+            center.step(now);
+            flow.on_beat(now);
+            timespec ts{0, 5000000};
+            nanosleep(&ts, nullptr);
+        }
+    }
     if (record_path) {
         rec.close();
         std::printf("[record] %s written=%llu dropped=%llu\n", record_path, static_cast<unsigned long long>(rec.written()),
@@ -601,6 +632,10 @@ int run_sim_flow(const pitlane::Account& acct, const pitlane::StratCfg& cfg, con
 
     flow.summarize(&wlog);
     const bool ok = flow.pass();
+    if (ops) {
+        ops->close();
+        delete ops;
+    }
     flow.close();
     wlog.flush();
     delete venue;
@@ -610,17 +645,20 @@ int run_sim_flow(const pitlane::Account& acct, const pitlane::StratCfg& cfg, con
 }
 
 int run_paper_flow(const pitlane::Account& acct, const pitlane::StratCfg& cfg, const pitlane::VenueCfg& vc,
-                   const pitlane::FlowCfg& fcfg, const char* record_path) {
+                   const pitlane::FlowCfg& fcfg, const char* record_path, bool web, uint16_t web_port,
+                   const char* web_root, const char* ops_conf) {
     constexpr int kTape = 512;
     static pitlane::Quote tape[kTape]{};
-    return run_sim_flow(acct, cfg, vc, tape, build_synth_tape(tape, kTape), false, 2, fcfg, record_path);
+    return run_sim_flow(acct, cfg, vc, tape, build_synth_tape(tape, kTape), false, 2, fcfg, record_path, web, web_port,
+                        web_root, ops_conf);
 }
 
 int run_backtest(const pitlane::Account& acct, const pitlane::StratCfg& cfg, const pitlane::VenueCfg& vc,
-                 const char* tape_path, const char* study_path, const char* record_path) {
+                 const char* tape_path, const char* study_path, const char* record_path, uint32_t name_filter,
+                 bool web, uint16_t web_port, const char* web_root, const char* ops_conf) {
     std::vector<pitlane::Quote> tape;
     simnow_study::TapeStats st{};
-    if (tape_path && simnow_study::tape_load_csv(tape_path, tape, st)) {
+    if (tape_path && simnow_study::tape_load_csv(tape_path, tape, st, name_filter)) {
         std::printf("[backtest] tape %s rows=%d skipped=%d span_us=%lld\n", tape_path, st.rows, st.skipped,
                     static_cast<long long>(st.last_us - st.first_us));
     } else {
@@ -634,7 +672,8 @@ int run_backtest(const pitlane::Account& acct, const pitlane::StratCfg& cfg, con
     }
     pitlane::FlowCfg fcfg{};
     if (!load_study(study_path, acct, fcfg)) return 2;
-    return run_sim_flow(acct, cfg, vc, tape.data(), static_cast<int>(tape.size()), true, 3, fcfg, record_path);
+    return run_sim_flow(acct, cfg, vc, tape.data(), static_cast<int>(tape.size()), true, 3, fcfg, record_path, web,
+                        web_port, web_root, ops_conf);
 }
 
 int main(int argc, char** argv) {
@@ -644,6 +683,10 @@ int main(int argc, char** argv) {
     const char* record_path = nullptr;
     const char* study_path = nullptr;
     const char* out_path = nullptr;
+    const char* web_root = "web";
+    const char* ops_conf = nullptr;
+    uint32_t name_filter = 0;
+    uint16_t web_port = 0;
     bool full = false;
     bool backtest = false;
     bool research = false;
@@ -662,6 +705,14 @@ int main(int argc, char** argv) {
             study_path = argv[++i];
         else if (std::strcmp(argv[i], "--out") == 0 && i + 1 < argc)
             out_path = argv[++i];
+        else if (std::strcmp(argv[i], "--name") == 0 && i + 1 < argc)
+            name_filter = static_cast<uint32_t>(std::strtoul(argv[++i], nullptr, 10));
+        else if (std::strcmp(argv[i], "--web") == 0 && i + 1 < argc)
+            web_port = static_cast<uint16_t>(std::strtoul(argv[++i], nullptr, 10));
+        else if (std::strcmp(argv[i], "--web-root") == 0 && i + 1 < argc)
+            web_root = argv[++i];
+        else if (std::strcmp(argv[i], "--ops-conf") == 0 && i + 1 < argc)
+            ops_conf = argv[++i];
         else
             conf_path = argv[i];
     }
@@ -673,7 +724,8 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "load conf %s: %s\n", conf_path, err.c_str());
         std::fprintf(stderr,
                      "usage: cd examples/simnow && ../../build/pitlane_simnow [--full|--backtest|--research] "
-                     "[--tape FILE] [--record FILE] [--study FILE] [--out FILE] conf.conf\n");
+                     "[--tape FILE] [--record FILE] [--study FILE] [--out FILE] [--name N] "
+                     "[--web PORT] [--web-root DIR] [--ops-conf FILE] conf.conf\n");
         return 2;
     }
     pitlane::apply_account_env(acct);
@@ -691,7 +743,7 @@ int main(int argc, char** argv) {
         if (!ensure_dir(acct.work_dir.c_str())) return 2;
         std::vector<pitlane::Quote> tape;
         simnow_study::TapeStats st{};
-        if (!simnow_study::tape_load_csv(tape_path, tape, st)) {
+        if (!simnow_study::tape_load_csv(tape_path, tape, st, name_filter)) {
             std::fprintf(stderr, "research: no usable rows in %s (%d skipped)\n", tape_path, st.skipped);
             return 1;
         }
@@ -708,12 +760,16 @@ int main(int argc, char** argv) {
     }
 
     if (strat.paper) {
-        if (backtest) return run_backtest(acct, strat, vc, tape_path, study_path, record_path);
+        if (backtest) {
+            return run_backtest(acct, strat, vc, tape_path, study_path, record_path, name_filter, web_port > 0, web_port,
+                                web_root, ops_conf);
+        }
         if (full) {
             pitlane::FlowCfg fcfg{};
             if (!load_study(study_path, acct, fcfg)) return 2;
-            return run_paper_flow(acct, strat, vc, fcfg, record_path);
+            return run_paper_flow(acct, strat, vc, fcfg, record_path, web_port > 0, web_port, web_root, ops_conf);
         }
+        if (web_port > 0) std::fprintf(stderr, "--web needs --full or --backtest\n");
         return run_paper(acct, strat, vc, record_path);
     }
     if (backtest) {
@@ -775,6 +831,7 @@ int main(int argc, char** argv) {
     app.rec = record_path ? &rec : nullptr;
 
     pitlane::FullFlow flow;
+    simnow_ops::SimOps* ops = nullptr;
     if (full) {
         pitlane::FlowCfg fcfg{};
         if (!load_study(study_path, acct, fcfg)) return 2;
@@ -786,14 +843,32 @@ int main(int argc, char** argv) {
         td.set_trade(on_trade_cb, &app);
         td.set_done(on_done_cb, &app);
         td.set_reject(on_reject_cb, &app);
+        if (web_port > 0) {
+            ops = new (std::nothrow) simnow_ops::SimOps();
+            if (ops && ops->open(flow, strat.paper, web_port, web_root, ops_conf) && ops->web()) {
+                std::printf("[web] ops console http://127.0.0.1:%u/\n", static_cast<unsigned>(ops->port()));
+            } else if (ops) {
+                ops->close();
+                delete ops;
+                ops = nullptr;
+            }
+        }
     }
 
     if (!md.set_up()) {
+        if (ops) {
+            ops->close();
+            delete ops;
+        }
         if (full) flow.close();
         return 1;
     }
     td.bind_inst(md.inst());
     if (!td.start()) {
+        if (ops) {
+            ops->close();
+            delete ops;
+        }
         if (full) flow.close();
         return 1;
     }
@@ -855,6 +930,11 @@ int main(int argc, char** argv) {
     if (full) {
         flow.summarize(&wlog);
         rc = flow.pass() ? 0 : 1;
+        if (ops) {
+            ops->close();
+            delete ops;
+            ops = nullptr;
+        }
         flow.close();
     } else {
         rc = (td.ready() && !td.failed() && !md.failed()) ? 0 : 1;

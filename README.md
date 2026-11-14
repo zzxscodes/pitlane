@@ -129,6 +129,46 @@ A sheet keeps one order's life, quantity, cause, and the stamps used for the ack
 
 A fourth set measures cycles and keeps fixed tables the caller drives on its own thread. `cycles_read` and `cycles_ordered` read the processor cycle counter. The caller writes a one-line microsecond slot and supplies the integer scale that turns cycles into nanoseconds. A magnitude histogram reports the median and the tail. A tick wheel, a staged ring, a sequence window, a reader window, an in-place fill ring, and per-core trace tapes are fixed tables. The library does not start a thread, does not open a socket, and does not send an order.
 
+## Operations console
+
+`ops/status.hpp`, `ops/command.hpp`, `ops/control.hpp`, `ops/http.hpp`, and `ops/host.hpp` add the control and monitoring plane that sits above the desk. A status board publishes one sealed snapshot that readers copy while it stays stable. An operator ring carries commands from any thread and answers each one by sequence number. The control plane is the only writer of the pause, halt, risk-block, stop, and reload flags, so strategy orders, manual orders, and the web client all see the same state.
+
+Manual tickets go through the same `Rms`, `Oms`, `Pms`, and `IdMint` as strategy orders. A direct ticket sends one immediate order. A basket keeps a target quantity per instrument and sends only the difference between that target and the shared net position on every beat. An algorithm ticket slices its quantity evenly across a horizon. A halt stops the strategy parent, cancels what the manual side is working on, and stays in force until a resume.
+
+The HTTP server uses `poll` on one thread, one request per connection, an 8 KB request ceiling, and a fixed copy of `index.html` that it reads once at start. It binds loopback only and needs no third-party library. The example ships `examples/simnow/web/index.html`, a single page that polls status every 500 ms, follows an event cursor, and posts tickets and control actions.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/api/status` | Sealed snapshot: state, links, counters, risk, host, positions, recent orders |
+| GET | `/api/events?since=N` | Audit records newer than `N`, plus the next cursor |
+| GET | `/api/health` | Liveness probe |
+| POST | `/api/order` | `{"name":1,"side":1,"qty":2,"px":0}` direct ticket, `px` 0 takes the touch |
+| POST | `/api/basket` | `{"legs":[{"name":1,"target":5},{"name":2,"target":-3}]}` target-quantity basket |
+| POST | `/api/algo` | `{"name":1,"side":2,"qty":4,"horizon_ms":2000,"slice_ms":500}` sliced ticket |
+| POST | `/api/control` | `{"action":"pause|resume|halt|resume_risk|reload|cancel_all|stop"}` |
+
+Run the paper replay and keep the console open after the tape ends:
+
+```bash
+cd examples/simnow
+../../build/pitlane_simnow --backtest --tape run/tape.csv --web 8080 conf/paper.conf
+curl -s http://127.0.0.1:8080/api/status
+curl -s -X POST -d '{"name":1,"side":1,"qty":2}' http://127.0.0.1:8080/api/order
+curl -s -X POST -d '{"action":"halt"}' http://127.0.0.1:8080/api/control
+curl -s 'http://127.0.0.1:8080/api/events?since=0'
+```
+
+`run/ops.conf` sets the port, the document root, and the policy limits: manual quantity and notional, manual tickets per minute, daily loss, drawdown in ppm, reject-rate ceiling in ppm, and the stale-quote horizon. `reload` re-reads that file and bumps the version shown on the page. `max_daily_loss` and `max_drawdown_ppm` of 0 disable those checks.
+
+| Code | Meaning |
+| --- | --- |
+| 0 | accepted |
+| 1 | malformed command |
+| 2 | new orders blocked by pause, halt, risk, link, or stop |
+| 3 | rejected by policy or `Rms` |
+| 4 | operator ring full |
+| 5 | unknown command |
+
 ## Build and install
 
 CMake 3.16 or newer is required, together with a C++17 compiler. From the repository root:

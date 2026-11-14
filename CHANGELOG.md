@@ -3,6 +3,10 @@
 ## [Unreleased] - 2026-11-14
 
 ### Added
+- `ops/status.hpp`, `ops/command.hpp`, `ops/policy.hpp`, `ops/control.hpp`, `ops/http.hpp`, `ops/host.hpp`, `order/risk_guard.hpp`, and `order/manual.hpp`: the operations plane. A single-writer seqlock `StatusBoard` publishes one snapshot; `OpsChannel` carries operator commands with per-sequence results and a 64-entry audit ring; `ControlPlane` owns pause, halt, risk block, stop, reload, direct, basket, and sliced manual tickets; `RiskGuard` layers post-trade checks (daily loss, drawdown, reject rate, link loss, stale quotes) under the pre-trade `Rms`. Manual tickets reuse `Rms`, `Oms`, `Pms`, and `IdMint`, so strategy and manual flow share one book. A dependency-free `poll`-based HTTP/1.1 server serves the console on loopback.
+- `examples/simnow`: `--web PORT` serves `web/index.html`, a single page for status, positions, orders, events, direct tickets, target baskets, sliced tickets, and pause/resume/halt/resume-risk/reload/cancel-all/stop. `run/ops.conf` holds the port, document root, and policy limits. `--backtest --web` keeps the hub alive after the tape ends so manual orders match at the last top; `--full --web` exposes the same console on the live path.
+- `tests/ops`: coverage for the status board, command channel and audit, control transitions, manual direct/basket/sliced execution, risk guard latching, HTTP request parsing, and host sampling.
+- `examples/simnow` research: the sweep selects on the first 70% of the tape, scores each combo as absolute rank IC minus a turnover penalty, and evaluates the held-out last 30% exactly once. `StudyCfg` gains `oos_rank_ic_ppm`, `oos_samples`, `turnover_ppm`, and `score_ppm`; older study files still load.
 - `desk/tape_rec.hpp`: `TapeRecorder` records any quote stream into the replayable seven-column CSV tape. One producer pushes into a bounded ring that drops and counts on overflow; a writer thread batches rows, fsyncs, and renames `FILE.tmp` onto `FILE` on close.
 - `study/perf.hpp`: `PerfCurve` keeps an integer equity curve and reports start/end/peak/min, max drawdown in units and ppm, and per-sample Sharpe.
 - `examples/simnow`: `--record`, `--research`, `--study`, and `--out` complete the collect → research → backtest → live loop. Research sweeps factor kind/window/horizon with IC, rank IC, hit rate, and quintile spreads, writes `run/research.conf`, and both backtest and live consume it. Backtest loads the whole tape, signs the factor from rank IC, runs 64 seconds of tail playback, and prints `perf`/`cost`/`study` sections.
@@ -12,6 +16,7 @@
 ### Notes
 - Desk layout is unchanged.
 - No existing order path changed; the pacing layer is additive.
+- The operations plane is additive: `Rms` remains the pre-trade gate, and `RiskGuard` only reacts to post-trade state. The HTTP server is loopback-only and holds no session state.
 
 ## [2.23.0] - 2026-11-14
 

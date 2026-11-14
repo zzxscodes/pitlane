@@ -18,6 +18,7 @@
 #include "pitlane/order/oms.hpp"
 #include "pitlane/order/pms.hpp"
 #include "pitlane/order/rms.hpp"
+#include "pitlane/ops/control.hpp"
 #include "pitlane/study/factor.hpp"
 #include "pitlane/study/factor_eval.hpp"
 #include "pitlane/study/perf.hpp"
@@ -67,13 +68,60 @@ struct FlowCfg {
     int64_t signal_ppm{10};
 };
 
+// Read-only views for the ops console and the risk guard.
+struct FlowCounters {
+    int64_t quotes{0};
+    int64_t submitted{0};
+    int64_t acked{0};
+    int64_t fills{0};
+    int64_t rejects{0};
+    int64_t cancels{0};
+    int64_t rms_reject{0};
+    int64_t daily_notional{0};
+    int64_t last_px{0};
+    int64_t last_tick_us{0};
+    int64_t realized{0};
+    int64_t unrealized{0};
+    int64_t fees{0};
+    int64_t parents_closed{0};
+    int32_t live_orders{0};
+    int32_t rate_1s{0};
+};
+
+struct FlowPos {
+    uint32_t name{0};
+    int64_t long_qty{0};
+    int64_t short_qty{0};
+    int64_t long_yday{0};
+    int64_t short_yday{0};
+    int64_t avg_long_px{0};
+    int64_t avg_short_px{0};
+    int64_t realized{0};
+    int64_t unrealized{0};
+};
+
+struct FlowOrderRow {
+    uint64_t tag{0};
+    uint32_t name{0};
+    uint8_t side{0};
+    uint8_t phase{0};
+    int64_t qty{0};
+    int64_t filled{0};
+    int64_t px{0};
+    int64_t updated_us{0};
+};
+
 class FullFlow {
 public:
     static constexpr int kParentQty = 3;
     static constexpr int kChildCap = 64;
     static constexpr int kEventCap = 256;
+    static constexpr int kRecentOrders = 32;
+    static constexpr int kMaxNames = 8;
 
     using SendFn = int (*)(void* user, const Intent& in);
+    // Ops beat hook, run on the trading thread ahead of the strategy.
+    using OpsBeatFn = int (*)(void* user, int64_t now_us, FullFlow& flow);
 
     bool open(const Account& acct, int mode, WireLog* log, const FlowCfg& cfg = FlowCfg{}) {
         if (open_) return false;
@@ -175,6 +223,178 @@ public:
         interval_us_ = interval_us;
     }
 
+    void set_control(ControlPlane* c) noexcept { control_ = c; }
+
+    void set_ops(OpsBeatFn fn, void* user) noexcept {
+        ops_ = fn;
+        ops_user_ = user;
+    }
+
+    // Read-only views used by the ops console.
+    Rms& rms() noexcept { return rms_; }
+    const Rms& rms() const noexcept { return rms_; }
+    IdMint& mint() noexcept { return mint_; }
+
+    void last_quote(uint32_t name, int64_t& bid, int64_t& ask) const noexcept {
+        if (name != 1) {
+            bid = 0;
+            ask = 0;
+            return;
+        }
+        bid = bid_px_.load(std::memory_order_relaxed);
+        ask = ask_px_.load(std::memory_order_relaxed);
+    }
+
+    int64_t net_qty(uint32_t name) const noexcept { return pms_.net_qty(1, name); }
+
+    int64_t open_orders() const noexcept { return oms_.active(); }
+
+    void counters(FlowCounters& out) const noexcept {
+        out = FlowCounters{};
+        out.quotes = quotes_.load(std::memory_order_relaxed);
+        out.submitted = submitted_;
+        out.acked = acked_;
+        out.fills = fills_;
+        out.rejects = rejects_;
+        out.cancels = cancels_;
+        out.rms_reject = rms_reject_;
+        out.daily_notional = daily_notional_;
+        out.last_px = last_px_.load(std::memory_order_relaxed);
+        out.last_tick_us = last_us_.load(std::memory_order_relaxed);
+        out.parents_closed = parents_closed_;
+        out.live_orders = oms_.active();
+        out.rate_1s = rate_count_;
+        const int64_t mark = out.last_px;
+        int64_t unreal = 0;
+        for (uint32_t nm = 1; nm <= kMaxNames; ++nm) {
+            const PmsPos* p = pms_.find(1, nm);
+            if (!p) continue;
+            out.realized += p->realized;
+            out.fees += p->fees;
+            int64_t u = 0;
+            if (mark > 0 && pms_.unrealized(1, nm, mark, u)) unreal += u;
+        }
+        out.unrealized = unreal;
+    }
+
+    int positions(FlowPos* out, int cap) const noexcept {
+        if (!out || cap <= 0) return 0;
+        const int64_t mark = last_px_.load(std::memory_order_relaxed);
+        int n = 0;
+        for (uint32_t nm = 1; nm <= kMaxNames && n < cap; ++nm) {
+            const PmsPos* p = pms_.find(1, nm);
+            if (!p) continue;
+            FlowPos& f = out[n++];
+            f.name = p->name;
+            f.long_qty = p->long_qty;
+            f.short_qty = p->short_qty;
+            f.long_yday = p->long_yday;
+            f.short_yday = p->short_yday;
+            f.avg_long_px = p->avg_long_px;
+            f.avg_short_px = p->avg_short_px;
+            f.realized = p->realized;
+            f.unrealized = 0;
+            if (mark > 0) (void)pms_.unrealized(1, nm, mark, f.unrealized);
+        }
+        return n;
+    }
+
+    int recent_orders(FlowOrderRow* out, int cap) const noexcept {
+        if (!out || cap <= 0) return 0;
+        const int n = recent_n_ < cap ? recent_n_ : cap;
+        for (int i = 0; i < n; ++i) {
+            out[i] = recent_[(recent_head_ - n + i + kRecentOrders) % kRecentOrders];
+        }
+        return n;
+    }
+
+    // Drops the working parent and stops new slices. IOC children expire on their own.
+    void cancel_all() noexcept {
+        if (active_parent_ != 0) (void)ems_.close(active_parent_);
+        active_parent_ = 0;
+        parent_lost_ = 0;
+        has_parent_.store(0, std::memory_order_release);
+        want_side_.store(0, std::memory_order_release);
+    }
+
+    // Manual intents share the OMS, PMS, RMS, and id mint with the strategy.
+    // Returns 0 accepted, 1 risk rejected, 2 capacity or transport failure.
+    int submit_manual(const Intent& in, int64_t now_us) noexcept {
+        if (!open_ || in.tag == 0 || !known_side(in.side) || in.qty <= 0 || in.px <= 0) return 2;
+        if (child_index(in.tag) >= 0) return 2;
+        if (in.px > INT64_MAX / in.qty) return 2;
+        RmsReq req{};
+        req.acct = in.acct;
+        req.name = in.name;
+        req.side = in.side;
+        req.px = in.px;
+        req.qty = in.qty;
+        req.last_px = last_px_.load(std::memory_order_relaxed);
+        req.daily_notional = daily_notional_;
+        req.orders_in_window = rate_count_;
+        req.live_orders = oms_.active();
+        req.free_cash = 100000000;
+        req.pos = pms_.find(in.acct, in.name);
+        const RmsCode code = rms_.check(req);
+        if (code != RmsCode::Ok) {
+            ++rms_reject_;
+            if (log_) log_->log(1, lit("[flow] manual rms reject "), static_cast<int>(code));
+            return 1;
+        }
+        const int ci = alloc_child();
+        if (ci < 0) {
+            ++send_fail_;
+            return 2;
+        }
+        OmsOrder draft{};
+        draft.local = in.tag;
+        draft.client = in.tag;
+        draft.parent = 0;
+        draft.name = in.name;
+        draft.acct = in.acct;
+        draft.venue = 1;
+        draft.px = in.px;
+        draft.qty = in.qty;
+        draft.side = in.side;
+        draft.type = 1;
+        draft.tif = 3;
+        draft.created_us = now_us;
+        draft.updated_us = now_us;
+        if (!oms_.submit(draft)) {
+            ++send_fail_;
+            return 2;
+        }
+        ++submitted_;
+        const int rc = send_ ? send_(send_user_, in) : -1;
+        if (rc != 0) {
+            ++send_fail_;
+            (void)oms_.reject(in.tag, now_us);
+            return 2;
+        }
+        child_[ci] = Child{};
+        child_[ci].tag = in.tag;
+        child_[ci].parent = 0;
+        child_[ci].local = in.tag;
+        child_[ci].qty = in.qty;
+        child_[ci].name = in.name;
+        child_[ci].side = in.side;
+        child_[ci].venue = 1;
+        child_[ci].used = 1;
+        uint64_t c = 0;
+        if (cycles_ordered(c)) child_[ci].send_cycles = c;
+        daily_notional_ += in.px * in.qty;
+        ++rate_count_;
+        push_order(in.tag, in.name, in.side, in.qty, 0, in.px, now_us);
+        FlowNote note{};
+        note.tag = in.tag;
+        note.px = in.px;
+        note.qty = in.qty;
+        note.name = in.name;
+        note.kind = static_cast<uint8_t>(WalKind::Intent);
+        wal_note(note, now_us);
+        return 0;
+    }
+
     // MD callback thread.
     void on_tick(uint32_t name, const Quote& q, uint64_t t0_cycles, uint64_t t1_cycles) noexcept {
         if (!open_ || name != 1) return;
@@ -225,8 +445,9 @@ public:
         if (!open_) return 0;
         drain_ctp(now_us);
         rotate_rate_window(now_us);
+        if (ops_) (void)ops_(ops_user_, now_us, *this);
 
-        if (has_parent_.load(std::memory_order_acquire) == 0) {
+        if (has_parent_.load(std::memory_order_acquire) == 0 && (!control_ || control_->allow_new_orders())) {
             const uint8_t side = want_side_.load(std::memory_order_acquire);
             if (side != 0 && now_us - want_stamp_.load(std::memory_order_relaxed) <= 5000000 &&
                 top_ready(side)) {
@@ -716,6 +937,7 @@ private:
         if (cycles_ordered(c)) child_[ci].send_cycles = c;
         daily_notional_ += s.px * s.qty;
         ++rate_count_;
+        push_order(tag, parent_name_, parent_side_, s.qty, 0, s.px, now_us);
         FlowNote note{};
         note.tag = tag;
         note.px = s.px;
@@ -750,6 +972,7 @@ private:
         child_[ci].filled += f.qty;
         (void)ems_.on_child(child_[ci].parent, child_[ci].tag, f.qty, f.leaves == 0);
         ++fills_;
+        push_order(child_[ci].tag, child_[ci].name, child_[ci].side, child_[ci].qty, child_[ci].filled, f.px, now_us);
         publish_snap(now_us);
         FlowNote note{};
         note.tag = child_[ci].tag;
@@ -794,6 +1017,7 @@ private:
                 parent_lost_total_ += remaining;
             }
         }
+        push_order(child_[ci].tag, child_[ci].name, child_[ci].side, child_[ci].qty, child_[ci].filled, 0, now_us);
         child_[ci] = Child{};
     }
 
@@ -808,8 +1032,40 @@ private:
                 parent_lost_total_ += child_[ci].qty;
             }
         }
+        push_order(child_[ci].tag, child_[ci].name, child_[ci].side, child_[ci].qty, 0, 0, now_us);
         if (log_) log_->log(1, lit("[flow] reject tag="), tag, lit(" code="), code);
         child_[ci] = Child{};
+    }
+
+    void push_order(uint64_t tag, uint32_t name, uint8_t side, int64_t qty, int64_t filled, int64_t px,
+                    int64_t now_us) noexcept {
+        FlowOrderRow r{};
+        r.tag = tag;
+        r.name = name;
+        r.side = side;
+        if (filled <= 0) r.phase = static_cast<uint8_t>(Phase::Working);
+        else if (filled >= qty) r.phase = static_cast<uint8_t>(Phase::Filled);
+        else r.phase = static_cast<uint8_t>(Phase::Partial);
+        r.qty = qty;
+        r.filled = filled;
+        r.px = px;
+        r.updated_us = now_us;
+        // One row per order: refresh in place, then move it to the newest slot.
+        for (int i = 0; i < recent_n_; ++i) {
+            const int idx = (recent_head_ - recent_n_ + i + kRecentOrders) % kRecentOrders;
+            if (recent_[idx].tag != tag) continue;
+            if (r.px == 0) r.px = recent_[idx].px;
+            for (int j = i; j + 1 < recent_n_; ++j) {
+                const int dst = (recent_head_ - recent_n_ + j + kRecentOrders) % kRecentOrders;
+                const int src = (recent_head_ - recent_n_ + j + 1 + kRecentOrders) % kRecentOrders;
+                recent_[dst] = recent_[src];
+            }
+            recent_[(recent_head_ - 1 + kRecentOrders) % kRecentOrders] = r;
+            return;
+        }
+        recent_[recent_head_] = r;
+        recent_head_ = (recent_head_ + 1) % kRecentOrders;
+        if (recent_n_ < kRecentOrders) ++recent_n_;
     }
 
     void rotate_rate_window(int64_t now_us) noexcept {
@@ -876,11 +1132,17 @@ private:
     SnapRing<FlowSnap, 64>* snap_{nullptr};
     EventQueue queue_{};
     Child child_[kChildCap]{};
+    FlowOrderRow recent_[kRecentOrders]{};
+    int recent_head_{0};
+    int recent_n_{0};
     SorSlice slices_[8]{};
     IdMint mint_{1, 1};
 
     SendFn send_{nullptr};
     void* send_user_{nullptr};
+    ControlPlane* control_{nullptr};
+    OpsBeatFn ops_{nullptr};
+    void* ops_user_{nullptr};
     WireLog* log_{nullptr};
     PipeStage stage_{PipeStage::Live};
     int mode_{0};

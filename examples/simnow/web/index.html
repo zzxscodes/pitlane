@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pitlane ops console</title>
+<style>
+  :root { color-scheme: dark; --bg:#0e1116; --panel:#161b22; --line:#26303b; --ink:#d7dde5; --dim:#8b98a7;
+          --ok:#3fb950; --warn:#d29922; --bad:#f85149; --accent:#58a6ff; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:13px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+  header { display:flex; flex-wrap:wrap; gap:10px; align-items:center; padding:10px 16px; border-bottom:1px solid var(--line);
+           background:var(--panel); position:sticky; top:0; z-index:5; }
+  h1 { font-size:15px; margin:0 12px 0 0; letter-spacing:.5px; }
+  .pill { padding:2px 9px; border-radius:999px; border:1px solid var(--line); color:var(--dim); }
+  .pill.on { color:var(--ok); border-color:#1f6f3a; }
+  .pill.off { color:var(--bad); border-color:#6e2a25; }
+  .pill.warn { color:var(--warn); border-color:#6b5320; }
+  .grow { flex:1; }
+  button { background:#1f2630; color:var(--ink); border:1px solid var(--line); border-radius:6px; padding:5px 10px;
+           font:inherit; cursor:pointer; }
+  button:hover { border-color:var(--accent); }
+  button.bad { border-color:#6e2a25; color:#ffb3ad; }
+  button.bad:hover { border-color:var(--bad); }
+  main { padding:14px 16px 40px; display:grid; gap:12px; grid-template-columns:repeat(12,1fr); }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:10px 12px; }
+  .card h2 { font-size:11px; text-transform:uppercase; letter-spacing:.12em; color:var(--dim); margin:0 0 8px; font-weight:600; }
+  .kpis { grid-column:span 12; display:grid; gap:8px; grid-template-columns:repeat(auto-fit,minmax(132px,1fr)); }
+  .kpi { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:8px 10px; }
+  .kpi .l { color:var(--dim); font-size:10px; text-transform:uppercase; letter-spacing:.1em; }
+  .kpi .v { font-size:17px; margin-top:3px; }
+  .kpi .v.bad { color:var(--bad); }
+  .kpi .v.ok { color:var(--ok); }
+  .span6 { grid-column:span 6; } .span4 { grid-column:span 4; } .span8 { grid-column:span 8; } .span12 { grid-column:span 12; }
+  table { width:100%; border-collapse:collapse; }
+  th,td { text-align:right; padding:4px 6px; border-bottom:1px solid #1e252e; white-space:nowrap; }
+  th:first-child,td:first-child { text-align:left; }
+  th { color:var(--dim); font-weight:500; font-size:11px; }
+  tbody tr:hover { background:#1b222b; }
+  .empty { color:var(--dim); text-align:center; padding:10px 0; }
+  form { display:grid; gap:8px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; }
+  label { color:var(--dim); font-size:11px; display:flex; flex-direction:column; gap:3px; }
+  input,select { background:#0f141a; color:var(--ink); border:1px solid var(--line); border-radius:5px; padding:5px 7px;
+                 font:inherit; width:100%; min-width:70px; }
+  input:focus,select:focus { outline:none; border-color:var(--accent); }
+  .legs { display:grid; gap:6px; }
+  .leg { display:grid; grid-template-columns:26px 1fr 1fr; gap:6px; align-items:end; }
+  .leg .n { color:var(--dim); padding-bottom:6px; }
+  .hint { color:var(--dim); font-size:11px; }
+  #toast { position:fixed; right:16px; bottom:16px; display:grid; gap:6px; z-index:9; }
+  .msg { background:#1c242e; border:1px solid var(--line); border-left:3px solid var(--accent); border-radius:6px;
+         padding:7px 11px; max-width:340px; }
+  .msg.ok { border-left-color:var(--ok); } .msg.err { border-left-color:var(--bad); }
+  @media (max-width:1100px) { .span6,.span4,.span8 { grid-column:span 12; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>PITLANE OPS</h1>
+  <span id="st" class="pill">init</span>
+  <span id="md" class="pill">MD</span>
+  <span id="td" class="pill">TD</span>
+  <span id="ver" class="pill">v-</span>
+  <span id="up" class="pill">-</span>
+  <span class="grow"></span>
+  <button onclick="ctl('pause')">Pause</button>
+  <button onclick="ctl('resume')">Resume</button>
+  <button class="bad" onclick="ctl('halt')">Halt</button>
+  <button onclick="ctl('resume_risk')">Resume risk</button>
+  <button onclick="ctl('cancel_all')">Cancel all</button>
+  <button onclick="ctl('reload')">Reload</button>
+  <button class="bad" onclick="ctl('stop')">Stop</button>
+</header>
+
+<main>
+  <section class="kpis">
+    <div class="kpi"><div class="l">equity</div><div class="v" id="k_equity">-</div></div>
+    <div class="kpi"><div class="l">net qty</div><div class="v" id="k_net">-</div></div>
+    <div class="kpi"><div class="l">realized</div><div class="v" id="k_real">-</div></div>
+    <div class="kpi"><div class="l">unrealized</div><div class="v" id="k_unreal">-</div></div>
+    <div class="kpi"><div class="l">drawdown</div><div class="v" id="k_dd">-</div></div>
+    <div class="kpi"><div class="l">turnover</div><div class="v" id="k_turn">-</div></div>
+    <div class="kpi"><div class="l">fills / rej</div><div class="v" id="k_fill">-</div></div>
+    <div class="kpi"><div class="l">orders 1s</div><div class="v" id="k_rate">-</div></div>
+    <div class="kpi"><div class="l">reject ppm</div><div class="v" id="k_rej">-</div></div>
+    <div class="kpi"><div class="l">quotes</div><div class="v" id="k_quotes">-</div></div>
+    <div class="kpi"><div class="l">cpu / mem</div><div class="v" id="k_cpu">-</div></div>
+    <div class="kpi"><div class="l">load / threads</div><div class="v" id="k_load">-</div></div>
+  </section>
+
+  <section class="card span8">
+    <h2>positions</h2>
+    <table><thead><tr><th>name</th><th>today</th><th>yday</th><th>avg px</th><th>realized</th><th>unrealized</th></tr></thead>
+      <tbody id="pos"></tbody></table>
+  </section>
+
+  <section class="card span4">
+    <h2>note</h2>
+    <div id="note" class="hint">-</div>
+    <h2 style="margin-top:12px">risk</h2>
+    <table><tbody id="risk"></tbody></table>
+  </section>
+
+  <section class="card span8">
+    <h2>recent orders</h2>
+    <table><thead><tr><th>tag</th><th>name</th><th>side</th><th>state</th><th>qty</th><th>filled</th><th>px</th><th>ts</th></tr></thead>
+      <tbody id="orders"></tbody></table>
+  </section>
+
+  <section class="card span4">
+    <h2>events</h2>
+    <table><thead><tr><th>seq</th><th>kind</th><th>code</th><th>ts</th></tr></thead>
+      <tbody id="events"></tbody></table>
+  </section>
+
+  <section class="card span4">
+    <h2>direct order</h2>
+    <form onsubmit="return sendOrder(event)">
+      <div class="row">
+        <label>name<input id="d_name" type="number" min="1" value="1"></label>
+        <label>side<select id="d_side"><option value="1">buy</option><option value="2">sell</option></select></label>
+        <label>qty<input id="d_qty" type="number" min="1" value="1"></label>
+        <label>px (0=top)<input id="d_px" type="number" min="0" value="0"></label>
+      </div>
+      <button type="submit">Send IOC</button>
+    </form>
+  </section>
+
+  <section class="card span4">
+    <h2>basket (target position)</h2>
+    <form onsubmit="return sendBasket(event)">
+      <div class="legs" id="legs"></div>
+      <button type="submit">Apply basket</button>
+    </form>
+  </section>
+
+  <section class="card span4">
+    <h2>twap algo</h2>
+    <form onsubmit="return sendAlgo(event)">
+      <div class="row">
+        <label>name<input id="a_name" type="number" min="1" value="1"></label>
+        <label>side<select id="a_side"><option value="1">buy</option><option value="2">sell</option></select></label>
+        <label>qty<input id="a_qty" type="number" min="1" value="4"></label>
+      </div>
+      <div class="row">
+        <label>horizon ms<input id="a_h" type="number" min="100" value="8000"></label>
+        <label>slice ms<input id="a_s" type="number" min="100" value="1000"></label>
+      </div>
+      <button type="submit">Start TWAP</button>
+    </form>
+  </section>
+</main>
+
+<div id="toast"></div>
+<script>
+const $ = (id) => document.getElementById(id);
+const stateName = ["init", "running", "paused", "halted", "stopping"];
+const phaseName = ["", "staged", "working", "partial", "pending", "filled", "cancelled", "rejected"];
+const sideName = ["", "buy", "sell"];
+let cursor = 0;
+
+function toast(text, ok) {
+  const d = document.createElement("div");
+  d.className = "msg " + (ok ? "ok" : "err");
+  d.textContent = text;
+  $("toast").appendChild(d);
+  setTimeout(() => d.remove(), 4200);
+}
+function fmt(n) { return (n === undefined || n === null) ? "-" : Number(n).toLocaleString("en-US"); }
+function num(id) { return Number($(id).value || 0); }
+
+async function ctl(action) {
+  try {
+    const r = await fetch("/api/control", { method: "POST", headers: { "Content-Type": "application/json" },
+                                            body: JSON.stringify({ action }) });
+    const j = await r.json();
+    toast(action + ": " + (j.msg || j.code), j.code === 0);
+  } catch (e) { toast("control failed: " + e, false); }
+}
+
+async function post(path, body, label) {
+  try {
+    const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const j = await r.json();
+    toast(label + ": " + (j.msg || j.code) + (j.pending ? " (pending)" : ""), j.code === 0);
+  } catch (e) { toast(label + " failed: " + e, false); }
+}
+
+function sendOrder(ev) {
+  ev.preventDefault();
+  post("/api/order", { name: num("d_name"), side: num("d_side"), qty: num("d_qty"), px: num("d_px") }, "order");
+  return false;
+}
+function sendBasket(ev) {
+  ev.preventDefault();
+  const legs = [];
+  document.querySelectorAll("#legs .leg").forEach((row) => {
+    const name = Number(row.querySelector(".bname").value || 0);
+    const target = Number(row.querySelector(".btarget").value || 0);
+    if (name > 0) legs.push({ name, target });
+  });
+  if (!legs.length) { toast("basket needs at least one leg", false); return false; }
+  post("/api/basket", { legs }, "basket");
+  return false;
+}
+function sendAlgo(ev) {
+  ev.preventDefault();
+  post("/api/algo", { name: num("a_name"), side: num("a_side"), qty: num("a_qty"),
+                      horizon_ms: num("a_h"), slice_ms: num("a_s") }, "algo");
+  return false;
+}
+
+for (let i = 0; i < 3; ++i) {
+  const row = document.createElement("div");
+  row.className = "leg";
+  row.innerHTML = '<span class="n">' + (i + 1) + '</span>' +
+    '<input class="bname" type="number" min="0" value="' + (i === 0 ? 1 : 0) + '" title="name">' +
+    '<input class="btarget" type="number" value="0" title="target">';
+  $("legs").appendChild(row);
+}
+
+function renderStatus(j) {
+  $("st").textContent = stateName[j.state] || "?";
+  $("st").className = "pill " + (j.state === 1 ? "on" : j.state === 3 ? "off" : "warn");
+  $("md").textContent = "MD " + (j.md_up ? "up" : "down");
+  $("md").className = "pill " + (j.md_up ? "on" : "off");
+  $("td").textContent = "TD " + (j.td_up ? "up" : "down");
+  $("td").className = "pill " + (j.td_up ? "on" : "off");
+  $("ver").textContent = "cfg v" + j.version;
+  $("up").textContent = "up " + Math.round(j.uptime_us / 1e6) + "s";
+
+  const r = j.risk, c = j.counters, h = j.host;
+  $("k_equity").textContent = fmt(r.equity);
+  $("k_net").textContent = fmt(r.net_qty);
+  $("k_real").textContent = fmt(r.realized);
+  $("k_unreal").textContent = fmt(r.unrealized);
+  $("k_dd").textContent = fmt(r.drawdown);
+  $("k_dd").className = "v" + (r.drawdown > 0 ? " bad" : "");
+  $("k_turn").textContent = fmt(r.turnover);
+  $("k_fill").textContent = fmt(c.fills) + " / " + fmt(c.rejects);
+  $("k_rate").textContent = fmt(c.orders_1s);
+  $("k_rej").textContent = fmt(c.reject_ppm);
+  $("k_quotes").textContent = fmt(c.quotes);
+  $("k_cpu").textContent = (h.cpu_ppm / 1e4).toFixed(1) + "% / " + (h.mem_ppm / 1e4).toFixed(1) + "%";
+  $("k_load").textContent = (h.load_ppm / 1e6).toFixed(2) + " / " + h.threads;
+  $("note").textContent = j.note || "-";
+
+  $("risk").innerHTML =
+    '<tr><td>peak</td><td>' + fmt(r.peak) + '</td></tr>' +
+    '<tr><td>fees</td><td>' + fmt(r.fees) + '</td></tr>' +
+    '<tr><td>parents</td><td>' + fmt(c.parents) + '</td></tr>' +
+    '<tr><td>children</td><td>' + fmt(c.children) + '</td></tr>' +
+    '<tr><td>cancels</td><td>' + fmt(c.cancels) + '</td></tr>';
+
+  const pos = j.pos || [];
+  $("pos").innerHTML = pos.length ? pos.map((p) =>
+    '<tr><td>' + p.name + '</td><td>' + fmt(p.today) + '</td><td>' + fmt(p.yday) + '</td><td>' + fmt(p.avg_px) +
+    '</td><td>' + fmt(p.realized) + '</td><td>' + fmt(p.unrealized) + '</td></tr>').join("")
+    : '<tr><td colspan="6" class="empty">flat</td></tr>';
+
+  const rows = (j.orders || []).slice().reverse();
+  $("orders").innerHTML = rows.length ? rows.map((o) =>
+    '<tr><td>' + o.tag + '</td><td>' + o.name + '</td><td>' + (sideName[o.side] || o.side) + '</td><td>' +
+    (phaseName[o.phase] || o.phase) + '</td><td>' + fmt(o.qty) + '</td><td>' + fmt(o.filled) + '</td><td>' +
+    fmt(o.px) + '</td><td>' + Math.round(o.ts / 1000) + '</td></tr>').join("")
+    : '<tr><td colspan="8" class="empty">no orders</td></tr>';
+}
+
+function renderEvents(j) {
+  const ev = j.events || [];
+  if (!ev.length) return;
+  cursor = Math.max(cursor, j.cursor || 0);
+  const head = ev.slice().reverse().slice(0, 14);
+  $("events").innerHTML = head.map((e) =>
+    '<tr><td>' + e.seq + '</td><td>' + e.kind + '</td><td>' + e.msg + '</td><td>' +
+    Math.round(e.ts / 1000) + '</td></tr>').join("");
+}
+
+async function tick() {
+  try {
+    const r = await fetch("/api/status", { cache: "no-store" });
+    if (r.ok) renderStatus(await r.json());
+    const e = await fetch("/api/events?since=" + cursor, { cache: "no-store" });
+    if (e.ok) renderEvents(await e.json());
+  } catch (err) { /* keep polling */ }
+}
+
+setInterval(tick, 500);
+tick();
+</script>
+</body>
+</html>

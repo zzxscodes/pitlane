@@ -27,4 +27,5 @@ DartConfiguration.tcl
 examples/simnow/conf/simnow_7x24.conf
 examples/simnow/run/**
 !examples/simnow/run/.gitkeep
+!examples/simnow/run/ops.conf
 *.simnow.conf
