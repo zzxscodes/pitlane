@@ -291,7 +291,7 @@ static void on_timer(void*, uint64_t, int64_t) {
 }
 
 static void check_session() {
-    const char* path = "pitlane_suite_region.bin";
+    const char* path = "pitlane_desk_region.bin";
     ::unlink(path);
     pitlane::MapInfo map{};
     expect(pitlane::map_create(path, pitlane::desk_bytes(), &map, map_opt_tmp()) == 0, "suite map");
