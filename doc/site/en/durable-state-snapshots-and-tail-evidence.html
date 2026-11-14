@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Durable state, snapshots, and tail evidence — pitlane API</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="side">
+    <h1>pitlane API</h1>
+    <nav>
+      <a href="index.html">Overview</a><a href="startup-configuration.html">Startup configuration</a><a href="open-a-shared-desk.html">Open a shared desk</a><a href="symbol-quote-yard.html">Symbol / quote yard</a><a href="publish-and-read.html">Publish and read</a><a href="run-the-session-loop.html">Run the session loop</a><a href="prepare-an-order.html">Prepare an order</a><a href="match-on-the-paper-venue.html">Match on the paper venue</a><a href="names-signals-and-the-counter.html">Names, signals, and the counter</a><a href="helpers.html">Helpers</a><a href="caller-owned-helpers.html">Caller-owned helpers</a><a href="frames-pacing-and-snapshots.html">Frames, pacing, and snapshots</a><a href="cycles-and-fixed-low-latency-tables.html">Cycles and fixed low-latency tables</a><a href="one-order-sheet.html">One order sheet</a><a href="research-and-a-caller-decision.html">Research and a caller decision</a><a href="a-price-window-a-slot-pool-and-two-charges.html">A price window, a slot pool, and two charges</a><a href="durable-state-snapshots-and-tail-evidence.html" class="active">Durable state, snapshots, and tail evidence</a><a href="where-the-calls-live.html">Where the calls live</a>
+    </nav>
+  </aside>
+  <main class="main">
+    <div class="meta">Open a section from the left</div>
+    <h1>Durable state, snapshots, and tail evidence</h1>
+<p><code>wal_open</code> maps a fixed-size, file-backed log. <code>cap</code> is the number of records, each with a 128-byte payload. The head holds a magic, version, payload size, capacity, a committed tail, and a sync count. <code>wal_append</code> writes the body, computes CRC32C over the fields, then publishes the tail; a record that is not committed is invisible. <code>wal_append_item</code> accepts any trivially copyable type up to the payload size. <code>wal_recover</code> replays committed records in order and stops at the first bad sequence, length, kind, or checksum, then moves the tail back to the last good record. <code>wal_sync</code> is an explicit group commit. The log does not choose record meanings; the caller writes its own Intent, Report, cash, or position payloads and applies them in the recovery callback.</p>
+<p><code>SnapRing&lt;T, Cap&gt;</code> is a single-writer, multi-reader snapshot ring. The header is 64 bytes; each cell is a sequence word followed by <code>T</code>, and cells start at offset 64. <code>publish</code> makes the sequence odd while the body is copied and even again before the published count advances. <code>read</code> copies a record and retries if the sequence changed. <code>snap_open</code> maps the file and <code>snap_view</code> validates magic, version, slot size, stride, and capacity. A reader in another language maps the same file and reads <code>magic</code>, <code>version</code>, <code>slot_bytes</code>, <code>stride</code>, and <code>cap</code>; it never needs the C++ type.</p>
+<p><code>TscClock::calibrate</code> samples TSC and <code>CLOCK_MONOTONIC_RAW</code> over a short window and stores a <code>CycleScale</code>. <code>now_ns</code> and <code>now_us</code> read <code>rdtsc</code> only. <code>publish(Desk&amp;, offset_us)</code> writes the desk clock at the publish boundary; the offset is applied once, outside the measured section. <code>publish(UsSlot&amp;)</code> writes a standalone slot.</p>
+<p><code>TailBoard</code> holds one <code>Wait</code> and one gap histogram per lane, a note count, a stall count, and the maximum cycles. <code>tail_note</code> records a sample and returns true only on the sample that crosses the armed trigger. <code>tail_report</code> returns percentiles. <code>TailTape&lt;Cap&gt;</code> is a small event tape that freezes on demand, so a sidecar can read the last events without stopping the writer.</p>
+<p><code>ShadowStats</code> compares a real fill with a shadow fill. A buy&#x27;s slippage is <code>real_px - sim_px</code>; a sell&#x27;s is <code>sim_px - real_px</code>. Positive means the real execution was worse. <code>ShadowBook</code> keeps one row per execution algorithm. <code>report</code> returns counts, signed and absolute slippage, notionals, and percentiles.</p>
+<p><code>ReplayTape</code> stores a bounded sequence of ring positions and items. <code>replay_capture_all</code> copies a published range. <code>replay_ring</code> republishes in order and <code>FaultPlan</code> can drop a publish or leave a slot unacked. An unacked run eventually makes <code>publish</code> fail, so the replay stops instead of overwriting live data.</p>
+<p><code>MboBook</code> stores live orders in fixed slots and indexes them by id with fixed bucket chains. <code>apply</code> accepts add, modify, cancel, and trade. <code>best</code>, <code>depth</code>, <code>qty_at</code>, and <code>invariant</code> derive the view from the live orders. <code>RouteBook::unbind</code> removes one binding, <code>generation</code> advances on every change, and <code>route_control</code> parses <code>strategy|algo</code> control text. <code>StratEngine::routes</code> applies those notes and <code>pin_cpu</code> pins the strategy thread at setup.</p>
+  </main>
+</div>
+</body>
+</html>

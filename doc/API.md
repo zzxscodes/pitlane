@@ -10,7 +10,7 @@ Include one header:
 
 Everything is in the namespace `pitlane`. Link `libpitlane.a`, or link the shared library with `-lpitlane`. The shared library's soname is `libpitlane.so.1`. The headers are the same for both.
 
-The release is `kVersion`, currently 2.21.1, also split into `kVersionMajor`, `kVersionMinor`, and `kVersionPatch`. `kDeskVersion` is the desk mapping-file layout and is currently 5. `kYardVersion` is the separate symbol/quote yard layout and is currently 2. A new library release can leave either layout number where it is.
+The release is `kVersion`, currently 2.22.0, also split into `kVersionMajor`, `kVersionMinor`, and `kVersionPatch`. `kDeskVersion` is the desk mapping-file layout and is currently 5. `kYardVersion` is the separate symbol/quote yard layout and is currently 2. A new library release can leave either layout number where it is.
 
 A browsable static site with a left-hand section list is generated into `doc/site/en/` (`python3 doc/gen_site.py`). Open a local `doc/site/en/index.html` or the GitHub Pages deployment — viewing the file on `github.com/.../blob/...` shows source only. Startup settings are covered under **Startup configuration**.
 
@@ -382,6 +382,22 @@ These calls do not open a socket, do not send an order, and do not start a threa
 
 `util/hint.hpp` holds `likely` / `unlikely`, hot and cold placement, `assume_aligned`, cache-line size, and prefetch. With `PITLANE_NATIVE` on x86_64, builds add `-mprefer-vector-width=256 -mno-avx512f`. `util/simd.hpp` holds packed `zero_i64`, `zero_i64_stream`, `copy_bytes`, `bytes_eq`, and the buy/sell cover helpers. AVX2 clears and compares four int64 values when the build defines it. Both keep a scalar body when the ISA is missing. `ByteArena` is a fixed-capacity anonymous bump arena; by default it maps with `MAP_HUGETLB` (no THP) and falls back to ordinary anonymous pages with `fallback` set when none are reserved; `mlock` and NUMA bind are attempted by default. A full arena fails the next take. `batch_size_for` picks an adaptive micro-batch size from backlog. `RankBits` builds dense ranks with word prefixes and popcount; `QuadTab` seats static keys four per cache line. `SpinLock` is a TTAS lock on its own cache line. `bound.hpp` holds one-compare index checks and a walk budget. `DagPlan` builds a grey/black topological order. Typed tickets make illegal fills uncallable at compile time. `OwnPair` keeps two local tops. `pick_cut` and `tandem_lat` report how to cut a path from intervals the caller already measured. `SeqPublishRing` is a no-backpressure sequence ring that may overwrite unread slots. `global_scale_set` stores a process-wide integer TSC cycle scale. `DecideScratch` holds scored candidate intents the caller arms. `host/` provides `sched_setaffinity`, scheduling policy and nice, IRQ `smp_affinity_list`, `nr_hugepages` / `thp_disable`, `mlockall`, and NUMA `mbind`; refused privileged calls return false.
 
+## Durable state, snapshots, and tail evidence
+
+`wal_open` maps a fixed-size, file-backed log. `cap` is the number of records, each with a 128-byte payload. The head holds a magic, version, payload size, capacity, a committed tail, and a sync count. `wal_append` writes the body, computes CRC32C over the fields, then publishes the tail; a record that is not committed is invisible. `wal_append_item` accepts any trivially copyable type up to the payload size. `wal_recover` replays committed records in order and stops at the first bad sequence, length, kind, or checksum, then moves the tail back to the last good record. `wal_sync` is an explicit group commit. The log does not choose record meanings; the caller writes its own Intent, Report, cash, or position payloads and applies them in the recovery callback.
+
+`SnapRing<T, Cap>` is a single-writer, multi-reader snapshot ring. The header is 64 bytes; each cell is a sequence word followed by `T`, and cells start at offset 64. `publish` makes the sequence odd while the body is copied and even again before the published count advances. `read` copies a record and retries if the sequence changed. `snap_open` maps the file and `snap_view` validates magic, version, slot size, stride, and capacity. A reader in another language maps the same file and reads `magic`, `version`, `slot_bytes`, `stride`, and `cap`; it never needs the C++ type.
+
+`TscClock::calibrate` samples TSC and `CLOCK_MONOTONIC_RAW` over a short window and stores a `CycleScale`. `now_ns` and `now_us` read `rdtsc` only. `publish(Desk&, offset_us)` writes the desk clock at the publish boundary; the offset is applied once, outside the measured section. `publish(UsSlot&)` writes a standalone slot.
+
+`TailBoard` holds one `Wait` and one gap histogram per lane, a note count, a stall count, and the maximum cycles. `tail_note` records a sample and returns true only on the sample that crosses the armed trigger. `tail_report` returns percentiles. `TailTape<Cap>` is a small event tape that freezes on demand, so a sidecar can read the last events without stopping the writer.
+
+`ShadowStats` compares a real fill with a shadow fill. A buy's slippage is `real_px - sim_px`; a sell's is `sim_px - real_px`. Positive means the real execution was worse. `ShadowBook` keeps one row per execution algorithm. `report` returns counts, signed and absolute slippage, notionals, and percentiles.
+
+`ReplayTape` stores a bounded sequence of ring positions and items. `replay_capture_all` copies a published range. `replay_ring` republishes in order and `FaultPlan` can drop a publish or leave a slot unacked. An unacked run eventually makes `publish` fail, so the replay stops instead of overwriting live data.
+
+`MboBook` stores live orders in fixed slots and indexes them by id with fixed bucket chains. `apply` accepts add, modify, cancel, and trade. `best`, `depth`, `qty_at`, and `invariant` derive the view from the live orders. `RouteBook::unbind` removes one binding, `generation` advances on every change, and `route_control` parses `strategy|algo` control text. `StratEngine::routes` applies those notes and `pin_cpu` pins the strategy thread at setup.
+
 ## Where the calls live
 
 | Header | What it covers |
@@ -394,6 +410,7 @@ These calls do not open a socket, do not send an order, and do not start a threa
 | `book/cross.hpp` | The limit book and the call auction |
 | `book/lags.hpp` | Session bands and sampled delay |
 | `book/ladder.hpp` | A fixed price window and the best occupied tick |
+| `book/mbo.hpp` | Market-by-order book builder (`MboBook`) |
 | `book/own.hpp` | Local tops of book the caller feeds |
 | `book/quote.hpp` | Quote batches, ordered apply, the print log, and minute rolls |
 | `book/steps.hpp` | Tick bands, price walks, and `TickGrid` with a cached band cursor |
@@ -425,6 +442,9 @@ These calls do not open a socket, do not send an order, and do not start a threa
 | `desk/names.hpp` | `NameBook` |
 | `desk/region.hpp` | The desk, `MapOpt` file mapping, and ring capacities |
 | `desk/ring.hpp` | `FanRing` |
+| `desk/replay.hpp` | Deterministic ring replay and fault injection |
+| `desk/snapring.hpp` | Fixed-layout cross-language snapshot ring |
+| `desk/wal.hpp` | File-backed write-ahead log |
 | `desk/runtime.hpp` | `DeskLoop` |
 | `desk/signal.hpp` | `PulseBoard` |
 | `desk/types.hpp` | `Intent`, `Report`, `Quote`, sides, styles, phases, and `Why` |
@@ -434,6 +454,7 @@ These calls do not open a socket, do not send an order, and do not start a threa
 | `desk/td_engine.hpp` | `TdEngine` / `TdClient` trader gateway |
 | `desk/plane.hpp` | `SimRole`, replay delay, and tape speed |
 | `study/strat_engine.hpp` | `StratEngine` strategy and context |
+| `study/shadow.hpp` | Shadow fill comparison and per-algorithm slippage |
 | `host/affinity.hpp` | Set CPU affinity for the calling thread or process |
 | `host/hugepage.hpp` | `nr_hugepages`, Hugepagesize, `thp_disable` |
 | `host/memlock.hpp` | Process-wide `mlockall` / `munlockall` |
@@ -479,7 +500,9 @@ These calls do not open a socket, do not send an order, and do not start a threa
 | `time/simclock.hpp` | `SimClock` |
 | `time/span.hpp` | Timestamps beside a message |
 | `time/tape.hpp` | A gate, a per-core tape, sealed segments, and spikes |
+| `time/tail.hpp` | Per-lane TSC tail histograms and a freeze-on-trigger tape |
 | `time/trace.hpp` | Latency samples, clock offset, and buckets |
+| `time/tsc.hpp` | Calibrated TSC microsecond clock and desk publish |
 | `time/urgent.hpp` | One tag that does not wait in a queue |
 | `time/wheel.hpp` | A tick wheel |
 | `util/arena.hpp` | Fixed-capacity arena with default explicit huge pages |

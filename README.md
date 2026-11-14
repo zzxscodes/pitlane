@@ -30,7 +30,9 @@ Market data, strategy, and order entry often live in different processes. They m
 
 Include `pitlane/pitlane.hpp` and link `libpitlane.a` (or `libpitlane.so`). Everything is in namespace `pitlane`. This is a same-machine helper with its own types — not a drop-in replace for another live stack.
 
-Release **2.21.1** (`pitlane::kVersion`). Shared-object soname stays `libpitlane.so.1`. Desk file layout is `kDeskVersion` 5. The symbol/quote yard (`Yard`, magic `PITYARD2`, `kYardVersion` 2) is a second map sized like startup pool pools.
+Release **2.22.0** (`pitlane::kVersion`). Shared-object soname stays `libpitlane.so.1`. Desk file layout is `kDeskVersion` 5. The symbol/quote yard (`Yard`, magic `PITYARD2`, `kYardVersion` 2) is a second map sized like startup pool pools.
+
+2.22.0 adds a file-backed WAL (`wal_open` / `wal_append` / `wal_recover`), a sequence-locked cross-language snapshot ring (`SnapRing` / `snap_open`), a calibrated TSC clock (`TscClock`), per-lane tail histograms and a freeze-on-trigger tape (`TailBoard` / `TailTape`), shadow execution comparison (`ShadowStats` / `ShadowBook`), deterministic ring replay with fault injection (`ReplayTape` / `replay_ring` / `FaultPlan`), a market-by-order book builder (`MboBook`), and live route reload with optional strategy core pinning (`RouteBook::unbind`, `route_control`, `StratEngine::routes` / `pin_cpu`). The desk layout stays 5; WAL and snapshot files carry their own magic and version.
 
 Roles that other systems put on Mongo or RabbitMQ are covered **locally**: `seed_facts` / `seed_hours` / `seed_holidays` for basic contract and calendar rows; `TopicBus` + `RouteBook` for same-machine topic routing and algo binding. Broker/CTP adapters stay outside the library. Startup may allocate or mmap; the helper hot path does not allocate or tear down resources.
 

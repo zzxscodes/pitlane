@@ -252,6 +252,50 @@ static void check_factorcal() {
     expect(!named.open("a_very_long_factor_name_that_exceeds"), "key too long");
 }
 
+static void check_shadow() {
+    pitlane::ShadowStats stats;
+    pitlane::ShadowPair p{};
+    p.side = 1;
+    p.real_px = 101;
+    p.sim_px = 100;
+    p.real_qty = 10;
+    p.sim_qty = 10;
+    p.tick = 1;
+    stats.note(p); // buy paid 1 tick more: worse
+    p.side = 2;
+    p.real_px = 99;
+    p.sim_px = 100;
+    stats.note(p); // sell got 1 tick less: worse
+    p.side = 1;
+    p.real_px = 99;
+    p.sim_px = 100;
+    stats.note(p); // buy paid less: better
+    p.real_qty = 0;
+    p.sim_qty = 5;
+    stats.note(p); // shadow filled, real did not
+    p.real_qty = 5;
+    p.sim_qty = 0;
+    stats.note(p); // real filled, shadow did not
+
+    pitlane::ShadowReport report{};
+    expect(stats.report(report), "shadow report");
+    expect(report.pairs == 5 && report.worse == 2 && report.better == 1 && report.missed == 1 &&
+               report.extra == 1,
+           "shadow verdicts");
+    expect(report.slip_sum_ticks == 1 && report.slip_max_ticks == 1 && report.slip_n == 3 &&
+               report.slip.p50 == 1,
+           "shadow slippage");
+
+    pitlane::ShadowBook book;
+    const int twap = book.open("twap");
+    expect(twap == 0, "shadow book row");
+    expect(book.note(twap, p), "shadow book note");
+    pitlane::ShadowReport row{};
+    expect(book.report(twap, row) && row.pairs == 1, "shadow book report");
+    expect(book.open("twap") == twap && book.open("vwap") == 1, "shadow book dedupe");
+    expect(book.name(twap) && std::strcmp(book.name(twap), "twap") == 0, "shadow book name");
+}
+
 int main() {
     check_feat_and_mark();
     check_tables();
@@ -265,6 +309,7 @@ int main() {
     check_acb();
     check_fair();
     check_factorcal();
+    check_shadow();
     if (g_fails) {
         std::fprintf(stderr, "%d study check(s) failed\n", g_fails);
         return 1;

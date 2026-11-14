@@ -1,5 +1,22 @@
 # Changelog
 
+## [2.22.0] - 2026-11-14
+
+### Added
+- `WalView` / `wal_open` / `wal_append` / `wal_recover`: a fixed-size, file-backed write-ahead log. The tail is the commit marker; CRC32C rejects a torn record and recovery truncates to the last good sequence. `wal_sync` is an explicit group commit.
+- `SnapRing<T, Cap>` and `snap_open` / `snap_view`: a 64-byte fixed header plus sequence-locked cells for cross-language, read-only snapshots. Readers map the same file and read `magic`, `version`, `slot_bytes`, `stride`, `cap` without the C++ type.
+- `TscClock`: one-time calibration of the TSC against `CLOCK_MONOTONIC_RAW`; `now_ns`, `now_us`, `publish(Desk&, offset_us)`, and `publish(UsSlot&)`. The hot path reads `rdtsc` only.
+- `TailBoard`, `tail_note`, `tail_report`, `tail_arm`, and `TailTape`: per-lane TSC histograms, budget stalls, and a freeze-on-trigger tape for tail outliers.
+- `ShadowStats` / `ShadowBook`: paired real and shadow fills, per-algorithm slippage in ticks, missed/extra/fill classification, and percentile reports.
+- `ReplayTape`, `replay_capture_all`, `replay_ring`, and `FaultPlan`: deterministic replay of a captured ring sequence with publish-drop and no-ack injection. A no-ack run fills the ring and stops instead of overwriting.
+- `MboBook`: market-by-order builder with fixed order storage, add/modify/cancel/trade by id, best and depth derivation, and an invariant check.
+- `RouteBook::unbind`, `RouteBook::generation`, `route_control`, `StratEngine::routes`, `StratEngine::pin_cpu`, and `on_routes_changed`: route reload without restarting the desk and optional strategy core pinning.
+- `tests/alloc`: replaces the global allocator and asserts that the new hot paths (`wal_append_item`, snapshot publish/read, `TscClock::now_*`, `tail_note`, `ShadowStats::note`, `MboBook::apply`, `replay_ring`, `FanRing` publish/take) neither allocate nor free after startup, and that the descriptor count does not change.
+
+### Notes
+- Library release version is 2.22.0. Desk layout stays `kDeskVersion` 5; the WAL and snapshot files use their own magic and version.
+- All new containers are caller-owned and allocation-free. No network path is involved.
+
 ## [2.21.1] - 2026-11-13
 
 ### Fixed

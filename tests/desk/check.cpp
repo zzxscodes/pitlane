@@ -1046,9 +1046,165 @@ static void check_framework() {
     ::unlink(path);
 }
 
+struct WalProbe {
+    uint64_t tag{0};
+    int64_t px{0};
+    int64_t qty{0};
+    uint32_t state{0};
+};
+
+static void check_wal() {
+    const char* path = "/tmp/pitlane_wal_check.bin";
+    ::unlink(path);
+    pitlane::WalView wal{};
+    pitlane::MapOpt opt = map_opt_tmp();
+    expect(pitlane::wal_open(path, 8, &wal, 1, opt) == 0, "wal open");
+    WalProbe a{};
+    a.tag = 1;
+    a.px = 100;
+    a.qty = 3;
+    expect(pitlane::wal_append_item(wal, pitlane::WalKind::Intent, a, 1000), "wal intent");
+    WalProbe b{};
+    b.tag = 2;
+    expect(pitlane::wal_append_item(wal, pitlane::WalKind::Report, b, 1001), "wal report");
+    expect(pitlane::wal_tail(wal) == 2, "wal tail");
+    expect(pitlane::wal_sync(wal), "wal sync");
+
+    uint64_t seen = 0;
+    uint64_t tags = 0;
+    const int replayed = pitlane::wal_recover(wal, [&](const pitlane::WalRec& r) {
+        WalProbe p{};
+        std::memcpy(&p, r.data, sizeof p);
+        ++seen;
+        tags += p.tag;
+    });
+    expect(replayed == 2 && seen == 2 && tags == 3, "wal recover");
+
+    pitlane::wal_close(&wal);
+    expect(pitlane::wal_open(path, 8, &wal, 0, opt) == 0, "wal reopen");
+    expect(pitlane::wal_tail(wal) == 2, "wal tail persisted");
+
+    wal.rec[0].data[0] ^= 0xffu;
+    seen = 0;
+    expect(pitlane::wal_recover(wal, [&](const pitlane::WalRec&) { ++seen; }) == 0 && seen == 0,
+           "wal crc truncates");
+    expect(pitlane::wal_tail(wal) == 0, "wal tail rolled back");
+    expect(pitlane::wal_append_item(wal, pitlane::WalKind::Mark, b, 1002), "wal append after truncate");
+    pitlane::wal_close(&wal);
+    ::unlink(path);
+}
+
+struct SnapProbe {
+    uint64_t tag{0};
+    int64_t px{0};
+    int64_t qty{0};
+    uint32_t state{0};
+};
+
+static void check_snapring() {
+    const char* path = "/tmp/pitlane_snap_check.bin";
+    ::unlink(path);
+    pitlane::MapOpt opt = map_opt_tmp();
+    pitlane::MapInfo map{};
+    expect(pitlane::snap_open<SnapProbe, 4>(path, &map, 1, opt) == 0, "snap open");
+    auto* ring = pitlane::snap_view<SnapProbe, 4>(&map, 1);
+    expect(ring != nullptr, "snap view");
+    if (!ring) {
+        pitlane::map_release(&map);
+        ::unlink(path);
+        return;
+    }
+
+    SnapProbe p{};
+    p.tag = 1;
+    p.px = 100;
+    p.qty = 7;
+    uint64_t pos = 99;
+    expect(ring->publish(p, &pos) && pos == 0, "snap publish");
+    SnapProbe out{};
+    expect(ring->latest(out) && out.tag == 1 && out.px == 100, "snap latest");
+    p.tag = 2;
+    expect(ring->publish(p, &pos) && pos == 1, "snap publish 2");
+    expect(ring->read(0, out) && out.tag == 1, "snap read old");
+    expect(ring->published() == 2 && ring->head().cap == 4 && ring->head().slot_bytes == sizeof(SnapProbe),
+           "snap meta");
+    for (uint64_t tag = 3; tag <= 5; ++tag) {
+        p.tag = tag;
+        expect(ring->publish(p), "snap wrap");
+    }
+    expect(!ring->read(0, out), "snap stale position rejected");
+    expect(ring->read(1, out) && out.tag == 2, "snap recent position kept");
+
+    pitlane::MapInfo map2{};
+    expect(pitlane::snap_open<SnapProbe, 4>(path, &map2, 0, opt) == 0, "snap attach");
+    auto* ring2 = pitlane::snap_view<SnapProbe, 4>(&map2, 0);
+    expect(ring2 && ring2->published() == 5 && ring2->read(1, out) && out.tag == 2,
+           "snap cross-map read");
+    pitlane::map_release(&map2);
+    pitlane::map_release(&map);
+    ::unlink(path);
+}
+
+static void check_routebook() {
+    pitlane::RouteBook book;
+    expect(book.generation() == 0, "route gen zero");
+    expect(book.bind("alpha", "twap") && book.generation() == 1, "route bind");
+    expect(book.bind("alpha", "twap") && book.generation() == 1, "route bind idempotent");
+    expect(book.bind("alpha", "vwap") && book.generation() == 2, "route second algo");
+    expect(book.has("alpha", "twap") && book.has("alpha", "vwap"), "route has");
+    expect(book.unbind("alpha", "twap") && !book.has("alpha", "twap") && book.generation() == 3,
+           "route unbind");
+    expect(book.has("alpha", "vwap") && book.size() == 1, "route keeps sibling");
+    expect(pitlane::route_control(book, pitlane::RouteBook::kControlBind, "beta|pov"), "route control bind");
+    expect(book.has("beta", "pov"), "route control visible");
+    expect(pitlane::route_control(book, pitlane::RouteBook::kControlDrop, "beta:pov"), "route control drop");
+    expect(!book.has("beta", "pov") && book.size() == 1, "route control removed");
+    expect(!pitlane::route_control(book, pitlane::RouteBook::kControlBind, "no-separator"), "route bad text");
+    expect(!book.unbind("alpha", "missing"), "route missing unbind");
+}
+
+struct ReplayProbe {
+    uint64_t tag{0};
+    int64_t px{0};
+};
+
+static void check_replay() {
+    pitlane::FanRing<ReplayProbe, 8> src;
+    for (uint64_t i = 1; i <= 6; ++i) {
+        ReplayProbe p{};
+        p.tag = i;
+        p.px = static_cast<int64_t>(i) * 10;
+        expect(src.publish(p, 0), "replay source publish");
+    }
+    pitlane::ReplayTape<ReplayProbe, 8> tape;
+    expect(pitlane::replay_capture_all(tape, src) == 6 && tape.size() == 6, "replay capture");
+
+    pitlane::FaultPlan no_ack{};
+    no_ack.points = 1u << static_cast<int>(pitlane::FaultPoint::Ack);
+    no_ack.every = 1;
+    pitlane::FanRing<ReplayProbe, 4> ring;
+    int seen = 0;
+    auto out = pitlane::replay_ring(ring, tape, no_ack, [&](const pitlane::ReplayNote<ReplayProbe>&) { ++seen; });
+    expect(out.published == 4 && out.unacked == 4 && out.blocked == 1 && seen == 4,
+           "replay no-ack fails closed");
+
+    pitlane::FaultPlan clean{};
+    pitlane::FanRing<ReplayProbe, 4> ring2;
+    seen = 0;
+    auto out2 = pitlane::replay_ring(ring2, tape, clean, [&](const pitlane::ReplayNote<ReplayProbe>&) { ++seen; });
+    expect(out2.published == 6 && out2.blocked == 0 && seen == 6, "replay clean");
+
+    pitlane::FaultPlan drop{};
+    drop.points = 1u << static_cast<int>(pitlane::FaultPoint::Publish);
+    drop.at = 2;
+    pitlane::FanRing<ReplayProbe, 4> ring3;
+    auto out3 = pitlane::replay_ring(ring3, tape, drop, [](const pitlane::ReplayNote<ReplayProbe>&) {});
+    expect(out3.dropped == 1 && out3.published == 5, "replay drop");
+}
+
 int main() {
-    expect(pitlane::kVersionMajor == 2 && pitlane::kVersionMinor == 21 && pitlane::kVersionPatch == 1, "release");
-    expect(std::strcmp(pitlane::kVersion, "2.21.1") == 0, "release text");
+    expect(pitlane::kVersionMajor == 2 && pitlane::kVersionMinor == 22 && pitlane::kVersionPatch == 0, "release");
+    expect(std::strcmp(pitlane::kVersion, "2.22.0") == 0, "release text");
     expect(pitlane::kDeskVersion == 5, "desk layout");
     check_conf();
     check_yard();
@@ -1066,6 +1222,10 @@ int main() {
     check_session();
     check_center();
     check_framework();
+    check_wal();
+    check_snapring();
+    check_routebook();
+    check_replay();
     if (g_fails) {
         std::fprintf(stderr, "%d desk check(s) failed\n", g_fails);
         return 1;

@@ -740,6 +740,56 @@ static void check_ext_match() {
     delete venue;
 }
 
+static void check_mbo() {
+    pitlane::MboBook book;
+    auto add = [&](uint64_t id, int64_t px, int64_t qty, uint8_t side) {
+        pitlane::MboMsg m{};
+        m.id = id;
+        m.px = px;
+        m.qty = qty;
+        m.side = side;
+        m.act = static_cast<uint8_t>(pitlane::MboAct::Add);
+        return book.apply(m);
+    };
+    expect(add(1, 100, 10, 1) && add(2, 100, 5, 1) && add(3, 99, 7, 1), "mbo bids");
+    expect(add(4, 101, 4, 2) && add(5, 102, 6, 2), "mbo asks");
+    expect(!add(1, 100, 1, 1), "mbo duplicate id");
+    expect(book.live() == 5 && book.invariant(), "mbo live");
+
+    pitlane::MboLevel bid{};
+    pitlane::MboLevel ask{};
+    expect(book.best(bid, ask) && bid.px == 100 && bid.qty == 15 && bid.orders == 2 && ask.px == 101 &&
+               ask.qty == 4,
+           "mbo best");
+    pitlane::MboLevel levels[4]{};
+    expect(book.depth(1, levels, 4) == 2 && levels[0].px == 100 && levels[0].qty == 15 &&
+               levels[1].px == 99 && levels[1].qty == 7,
+           "mbo depth");
+    expect(book.qty_at(1, 100) == 15 && book.qty_at(2, 101) == 4, "mbo qty at price");
+
+    pitlane::MboMsg mod{};
+    mod.id = 1;
+    mod.px = 100;
+    mod.qty = 20;
+    mod.side = 1;
+    mod.act = static_cast<uint8_t>(pitlane::MboAct::Modify);
+    expect(book.apply(mod) && book.best(bid, ask) && bid.qty == 25, "mbo modify");
+    mod.id = 1;
+    mod.qty = 20;
+    mod.act = static_cast<uint8_t>(pitlane::MboAct::Trade);
+    expect(book.apply(mod) && book.best(bid, ask) && bid.qty == 5 && !book.has(1), "mbo trade full");
+    mod.id = 2;
+    mod.qty = 3;
+    expect(book.apply(mod) && book.best(bid, ask) && bid.qty == 2 && book.has(2), "mbo trade partial");
+    mod.id = 3;
+    mod.qty = 7;
+    mod.act = static_cast<uint8_t>(pitlane::MboAct::Cancel);
+    expect(book.apply(mod) && book.best(bid, ask) && bid.px == 100 && !book.has(3), "mbo cancel");
+    expect(book.invariant(), "mbo invariant");
+    book.clear();
+    expect(book.live() == 0 && !book.best(bid, ask), "mbo clear");
+}
+
 int main() {
     check_steps();
     check_books();
@@ -759,6 +809,7 @@ int main() {
     check_cumtick();
     check_auction_est_maker();
     check_ext_match();
+    check_mbo();
     if (g_fails) {
         std::fprintf(stderr, "%d book check(s) failed\n", g_fails);
         return 1;

@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>持久状态、快照与尾部证据 — pitlane API</title>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="side">
+    <h1>pitlane API</h1>
+    <nav>
+      <a href="index.html">概述</a><a href="启动配置.html">启动配置</a><a href="打开共享区.html">打开共享区</a><a href="标的-行情池-yard.html">标的 / 行情池（Yard）</a><a href="发布和读取.html">发布和读取</a><a href="跑会话循环.html">跑会话循环</a><a href="准备一张委托.html">准备一张委托</a><a href="在纸面场所撮合.html">在纸面场所撮合</a><a href="合约-信号和柜台.html">合约、信号和柜台</a><a href="辅助函数.html">辅助函数</a><a href="调用方自己保管的辅助函数.html">调用方自己保管的辅助函数</a><a href="组帧-节奏和快照.html">组帧、节奏和快照</a><a href="周期计数和定长低延迟表.html">周期计数和定长低延迟表</a><a href="一张委托单.html">一张委托单</a><a href="研究-以及调用方自己的决定.html">研究，以及调用方自己的决定</a><a href="价格窗口-槽池和两笔费用.html">价格窗口、槽池和两笔费用</a><a href="持久状态-快照与尾部证据.html" class="active">持久状态、快照与尾部证据</a><a href="调用所在的头文件.html">调用所在的头文件</a>
+    </nav>
+  </aside>
+  <main class="main">
+    <div class="meta">从左侧打开一节</div>
+    <h1>持久状态、快照与尾部证据</h1>
+<p><code>wal_open</code> 映射一块定长文件日志。<code>cap</code> 是记录条数，每条带 128 字节载荷。头部有魔数、版本、载荷大小、容量、已提交尾指针和同步次数。<code>wal_append</code> 先写正文、按字段算 CRC32C，再发布尾指针；未提交的记录不可见。<code>wal_append_item</code> 接受不超过载荷大小的可平凡复制类型。<code>wal_recover</code> 按顺序重放已提交记录，遇到序号、长度、类型或校验和不对的第一条就停，并把尾指针退回最后一条好记录。<code>wal_sync</code> 是显式组提交。日志不决定记录含义；调用方写入自己的 Intent、Report、资金或持仓载荷，并在恢复回调里应用。</p>
+<p><code>SnapRing&lt;T, Cap&gt;</code> 是单写多读快照环。头部正好 64 字节；每格先是序号字，再是 <code>T</code>，格从偏移 64 开始。<code>publish</code> 在复制正文时把序号置为奇数，发布计数前进前再置回偶数。<code>read</code> 复制一条记录，序号变过就重试。<code>snap_open</code> 建立映射，<code>snap_view</code> 校验魔数、版本、槽大小、步长和容量。另一种语言的读者映射同一文件，读取 <code>magic</code>、<code>version</code>、<code>slot_bytes</code>、<code>stride</code> 和 <code>cap</code>，不需要 C++ 类型。</p>
+<p><code>TscClock::calibrate</code> 在短窗口内采样 TSC 与 <code>CLOCK_MONOTONIC_RAW</code>，写入 <code>CycleScale</code>。<code>now_ns</code> / <code>now_us</code> 只读 <code>rdtsc</code>。<code>publish(Desk&amp;, offset_us)</code> 在发布边界写 desk 时钟；偏移只在边界加一次，不进测量区。<code>publish(UsSlot&amp;)</code> 写独立槽。</p>
+<p><code>TailBoard</code> 每个 lane 有一个等待直方图、一个间隔直方图、样本数、超预算数和最大周期。<code>tail_note</code> 记录样本，只有跨过已装载触发线的那一次返回真。<code>tail_report</code> 给出分位。<code>TailTape&lt;Cap&gt;</code> 是小型事件 tape，可按需冻结，旁路程序读取最近事件时不阻塞写端。</p>
+<p><code>ShadowStats</code> 对比真实成交与影子成交。买入滑点是 <code>real_px - sim_px</code>，卖出是 <code>sim_px - real_px</code>；正数表示真实执行更差。<code>ShadowBook</code> 为每个执行算法保留一行。<code>report</code> 返回计数、带符号与绝对滑点、名义金额和分位。</p>
+<p><code>ReplayTape</code> 保存一段有界的环位置与记录。<code>replay_capture_all</code> 复制已发布范围。<code>replay_ring</code> 按顺序重发，<code>FaultPlan</code> 可以丢掉一次发布，或让某个槽不确认。一直不确认时，<code>publish</code> 最终失败，回放停在原地，不覆盖正在使用的数据。</p>
+<p><code>MboBook</code> 用固定槽保存活动委托，并用固定桶链按编号索引。<code>apply</code> 接受新增、修改、撤单和成交。<code>best</code>、<code>depth</code>、<code>qty_at</code> 与 <code>invariant</code> 从活动委托推导视图。<code>RouteBook::unbind</code> 去掉一条绑定，<code>generation</code> 每次真实变化都前进，<code>route_control</code> 解析 <code>strategy|algo</code> 控制文本。<code>StratEngine::routes</code> 应用这些控制，<code>pin_cpu</code> 在建图时给策略线程绑核。</p>
+  </main>
+</div>
+</body>
+</html>

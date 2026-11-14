@@ -212,6 +212,56 @@ static void check_cut() {
     expect(pitlane::tandem_lat(arrivals, 3, 30, 2, 1, out, 3) == 3 && out[0] == 31, "tandem");
 }
 
+static void check_tsc() {
+    pitlane::TscClock clock;
+    expect(clock.calibrate(200), "tsc calibrate");
+    expect(clock.ready(), "tsc ready");
+    int64_t a = 0;
+    int64_t b = 0;
+    expect(clock.now_us(a) && clock.now_us(b) && b >= a, "tsc now");
+    uint64_t ns = 0;
+    expect(clock.now_ns(ns) && ns >= static_cast<uint64_t>(clock.base_ns()), "tsc now ns");
+
+    pitlane::UsSlot slot{};
+    expect(clock.publish(slot), "tsc publish");
+    expect(pitlane::us_load(slot) >= a, "tsc published value");
+
+    pitlane::TscStamp stamp{};
+    expect(pitlane::tsc_stamp(stamp) && stamp.us > 0 && stamp.tsc > 0, "tsc stamp");
+}
+
+static void check_tail() {
+    pitlane::TailBoard board{};
+    board.budget_cycles = 100;
+    expect(!pitlane::tail_note(board, pitlane::TailLane::Intent, 40), "tail below budget");
+    expect(!pitlane::tail_note(board, pitlane::TailLane::Intent, 120), "tail over budget");
+    expect(board.lane[0].notes == 2 && board.lane[0].stalls == 1 && board.lane[0].max_cycles == 120,
+           "tail lane counters");
+    pitlane::LatReport report{};
+    expect(pitlane::tail_report(board, pitlane::TailLane::Intent, report) && report.n == 2 && report.max == 120,
+           "tail report");
+    expect(pitlane::tail_gap(board, pitlane::TailLane::Intent, 7), "tail gap");
+
+    pitlane::tail_arm(board, 100, 1u << static_cast<int>(pitlane::TailLane::Intent));
+    expect(pitlane::tail_note(board, pitlane::TailLane::Intent, 101), "tail trigger");
+    expect(!pitlane::tail_note(board, pitlane::TailLane::Intent, 300), "tail trigger once");
+    expect(pitlane::tail_fired(board) && board.trigger.at_cycles.load() == 101, "tail fired state");
+    pitlane::tail_reset(board);
+    expect(!pitlane::tail_fired(board) && board.lane[0].notes == 0, "tail reset");
+
+    pitlane::TailTape<4> tape;
+    tape.note(1, 10, 100);
+    tape.note(1, 11, 101);
+    tape.note(2, 12, 102);
+    expect(tape.count() == 3 && !tape.frozen(), "tape notes");
+    pitlane::TailTape<4>::Rec rec{};
+    expect(tape.at(0, rec) && rec.tsc == 12 && rec.value == 102, "tape newest first");
+    expect(tape.at(2, rec) && rec.tsc == 10, "tape oldest");
+    expect(tape.freeze() && tape.frozen(), "tape freeze");
+    tape.note(1, 13, 103);
+    expect(tape.written() == 3 && tape.count() == 3, "tape frozen");
+}
+
 int main() {
     check_cycles();
     check_hist_and_laps();
@@ -223,6 +273,8 @@ int main() {
     check_sample();
     check_trace();
     check_cut();
+    check_tsc();
+    check_tail();
     if (g_fails) {
         std::fprintf(stderr, "%d time check(s) failed\n", g_fails);
         return 1;

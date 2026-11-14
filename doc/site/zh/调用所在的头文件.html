@@ -11,7 +11,7 @@
   <aside class="side">
     <h1>pitlane API</h1>
     <nav>
-      <a href="index.html">概述</a><a href="启动配置.html">启动配置</a><a href="打开共享区.html">打开共享区</a><a href="标的-行情池-yard.html">标的 / 行情池（Yard）</a><a href="发布和读取.html">发布和读取</a><a href="跑会话循环.html">跑会话循环</a><a href="准备一张委托.html">准备一张委托</a><a href="在纸面场所撮合.html">在纸面场所撮合</a><a href="合约-信号和柜台.html">合约、信号和柜台</a><a href="辅助函数.html">辅助函数</a><a href="调用方自己保管的辅助函数.html">调用方自己保管的辅助函数</a><a href="组帧-节奏和快照.html">组帧、节奏和快照</a><a href="周期计数和定长低延迟表.html">周期计数和定长低延迟表</a><a href="一张委托单.html">一张委托单</a><a href="研究-以及调用方自己的决定.html">研究，以及调用方自己的决定</a><a href="价格窗口-槽池和两笔费用.html">价格窗口、槽池和两笔费用</a><a href="调用所在的头文件.html" class="active">调用所在的头文件</a>
+      <a href="index.html">概述</a><a href="启动配置.html">启动配置</a><a href="打开共享区.html">打开共享区</a><a href="标的-行情池-yard.html">标的 / 行情池（Yard）</a><a href="发布和读取.html">发布和读取</a><a href="跑会话循环.html">跑会话循环</a><a href="准备一张委托.html">准备一张委托</a><a href="在纸面场所撮合.html">在纸面场所撮合</a><a href="合约-信号和柜台.html">合约、信号和柜台</a><a href="辅助函数.html">辅助函数</a><a href="调用方自己保管的辅助函数.html">调用方自己保管的辅助函数</a><a href="组帧-节奏和快照.html">组帧、节奏和快照</a><a href="周期计数和定长低延迟表.html">周期计数和定长低延迟表</a><a href="一张委托单.html">一张委托单</a><a href="研究-以及调用方自己的决定.html">研究，以及调用方自己的决定</a><a href="价格窗口-槽池和两笔费用.html">价格窗口、槽池和两笔费用</a><a href="持久状态-快照与尾部证据.html">持久状态、快照与尾部证据</a><a href="调用所在的头文件.html" class="active">调用所在的头文件</a>
     </nav>
   </aside>
   <main class="main">
@@ -52,6 +52,10 @@
 <tr>
 <td><code>book/ladder.hpp</code></td>
 <td>固定价格窗口和有量的最优价</td>
+</tr>
+<tr>
+<td><code>book/mbo.hpp</code></td>
+<td>逐单盘口构建器（<code>MboBook</code>）</td>
 </tr>
 <tr>
 <td><code>book/own.hpp</code></td>
@@ -178,6 +182,18 @@
 <td><code>FanRing</code></td>
 </tr>
 <tr>
+<td><code>desk/replay.hpp</code></td>
+<td>确定性环回放与故障注入</td>
+</tr>
+<tr>
+<td><code>desk/snapring.hpp</code></td>
+<td>固定布局跨语言快照环</td>
+</tr>
+<tr>
+<td><code>desk/wal.hpp</code></td>
+<td>文件后备预写日志</td>
+</tr>
+<tr>
 <td><code>desk/runtime.hpp</code></td>
 <td><code>DeskLoop</code></td>
 </tr>
@@ -212,6 +228,10 @@
 <tr>
 <td><code>study/strat_engine.hpp</code></td>
 <td><code>StratEngine</code> 策略与上下文</td>
+</tr>
+<tr>
+<td><code>study/shadow.hpp</code></td>
+<td>影子成交对比与按算法滑点</td>
 </tr>
 <tr>
 <td><code>host/affinity.hpp</code></td>
@@ -394,8 +414,16 @@
 <td>开关、每核轨迹、封存的段和超阈值通知</td>
 </tr>
 <tr>
+<td><code>time/tail.hpp</code></td>
+<td>按 lane 的 TSC 尾延迟直方图与触发冻结 tape</td>
+</tr>
+<tr>
 <td><code>time/trace.hpp</code></td>
 <td>耗时样本、时钟差和分桶</td>
+</tr>
+<tr>
+<td><code>time/tsc.hpp</code></td>
+<td>校准后的 TSC 微秒时钟与 desk 发布</td>
 </tr>
 <tr>
 <td><code>time/urgent.hpp</code></td>

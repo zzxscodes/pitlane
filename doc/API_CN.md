@@ -10,7 +10,7 @@
 
 所有名字都在命名空间 `pitlane` 里。链接 `libpitlane.a`，或者用 `-lpitlane` 链接动态库。动态库的 soname 是 `libpitlane.so.1`。两种链接方式使用同一套头文件。
 
-发行版本是 `kVersion`，当前是 2.21.1，并拆成 `kVersionMajor`、`kVersionMinor` 和 `kVersionPatch`。`kDeskVersion` 是 desk 映射文件的布局版本，当前是 5。`kYardVersion` 是独立的标的/行情池布局版本，当前是 2。库的一次新发行可以保持任一布局版本不动。
+发行版本是 `kVersion`，当前是 2.22.0，并拆成 `kVersionMajor`、`kVersionMinor` 和 `kVersionPatch`。`kDeskVersion` 是 desk 映射文件的布局版本，当前是 5。`kYardVersion` 是独立的标的/行情池布局版本，当前是 2。库的一次新发行可以保持任一布局版本不动。
 
 带左侧分节导航的静态网页在 `doc/site/zh/`（`python3 doc/gen_site.py` 生成）。打开本地 `doc/site/zh/index.html` 或 GitHub Pages；在 `github.com/.../blob/...` 里打开只会看到源码。启动期设置见 **启动配置**。
 
@@ -382,6 +382,22 @@ book.apply(edits, 1);
 
 `util/hint.hpp` 提供 `likely` / `unlikely`、冷热段布局、`assume_aligned`、缓存行长度与预取。在 x86_64 上打开 `PITLANE_NATIVE` 时增加 `-mprefer-vector-width=256 -mno-avx512f`。`util/simd.hpp` 提供打包的 `zero_i64`、`zero_i64_stream`、`copy_bytes`、`bytes_eq`，以及买入和卖出的 cover 辅助。构建定义了 AVX2 时，一次清零或比较四个 int64。缺少对应指令集时都走标量实现。`ByteArena` 为定容匿名 bump 字节 arena；默认以 `MAP_HUGETLB` 映射并将长度对齐到 Hugepagesize，不用 THP；内核未预留时回退普通匿名页并置 `fallback`，默认可再 `mlock` 与 NUMA bind；满容量时拒绝分配。`batch_size_for` 按积压给出自适应微批大小。`RankBits` 用字前缀加 popcount 得到稠密下标；`QuadTab` 把静态键装进每行至多四个键的缓存行表。`SpinLock` 是独占缓存行的 TTAS 自旋锁。`bound.hpp` 提供单次比较的下标检查与行走预算。`DagPlan` 以灰/黑染色求拓扑序。类型态票据以编译期标签使非法成交在类型上不可调用。`OwnPair` 保存调用方本地双边最优价。`SlotGate` 在 `on_drop` 之后忽略行情，直到 `seeded` 清掉 `need_seed`。`pick_cut` 与 `tandem_lat` 根据调用方已测得的间隔给出路径切分判定。`SeqPublishRing` 为无背压序号发布环，写端在读者未消费时可覆写槽位。`global_scale_set` 写入进程内共享的整数 TSC 周期换算系数。`DecideScratch` 暂存调用方装载的带评分候选意图。`host/` 提供 `sched_setaffinity`、调度策略与 nice、IRQ `smp_affinity_list`、`nr_hugepages` / `thp_disable`、`mlockall` 与 NUMA `mbind`；无权限时返回失败。
 
+## 持久状态、快照与尾部证据
+
+`wal_open` 映射一块定长文件日志。`cap` 是记录条数，每条带 128 字节载荷。头部有魔数、版本、载荷大小、容量、已提交尾指针和同步次数。`wal_append` 先写正文、按字段算 CRC32C，再发布尾指针；未提交的记录不可见。`wal_append_item` 接受不超过载荷大小的可平凡复制类型。`wal_recover` 按顺序重放已提交记录，遇到序号、长度、类型或校验和不对的第一条就停，并把尾指针退回最后一条好记录。`wal_sync` 是显式组提交。日志不决定记录含义；调用方写入自己的 Intent、Report、资金或持仓载荷，并在恢复回调里应用。
+
+`SnapRing<T, Cap>` 是单写多读快照环。头部正好 64 字节；每格先是序号字，再是 `T`，格从偏移 64 开始。`publish` 在复制正文时把序号置为奇数，发布计数前进前再置回偶数。`read` 复制一条记录，序号变过就重试。`snap_open` 建立映射，`snap_view` 校验魔数、版本、槽大小、步长和容量。另一种语言的读者映射同一文件，读取 `magic`、`version`、`slot_bytes`、`stride` 和 `cap`，不需要 C++ 类型。
+
+`TscClock::calibrate` 在短窗口内采样 TSC 与 `CLOCK_MONOTONIC_RAW`，写入 `CycleScale`。`now_ns` / `now_us` 只读 `rdtsc`。`publish(Desk&, offset_us)` 在发布边界写 desk 时钟；偏移只在边界加一次，不进测量区。`publish(UsSlot&)` 写独立槽。
+
+`TailBoard` 每个 lane 有一个等待直方图、一个间隔直方图、样本数、超预算数和最大周期。`tail_note` 记录样本，只有跨过已装载触发线的那一次返回真。`tail_report` 给出分位。`TailTape<Cap>` 是小型事件 tape，可按需冻结，旁路程序读取最近事件时不阻塞写端。
+
+`ShadowStats` 对比真实成交与影子成交。买入滑点是 `real_px - sim_px`，卖出是 `sim_px - real_px`；正数表示真实执行更差。`ShadowBook` 为每个执行算法保留一行。`report` 返回计数、带符号与绝对滑点、名义金额和分位。
+
+`ReplayTape` 保存一段有界的环位置与记录。`replay_capture_all` 复制已发布范围。`replay_ring` 按顺序重发，`FaultPlan` 可以丢掉一次发布，或让某个槽不确认。一直不确认时，`publish` 最终失败，回放停在原地，不覆盖正在使用的数据。
+
+`MboBook` 用固定槽保存活动委托，并用固定桶链按编号索引。`apply` 接受新增、修改、撤单和成交。`best`、`depth`、`qty_at` 与 `invariant` 从活动委托推导视图。`RouteBook::unbind` 去掉一条绑定，`generation` 每次真实变化都前进，`route_control` 解析 `strategy|algo` 控制文本。`StratEngine::routes` 应用这些控制，`pin_cpu` 在建图时给策略线程绑核。
+
 ## 调用所在的头文件
 
 | 头文件 | 内容 |
@@ -394,6 +410,7 @@ book.apply(edits, 1);
 | `book/cross.hpp` | 限价簿和集合竞价 |
 | `book/lags.hpp` | 时段时延和采样时延 |
 | `book/ladder.hpp` | 固定价格窗口和有量的最优价 |
+| `book/mbo.hpp` | 逐单盘口构建器（`MboBook`） |
 | `book/own.hpp` | 调用方本地双边最优价 |
 | `book/quote.hpp` | 行情批次、有序 apply、逐笔记录和分钟滚动 |
 | `book/steps.hpp` | 价位档、价格移动，以及带档位游标缓存的 `TickGrid` |
@@ -425,6 +442,9 @@ book.apply(edits, 1);
 | `desk/names.hpp` | `NameBook` |
 | `desk/region.hpp` | 工作区、`MapOpt` 文件映射和环容量 |
 | `desk/ring.hpp` | `FanRing` |
+| `desk/replay.hpp` | 确定性环回放与故障注入 |
+| `desk/snapring.hpp` | 固定布局跨语言快照环 |
+| `desk/wal.hpp` | 文件后备预写日志 |
 | `desk/runtime.hpp` | `DeskLoop` |
 | `desk/signal.hpp` | `PulseBoard` |
 | `desk/types.hpp` | `Intent`、`Report`、`Quote`，以及方向、方式、阶段和 `Why` |
@@ -434,6 +454,7 @@ book.apply(edits, 1);
 | `desk/td_engine.hpp` | `TdEngine` / `TdClient` 交易网关 |
 | `desk/plane.hpp` | `SimRole`、回放时延与播放倍率 |
 | `study/strat_engine.hpp` | `StratEngine` 策略与上下文 |
+| `study/shadow.hpp` | 影子成交对比与按算法滑点 |
 | `host/affinity.hpp` | 设置调用线程或进程的 CPU 亲和性掩码 |
 | `host/hugepage.hpp` | `nr_hugepages`、Hugepagesize、`thp_disable` |
 | `host/memlock.hpp` | 进程级 `mlockall` / `munlockall` |
@@ -479,7 +500,9 @@ book.apply(edits, 1);
 | `time/simclock.hpp` | `SimClock` |
 | `time/span.hpp` | 留在消息旁边的时刻 |
 | `time/tape.hpp` | 开关、每核轨迹、封存的段和超阈值通知 |
+| `time/tail.hpp` | 按 lane 的 TSC 尾延迟直方图与触发冻结 tape |
 | `time/trace.hpp` | 耗时样本、时钟差和分桶 |
+| `time/tsc.hpp` | 校准后的 TSC 微秒时钟与 desk 发布 |
 | `time/urgent.hpp` | 不进队列的一个标签 |
 | `time/wheel.hpp` | 时间轮 |
 | `util/arena.hpp` | 默认显式大页的定容 bump 字节 arena |

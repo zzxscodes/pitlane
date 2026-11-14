@@ -1,9 +1,11 @@
 #pragma once
 
 #include "pitlane/desk/engine.hpp"
+#include "pitlane/desk/routebook.hpp"
 #include "pitlane/desk/runtime.hpp"
 #include "pitlane/desk/types.hpp"
 #include "pitlane/desk/wire.hpp"
+#include "pitlane/host/affinity.hpp"
 #include "pitlane/study/strathook.hpp"
 #include "pitlane/util/hint.hpp"
 
@@ -34,8 +36,13 @@ public:
     unsigned query_mask{1ull << kGateReader};
     unsigned algo_mask{1ull << kGateReader};
     uint64_t id_base{0};
+    RouteBook* routes{nullptr};
+    int pin_cpu{-1};
 
-    bool set_up() override { return Engine::set_up(); }
+    bool set_up() override {
+        if (pin_cpu >= 0 && !pin_thread(pin_cpu)) return false;
+        return Engine::set_up();
+    }
 
     void loop_task() override {
         if (!desk_) return;
@@ -150,6 +157,9 @@ public:
         else if (n.kind == 7) on_param_done(n.text);
         else if (n.kind == 8) on_date_done(n.stamp_us);
         else if (n.kind == 9) on_backtest_done();
+        else if (n.kind == RouteBook::kControlBind || n.kind == RouteBook::kControlDrop) {
+            if (routes && route_control(*routes, n.kind, n.text)) on_routes_changed();
+        }
     }
 
     StratEngine() { control_reader = kStratReader; }
@@ -175,6 +185,7 @@ protected:
     virtual void on_param_done(const char*) {}
     virtual void on_date_done(int64_t) {}
     virtual void on_backtest_done() {}
+    virtual void on_routes_changed() {}
 
 private:
     bool publish_query(const QueryNote& n) noexcept {
