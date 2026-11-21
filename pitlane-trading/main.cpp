@@ -1,0 +1,1091 @@
+// High-performance live trading console on the pitlane kernel. The default adapter is CTP.
+// MD callback thread: Quote publish → strategy → Intent → TdClient::insert (IOC).
+// Measures local / gate / roundtrip T2T with TSC conversion.
+
+#include "adapters/adapter.hpp"
+#include "adapters/ctp/config.hpp"
+#include "adapters/ctp/md_engine.hpp"
+#include "adapters/ctp/td_client.hpp"
+#include "full_flow.hpp"
+#include "ops.hpp"
+#include "research.hpp"
+#include "study_conf.hpp"
+#include "pitlane/book/venue.hpp"
+#include "pitlane/desk/center.hpp"
+#include "pitlane/desk/config.hpp"
+#include "pitlane/desk/session.hpp"
+#include "pitlane/desk/tape_md.hpp"
+#include "pitlane/desk/tape_rec.hpp"
+#include "pitlane/util/wirelog.hpp"
+#include "pitlane/desk/ids.hpp"
+#include "pitlane/desk/region.hpp"
+#include "pitlane/desk/td_engine.hpp"
+#include "pitlane/host/affinity.hpp"
+#include "pitlane/time/cycle.hpp"
+#include "pitlane/util/spin.hpp"
+#include "pitlane/version.hpp"
+
+#include <atomic>
+#include <cerrno>
+#include <new>
+#include <csignal>
+#include <cstdio>
+#include <cstring>
+#include <ctime>
+#include <string>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <vector>
+
+namespace {
+
+// 客户端在仓库根目录 client/。源码内运行时优先用 CMake 写入的路径，其次按
+// 常见相对位置查找，最后回退到 ../client。
+const char* web_root_default() noexcept {
+#ifdef PITLANE_CLIENT_DIR
+    if (::access(PITLANE_CLIENT_DIR "/index.html", R_OK) == 0) return PITLANE_CLIENT_DIR;
+#endif
+    static const char* kCandidates[] = {"../client", "client", "web"};
+    for (const char* c : kCandidates) {
+        char probe[512];
+        std::snprintf(probe, sizeof probe, "%s/index.html", c);
+        if (::access(probe, R_OK) == 0) return c;
+    }
+    return "../client";
+}
+
+struct T2TSample {
+    uint64_t local_ns;
+    uint64_t gate_ns;
+    uint64_t roundtrip_ns;
+};
+
+struct App {
+    static constexpr int kSamples = 4096;
+
+    pitlane::StratCfg cfg{};
+    pitlane::CtpTdClient* td{nullptr};
+    pitlane::Desk* desk{nullptr};
+    pitlane::FullFlow* flow{nullptr};
+    pitlane::TapeRecorder* rec{nullptr};
+    pitlane::CycleScale scale{};
+    pitlane::IdMint mint{1, 1};
+    bool full{false};
+    bool serve{false};
+
+    T2TSample samples[kSamples]{};
+    std::atomic<int> n_samples{0};
+    std::atomic<int> live{0};
+    std::atomic<int64_t> last_order_us{0};
+    std::atomic<bool> done{false};
+    std::atomic<bool> stop{false};
+};
+
+App* g_app = nullptr;
+std::atomic<bool> g_stop_flag{false};
+
+void on_sig(int) {
+    g_stop_flag.store(true, std::memory_order_release);
+    if (g_app) g_app->stop.store(true, std::memory_order_release);
+}
+
+int64_t wall_us() noexcept {
+    timespec ts{};
+    clock_gettime(CLOCK_REALTIME, &ts);
+    return static_cast<int64_t>(ts.tv_sec) * 1000000ll + ts.tv_nsec / 1000;
+}
+
+uint64_t to_ns(const pitlane::CycleScale& scale, uint64_t cycles) noexcept {
+    uint64_t ns = 0;
+    if (!pitlane::scale_ns(scale, cycles, ns)) return 0;
+    return ns;
+}
+
+void on_accept(void* user, const pitlane::LiveOrder& lo, int64_t now_us, uint64_t roundtrip_ns) {
+    auto* app = static_cast<App*>(user);
+    if (app->flow) {
+        uint64_t c1 = 0;
+        (void)pitlane::cycles_ordered(c1);
+        app->flow->push_ack(lo.tag, c1, lo.gate_ns, now_us);
+        return;
+    }
+    const int i = app->n_samples.fetch_add(1, std::memory_order_relaxed);
+    if (i < App::kSamples) {
+        app->samples[i] = T2TSample{lo.local_ns, lo.gate_ns, roundtrip_ns};
+    }
+    app->live.fetch_sub(1, std::memory_order_relaxed);
+    if (app->cfg.t2t_samples > 0 && i + 1 >= app->cfg.t2t_samples) {
+        app->done.store(true, std::memory_order_release);
+        app->stop.store(true, std::memory_order_release);
+    }
+}
+
+void on_trade_cb(void* user, uint64_t tag, uint32_t, int64_t px, int64_t qty, int64_t now_us) {
+    auto* app = static_cast<App*>(user);
+    if (app->flow) app->flow->push_trade(tag, px, qty, now_us);
+}
+
+void on_done_cb(void* user, uint64_t tag, int64_t filled, int status, int64_t now_us) {
+    auto* app = static_cast<App*>(user);
+    if (app->flow) app->flow->push_done(tag, filled, status, now_us);
+}
+
+void on_reject_cb(void* user, uint64_t tag, int err_id, int64_t now_us) {
+    auto* app = static_cast<App*>(user);
+    if (app->flow) app->flow->push_reject(tag, err_id, now_us);
+}
+
+int send_live(void* user, const pitlane::Intent& in) {
+    auto* app = static_cast<App*>(user);
+    uint64_t c = 0;
+    (void)pitlane::cycles_ordered(c);
+    app->td->note_t0(in.tag, c, in.stamp_us, 0);
+    return app->td->insert(in);
+}
+
+// Bridges the ops gateway registry to the live CTP trading client so the web
+// console can start and stop it like any other configured gateway.
+struct LiveGwCtx {
+    pitlane::CtpTdClient* td{nullptr};
+    pitlane::TdEngine* td_eng{nullptr};
+    bool td_on{false};
+};
+
+void live_timeouts(void* user, int64_t* ack, int64_t* life, int64_t* pull) {
+    auto* ctx = static_cast<LiveGwCtx*>(user);
+    if (!ctx || !ctx->td_eng) return;
+    *ack = ctx->td_eng->ack_timeouts();
+    *life = ctx->td_eng->life_timeouts();
+    *pull = ctx->td_eng->pull_timeouts();
+}
+
+int live_gw_start(void* user, const char*) {
+    auto* ctx = static_cast<LiveGwCtx*>(user);
+    if (!ctx || !ctx->td) return 1;
+    if (ctx->td_on) return 0;
+    if (!ctx->td->start()) return 1;
+    ctx->td_on = true;
+    return 0;
+}
+
+int live_gw_stop(void* user, const char*) {
+    auto* ctx = static_cast<LiveGwCtx*>(user);
+    if (!ctx || !ctx->td) return 1;
+    if (!ctx->td_on) return 0;
+    ctx->td->stop();
+    ctx->td_on = false;
+    return 0;
+}
+
+void on_tick_hot(void* user, uint32_t name, const pitlane::Quote& q, uint64_t t0_cycles) {
+    auto* app = static_cast<App*>(user);
+    if (app->rec) (void)app->rec->note(q);
+    if (app->stop.load(std::memory_order_relaxed)) return;
+    if (app->serve) return;
+    if (app->flow) {
+        uint64_t t1 = 0;
+        (void)pitlane::cycles_ordered(t1);
+        app->flow->on_tick(name, q, t0_cycles, t1);
+        return;
+    }
+    // Collection mode: --record without --full taps quotes but sends no orders.
+    if (app->rec) return;
+    if (!app->td || !app->td->ready()) return;
+    if (q.bid_px <= 0 || q.ask_px < q.bid_px || q.ask_qty <= 0) return;
+    const int64_t spread = q.ask_px - q.bid_px;
+    if (spread <= 0 || spread > app->cfg.max_spread_x10000) return;
+    if (q.ask_px > app->cfg.buy_px_x10000) return;
+
+    const int64_t now = wall_us();
+    int64_t last = app->last_order_us.load(std::memory_order_relaxed);
+    if (now - last < app->cfg.min_order_gap_us) return;
+    if (!app->last_order_us.compare_exchange_weak(last, now, std::memory_order_relaxed)) return;
+    if (app->live.load(std::memory_order_relaxed) >= app->cfg.max_live_orders) return;
+
+    time_t sec = static_cast<time_t>(now / 1000000);
+    std::tm tm{};
+    localtime_r(&sec, &tm);
+    const int sod = tm.tm_hour * 3600 + tm.tm_min * 60 + tm.tm_sec;
+    const uint64_t tag = app->mint.next(tm.tm_yday, sod);
+
+    pitlane::Intent in{};
+    in.tag = tag;
+    in.name = name;
+    in.acct = 1;
+    in.px = q.ask_px;
+    in.qty = app->cfg.order_qty;
+    in.stamp_us = now;
+    in.side = static_cast<uint8_t>(pitlane::Side::Buy);
+    in.act = static_cast<uint8_t>(pitlane::Act::Enter);
+    in.style = static_cast<uint8_t>(pitlane::Style::Immediate);
+
+    if (!app->desk->intents.publish(in, 0)) return;
+
+    uint64_t t_intent = 0;
+    (void)pitlane::cycles_ordered(t_intent);
+    const uint64_t local_ns = to_ns(app->scale, t_intent > t0_cycles ? t_intent - t0_cycles : 0);
+    app->td->note_t0(tag, t0_cycles, now, local_ns);
+    app->live.fetch_add(1, std::memory_order_relaxed);
+
+    // Bypass TdEngine drain: insert immediately on MD thread for min gate latency.
+    if (app->td->insert(in) != 0) {
+        app->live.fetch_sub(1, std::memory_order_relaxed);
+    }
+}
+
+bool warm_scale(pitlane::CycleScale& scale) {
+    uint64_t c0 = 0, c1 = 0;
+    timespec a{}, b{};
+    if (!pitlane::cycles_ordered(c0) || clock_gettime(CLOCK_MONOTONIC, &a) != 0) return false;
+    timespec deadline = a;
+    deadline.tv_nsec += 20000000;
+    if (deadline.tv_nsec >= 1000000000L) {
+        deadline.tv_sec += 1;
+        deadline.tv_nsec -= 1000000000L;
+    }
+    for (;;) {
+        timespec now{};
+        clock_gettime(CLOCK_MONOTONIC, &now);
+        if (now.tv_sec > deadline.tv_sec || (now.tv_sec == deadline.tv_sec && now.tv_nsec >= deadline.tv_nsec)) break;
+        pitlane::cpu_relax();
+    }
+    if (clock_gettime(CLOCK_MONOTONIC, &b) != 0 || !pitlane::cycles_ordered(c1) || c1 <= c0) return false;
+    uint64_t ns = 0;
+    if (b.tv_nsec >= a.tv_nsec)
+        ns = static_cast<uint64_t>(b.tv_sec - a.tv_sec) * 1000000000ull + static_cast<uint64_t>(b.tv_nsec - a.tv_nsec);
+    else
+        ns = static_cast<uint64_t>(b.tv_sec - a.tv_sec - 1) * 1000000000ull +
+             static_cast<uint64_t>(1000000000L + b.tv_nsec - a.tv_nsec);
+    return pitlane::scale_set(scale, c1 - c0, ns);
+}
+
+void summarize(App& app) {
+    const int n = app.n_samples.load(std::memory_order_acquire);
+    const int use = n < app.cfg.t2t_samples || app.cfg.t2t_samples <= 0 ? n : app.cfg.t2t_samples;
+    if (use <= 0) {
+        std::printf("no T2T samples\n");
+        return;
+    }
+    uint64_t local[App::kSamples];
+    uint64_t gate[App::kSamples];
+    uint64_t rt[App::kSamples];
+    int nl = 0, ng = 0, nr = 0;
+    for (int i = 0; i < use && i < App::kSamples; ++i) {
+        if (app.samples[i].local_ns) local[nl++] = app.samples[i].local_ns;
+        if (app.samples[i].gate_ns) gate[ng++] = app.samples[i].gate_ns;
+        if (app.samples[i].roundtrip_ns) rt[nr++] = app.samples[i].roundtrip_ns;
+    }
+    auto sortn = [](uint64_t* a, int n) {
+        for (int i = 1; i < n; ++i) {
+            uint64_t v = a[i];
+            int j = i;
+            while (j > 0 && a[j - 1] > v) {
+                a[j] = a[j - 1];
+                --j;
+            }
+            a[j] = v;
+        }
+    };
+    auto pct = [&](uint64_t* a, int n, int p) -> uint64_t {
+        if (n <= 0) return 0;
+        sortn(a, n);
+        return a[(n - 1) * p / 100];
+    };
+    std::printf("\n=== pitlane %s trading T2T (hot MD→insert) ===\n", pitlane::kVersion);
+    std::printf("samples=%d\n", use);
+    if (nl)
+        std::printf("local_path_ns p50=%llu p99=%llu\n", static_cast<unsigned long long>(pct(local, nl, 50)),
+                    static_cast<unsigned long long>(pct(local, nl, 99)));
+    if (ng)
+        std::printf("gate_path_ns  p50=%llu p99=%llu\n", static_cast<unsigned long long>(pct(gate, ng, 50)),
+                    static_cast<unsigned long long>(pct(gate, ng, 99)));
+    if (nr)
+        std::printf("roundtrip_ns  p50=%llu p99=%llu\n", static_cast<unsigned long long>(pct(rt, nr, 50)),
+                    static_cast<unsigned long long>(pct(rt, nr, 99)));
+    std::printf("============================================\n");
+}
+
+} // namespace
+
+bool ensure_dir(const char* path) {
+    if (!path || !path[0]) return false;
+    char tmp[512];
+    std::snprintf(tmp, sizeof tmp, "%s", path);
+    const std::size_t n = std::strlen(tmp);
+    if (n == 0) return false;
+    if (tmp[n - 1] == '/') tmp[n - 1] = 0;
+    for (char* p = tmp + 1; *p; ++p) {
+        if (*p != '/') continue;
+        *p = 0;
+        ::mkdir(tmp, 0755);
+        *p = '/';
+    }
+    return ::mkdir(tmp, 0755) == 0 || errno == EEXIST;
+}
+
+// Resolves the strategy config: explicit --study, else work_dir/research.conf,
+// else the built-in default. Prints which source was used.
+bool load_study(const char* study_path, const pitlane::Account& acct, pitlane::FlowCfg& fc) {
+    char def[600];
+    std::snprintf(def, sizeof def, "%s/research.conf", acct.work_dir.c_str());
+    const char* p = study_path ? study_path : def;
+    pitlane::StudyCfg sc{};
+    if (!pitlane::study_conf_load(p, sc)) {
+        if (study_path) {
+            std::fprintf(stderr, "study: load %s failed\n", study_path);
+            return false;
+        }
+        std::printf("[study] %s unavailable; default kind=%u window=%u signal_ppm=%lld\n", def,
+                    static_cast<unsigned>(fc.kind), static_cast<unsigned>(fc.window),
+                    static_cast<long long>(fc.signal_ppm));
+        return true;
+    }
+    fc.kind = sc.kind;
+    fc.window = sc.window;
+    fc.sign = sc.sign;
+    fc.signal_ppm = sc.signal_ppm;
+    std::printf("[study] %s kind=%u window=%u sign=%d signal_ppm=%lld horizon=%d samples=%lld rank_ic=%lld\n", p,
+                static_cast<unsigned>(sc.kind), static_cast<unsigned>(sc.window), static_cast<int>(sc.sign),
+                static_cast<long long>(sc.signal_ppm), sc.horizon_bars, static_cast<long long>(sc.samples),
+                static_cast<long long>(sc.rank_ic_ppm));
+    return true;
+}
+
+int run_paper(const pitlane::Account& acct, const pitlane::StratCfg& cfg, const pitlane::VenueCfg& vc,
+              const char* record_path) {
+    if (!ensure_dir(acct.work_dir.c_str())) return 2;
+    pitlane::WireLog wlog(acct.log_path.c_str(), 3);
+    wlog.log(2, pitlane::lit("trading paper center"));
+
+    pitlane::TapeRecorder rec;
+    if (record_path && !rec.open(record_path)) {
+        std::fprintf(stderr, "record: open %s failed\n", record_path);
+        return 2;
+    }
+
+    ::unlink(acct.desk_path.c_str());
+    pitlane::MapOpt opt{};
+    opt.hugepage = 0;
+    opt.lock = 0;
+    opt.prefault = 1;
+    pitlane::MapInfo map{};
+    if (pitlane::map_create(acct.desk_path.c_str(), pitlane::desk_bytes(), &map, opt) != 0) return 1;
+    pitlane::Desk* desk = pitlane::desk_view(&map, 1);
+    if (!desk) return 1;
+
+    pitlane::CycleScale scale{};
+    if (!warm_scale(scale)) return 1;
+
+    constexpr int kTape = 32;
+    pitlane::Quote tape[kTape]{};
+    for (int i = 0; i < kTape; ++i) {
+        tape[i].name = 1;
+        tape[i].bid_px = 1000000;
+        tape[i].ask_px = 1000200;
+        tape[i].last_px = 1000100;
+        tape[i].bid_qty = 8;
+        tape[i].ask_qty = 8;
+        tape[i].local_us = 1000 + i;
+    }
+    pitlane::TapeMd md;
+    md.src = tape;
+    md.n = kTape;
+    md.burst = 1;
+    md.quote_mask = (1ull << pitlane::kBookReader) | (1ull << pitlane::kLoopReader);
+
+    struct Hot : pitlane::StratEngine {
+        pitlane::StratCfg cfg{};
+        pitlane::TapeRecorder* rec{nullptr};
+        pitlane::CycleScale scale{};
+        pitlane::IdMint mint{1, 1};
+        int orders{0};
+        int fills{0};
+        int live{0};
+        int64_t last_us{0};
+        uint64_t t0[64]{};
+        uint64_t local_ns[64]{};
+        uint64_t round_ns[64]{};
+        uint64_t tags[64]{};
+
+        void on_quote(const pitlane::Quote& q) override {
+            if (rec) (void)rec->note(q);
+            if (cfg.t2t_samples > 0 && orders >= cfg.t2t_samples) return;
+            if (q.ask_qty <= 0 || q.ask_px < q.bid_px) return;
+            if (q.ask_px - q.bid_px > cfg.max_spread_x10000) return;
+            if (q.ask_px > cfg.buy_px_x10000) return;
+            const int64_t now = q.local_us > 0 ? q.local_us : 1;
+            if (cfg.min_order_gap_us > 0 && now - last_us < cfg.min_order_gap_us) return;
+            if (live >= cfg.max_live_orders) return;
+            uint64_t c0 = 0;
+            (void)pitlane::cycles_ordered(c0);
+            pitlane::Intent in{};
+            in.tag = mint.next(1, 10);
+            in.name = q.name;
+            in.acct = 1;
+            in.px = q.ask_px;
+            in.qty = cfg.order_qty > 0 ? cfg.order_qty : 1;
+            in.stamp_us = now;
+            in.side = static_cast<uint8_t>(pitlane::Side::Buy);
+            in.act = static_cast<uint8_t>(pitlane::Act::Enter);
+            in.style = static_cast<uint8_t>(pitlane::Style::Immediate);
+            if (!insert_order(in)) return;
+            uint64_t c1 = 0;
+            (void)pitlane::cycles_ordered(c1);
+            const int i = orders;
+            if (i < 64) {
+                tags[i] = in.tag;
+                t0[i] = c0;
+                uint64_t ns = 0;
+                if (c1 > c0) (void)pitlane::scale_ns(scale, c1 - c0, ns);
+                local_ns[i] = ns;
+            }
+            ++orders;
+            ++live;
+            last_us = now;
+        }
+
+        void on_report(const pitlane::Report& r) override {
+            if (r.phase != static_cast<uint8_t>(pitlane::Phase::Filled) || r.qty <= 0) return;
+            uint64_t c1 = 0;
+            (void)pitlane::cycles_ordered(c1);
+            for (int i = 0; i < orders && i < 64; ++i) {
+                if (tags[i] != r.tag || round_ns[i] != 0) continue;
+                uint64_t ns = 0;
+                if (c1 > t0[i]) (void)pitlane::scale_ns(scale, c1 - t0[i], ns);
+                round_ns[i] = ns;
+                ++fills;
+                if (live > 0) --live;
+                break;
+            }
+        }
+    } hot;
+    hot.cfg = cfg;
+    hot.scale = scale;
+    hot.rec = record_path ? &rec : nullptr;
+
+    auto* venue = new (std::nothrow) pitlane::PaperVenue(vc);
+    if (!venue) return 1;
+    pitlane::TradeLane lane{};
+    lane.venue = venue;
+    lane.report_mask = 1ull << pitlane::kLoopReader;
+
+    pitlane::Center center{};
+    center.desk = desk;
+    center.md = &md;
+    center.strat = &hot;
+    center.paper = &lane;
+    center.book = venue;
+    center.log = &wlog;
+    center.heartbeat_us = 1000000;
+    if (!center.set_up()) return 1;
+
+    const int want = cfg.t2t_samples > 0 ? cfg.t2t_samples : 8;
+    for (int i = 0; i < kTape + want + 4 && hot.fills < want; ++i) center.step(1000 + i);
+    if (record_path) {
+        rec.close();
+        std::printf("[record] %s written=%llu dropped=%llu\n", record_path, static_cast<unsigned long long>(rec.written()),
+                    static_cast<unsigned long long>(rec.dropped()));
+    }
+
+    uint64_t local[64];
+    uint64_t rt[64];
+    int nl = 0, nr = 0;
+    for (int i = 0; i < hot.orders && i < 64; ++i) {
+        if (hot.local_ns[i]) local[nl++] = hot.local_ns[i];
+        if (hot.round_ns[i]) rt[nr++] = hot.round_ns[i];
+    }
+    auto sortn = [](uint64_t* a, int n) {
+        for (int i = 1; i < n; ++i) {
+            uint64_t v = a[i];
+            int j = i;
+            while (j > 0 && a[j - 1] > v) {
+                a[j] = a[j - 1];
+                --j;
+            }
+            a[j] = v;
+        }
+    };
+    auto pct = [&](uint64_t* a, int n, int p) -> uint64_t {
+        if (n <= 0) return 0;
+        sortn(a, n);
+        return a[(n - 1) * p / 100];
+    };
+    std::printf("\n=== pitlane %s trading paper center ===\n", pitlane::kVersion);
+    std::printf("orders=%d fills=%d beats=%llu\n", hot.orders, hot.fills, static_cast<unsigned long long>(center.beats));
+    if (nl)
+        std::printf("local_path_ns p50=%llu p99=%llu\n", static_cast<unsigned long long>(pct(local, nl, 50)),
+                    static_cast<unsigned long long>(pct(local, nl, 99)));
+    if (nr)
+        std::printf("roundtrip_ns  p50=%llu p99=%llu\n", static_cast<unsigned long long>(pct(rt, nr, 50)),
+                    static_cast<unsigned long long>(pct(rt, nr, 99)));
+    std::printf("============================================\n");
+    wlog.log(2, pitlane::lit("paper fills="), hot.fills);
+    wlog.flush();
+    delete venue;
+    pitlane::map_release(&map);
+    ::unlink(acct.desk_path.c_str());
+    return hot.fills > 0 ? 0 : 1;
+}
+
+struct FlowStrat : pitlane::StratEngine {
+    pitlane::FullFlow* flow{nullptr};
+    pitlane::TapeRecorder* rec{nullptr};
+
+    void on_quote(const pitlane::Quote& q) override {
+        if (rec) (void)rec->note(q);
+        if (!flow) return;
+        flow->on_tick(q.name, q, 0, 0);
+        flow->on_beat(q.local_us > 0 ? q.local_us : 1);
+    }
+
+    void on_report(const pitlane::Report& r) override {
+        if (flow) flow->on_report(r, r.stamp_us > 0 ? r.stamp_us : 1);
+    }
+};
+
+int paper_send(void* user, const pitlane::Intent& in) {
+    return static_cast<FlowStrat*>(user)->insert_order(in) ? 0 : 1;
+}
+
+int build_synth_tape(pitlane::Quote* tape, int cap) {
+    uint32_t rng = 0x12345u;
+    int64_t px = 1000000;
+    static const int kOffset[8] = {0, 100, 200, 300, 200, 100, 0, -100};
+    int n = 0;
+    // 名称 1 留给内置示例流；名称 3/4 组成一条会均值回归的配对价差，
+    // 两者都允许双向持仓，避免示例策略占用同一合约。
+    for (int i = 0; n + 3 <= cap; ++i) {
+        rng = rng * 1664525u + 1013904223u;
+        const int dir = static_cast<int>((rng >> 16) % 3u) - 1;
+        px += dir * 100;
+        if (px < 900000 || px > 1100000) px = 1000000;
+        const int64_t ts = 1000000 + static_cast<int64_t>(i) * 1000000;
+        const int64_t off = kOffset[i % 8];
+        pitlane::Quote* rows[3] = {&tape[n], &tape[n + 1], &tape[n + 2]};
+        const uint32_t names[3] = {1, 3, 4};
+        const int64_t mids[3] = {px, px, px + off};
+        for (int k = 0; k < 3; ++k) {
+            *rows[k] = pitlane::Quote{};
+            rows[k]->name = names[k];
+            rows[k]->bid_px = mids[k] - 10;
+            rows[k]->ask_px = mids[k] + 10;
+            rows[k]->last_px = mids[k];
+            rows[k]->bid_qty = 5;
+            rows[k]->ask_qty = 5;
+            rows[k]->exch_us = ts + k;
+            rows[k]->local_us = ts + k;
+        }
+        n += 3;
+    }
+    return n;
+}
+
+int run_sim_flow(const pitlane::Account& acct, const pitlane::StratCfg& cfg, const pitlane::VenueCfg& vc,
+                 const pitlane::Quote* tape, int tape_n, bool replay_all, int mode, const pitlane::FlowCfg& fcfg,
+                 const char* record_path, bool web, uint16_t web_port, const char* web_root, const char* ops_conf,
+                 const char* web_bind, const char* tape_file) {
+    (void)cfg;
+    if (!tape || tape_n <= 0) return 2;
+    if (!ensure_dir(acct.work_dir.c_str())) return 2;
+    pitlane::WireLog wlog(acct.log_path.c_str(), 3);
+    wlog.log(2, pitlane::lit("trading full flow paper"));
+
+    pitlane::TapeRecorder rec;
+    if (record_path && !rec.open(record_path)) {
+        std::fprintf(stderr, "record: open %s failed\n", record_path);
+        return 2;
+    }
+
+    ::unlink(acct.desk_path.c_str());
+    pitlane::MapOpt opt{};
+    opt.hugepage = 0;
+    opt.lock = 0;
+    opt.prefault = 1;
+    pitlane::MapInfo map{};
+    if (pitlane::map_create(acct.desk_path.c_str(), pitlane::desk_bytes(), &map, opt) != 0) return 1;
+    pitlane::Desk* desk = pitlane::desk_view(&map, 1);
+    if (!desk) return 1;
+
+    pitlane::FullFlow flow;
+    if (!flow.open(acct, mode, &wlog, fcfg)) {
+        pitlane::map_release(&map);
+        ::unlink(acct.desk_path.c_str());
+        return 1;
+    }
+    flow.set_timing(2000000, 6000000, 2000000);
+
+    pitlane::TapeMd md;
+    md.src = tape;
+    md.n = tape_n;
+    md.burst = 1;
+    md.quote_mask = (1ull << pitlane::kBookReader) | (1ull << pitlane::kLoopReader);
+
+    auto* venue = new (std::nothrow) pitlane::PaperVenue(vc);
+    if (!venue) {
+        flow.close();
+        pitlane::map_release(&map);
+        ::unlink(acct.desk_path.c_str());
+        return 1;
+    }
+    pitlane::TradeLane lane{};
+    lane.venue = venue;
+    lane.report_mask = 1ull << pitlane::kLoopReader;
+
+    FlowStrat strat;
+    strat.flow = &flow;
+    strat.rec = record_path ? &rec : nullptr;
+    flow.set_send(paper_send, &strat);
+
+    pitlane::Center center{};
+    center.desk = desk;
+    center.md = &md;
+    center.strat = &strat;
+    center.paper = &lane;
+    center.book = venue;
+    center.log = &wlog;
+    center.heartbeat_us = 1000000;
+    if (!center.set_up()) {
+        flow.close();
+        delete venue;
+        pitlane::map_release(&map);
+        ::unlink(acct.desk_path.c_str());
+        return 1;
+    }
+
+    trading_ops::SimOps* ops = nullptr;
+    if (web) {
+        ops = new (std::nothrow) trading_ops::SimOps();
+        if (ops && ops->open(flow, true, web_port, web_root, ops_conf, web_bind, tape_file) && ops->web()) {
+            std::printf("[web] ops console http://%s:%u/\n", ops->bind_addr(), static_cast<unsigned>(ops->port()));
+        } else if (ops) {
+            ops->close();
+            delete ops;
+            ops = nullptr;
+        }
+    }
+
+    // 网页控制台在线时把整段磁带放完：否则示例策略一成交就提前结束回放，
+    // 剩余行情会在服务阶段以旧时间戳继续涌入，令策略节拍与撮合时钟错乱。
+    const bool keep_tape = ops && ops->web();
+    for (int i = 0; i < tape_n && (replay_all || keep_tape || !flow.complete()); ++i)
+        center.step(tape[i].local_us);
+    if (replay_all) {
+        // Let the last parent finish its slices and fills after the tape ends.
+        const int64_t end_us = tape[tape_n - 1].local_us;
+        for (int k = 1; k <= 64; ++k) {
+            const int64_t t = end_us + static_cast<int64_t>(k) * 1000000;
+            center.step(t);
+            flow.on_beat(t);
+        }
+    }
+    if (ops && ops->web()) {
+        // Keep the hub alive so the browser can drive manual orders and controls.
+        std::signal(SIGINT, on_sig);
+        std::signal(SIGTERM, on_sig);
+        g_stop_flag.store(false, std::memory_order_release);
+        const int64_t sim_base = tape[tape_n - 1].local_us + 65000000ll;
+        const int64_t wall_base = wall_us();
+        std::printf("[web] replay done; serving until Ctrl-C (manual orders match at the last top)\n");
+        while (!g_stop_flag.load(std::memory_order_acquire)) {
+            const int64_t now = sim_base + (wall_us() - wall_base);
+            center.step(now);
+            flow.on_beat(now);
+            timespec ts{0, 5000000};
+            nanosleep(&ts, nullptr);
+        }
+    }
+    if (record_path) {
+        rec.close();
+        std::printf("[record] %s written=%llu dropped=%llu\n", record_path, static_cast<unsigned long long>(rec.written()),
+                    static_cast<unsigned long long>(rec.dropped()));
+    }
+
+    flow.summarize(&wlog);
+    const bool ok = flow.pass();
+    if (ops) {
+        ops->close();
+        delete ops;
+    }
+    flow.close();
+    wlog.flush();
+    delete venue;
+    pitlane::map_release(&map);
+    ::unlink(acct.desk_path.c_str());
+    return ok ? 0 : 1;
+}
+
+int run_paper_flow(const pitlane::Account& acct, const pitlane::StratCfg& cfg, const pitlane::VenueCfg& vc,
+                   const pitlane::FlowCfg& fcfg, const char* record_path, bool web, uint16_t web_port,
+                   const char* web_root, const char* ops_conf, const char* web_bind, const char* tape_file) {
+    constexpr int kTape = 1024;
+    static pitlane::Quote tape[kTape]{};
+    return run_sim_flow(acct, cfg, vc, tape, build_synth_tape(tape, kTape), false, 2, fcfg, record_path, web, web_port,
+                        web_root, ops_conf, web_bind, tape_file);
+}
+
+int run_backtest(const pitlane::Account& acct, const pitlane::StratCfg& cfg, const pitlane::VenueCfg& vc,
+                 const char* tape_path, const char* study_path, const char* record_path, uint32_t name_filter,
+                 bool web, uint16_t web_port, const char* web_root, const char* ops_conf, const char* web_bind) {
+    std::vector<pitlane::Quote> tape;
+    trading_study::TapeStats st{};
+    if (tape_path && trading_study::tape_load_csv(tape_path, tape, st, name_filter)) {
+        std::printf("[backtest] tape %s rows=%d skipped=%d span_us=%lld\n", tape_path, st.rows, st.skipped,
+                    static_cast<long long>(st.last_us - st.first_us));
+    } else {
+        if (tape_path)
+            std::printf("[backtest] tape %s unusable (%d rows, %d skipped), using synthetic tape\n", tape_path,
+                        st.rows, st.skipped);
+        else
+            std::printf("[backtest] no --tape, using synthetic tape\n");
+        tape.resize(512);
+        build_synth_tape(tape.data(), static_cast<int>(tape.size()));
+    }
+    pitlane::FlowCfg fcfg{};
+    if (!load_study(study_path, acct, fcfg)) return 2;
+    return run_sim_flow(acct, cfg, vc, tape.data(), static_cast<int>(tape.size()), true, 3, fcfg, record_path, web,
+                        web_port, web_root, ops_conf, web_bind, tape_path);
+}
+
+int main(int argc, char** argv) {
+    // Prefer running from pitlane-trading so ./run stays local to the project.
+    const char* conf_path = "conf/live.conf";
+    const char* tape_path = nullptr;
+    const char* record_path = nullptr;
+    const char* study_path = nullptr;
+    const char* out_path = nullptr;
+    const char* web_root = nullptr;
+    const char* ops_conf = nullptr;
+    const char* web_bind = nullptr;
+    uint32_t name_filter = 0;
+    uint16_t web_port = 0;
+    bool full = false;
+    bool serve = false;
+    bool backtest = false;
+    bool research = false;
+    for (int i = 1; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--full") == 0)
+            full = true;
+        else if (std::strcmp(argv[i], "--serve") == 0)
+            serve = true;
+        else if (std::strcmp(argv[i], "--backtest") == 0)
+            backtest = true;
+        else if (std::strcmp(argv[i], "--research") == 0)
+            research = true;
+        else if (std::strcmp(argv[i], "--tape") == 0 && i + 1 < argc)
+            tape_path = argv[++i];
+        else if (std::strcmp(argv[i], "--record") == 0 && i + 1 < argc)
+            record_path = argv[++i];
+        else if (std::strcmp(argv[i], "--study") == 0 && i + 1 < argc)
+            study_path = argv[++i];
+        else if (std::strcmp(argv[i], "--out") == 0 && i + 1 < argc)
+            out_path = argv[++i];
+        else if (std::strcmp(argv[i], "--name") == 0 && i + 1 < argc)
+            name_filter = static_cast<uint32_t>(std::strtoul(argv[++i], nullptr, 10));
+        else if (std::strcmp(argv[i], "--web") == 0 && i + 1 < argc)
+            web_port = static_cast<uint16_t>(std::strtoul(argv[++i], nullptr, 10));
+        else if (std::strcmp(argv[i], "--web-root") == 0 && i + 1 < argc)
+            web_root = argv[++i];
+        else if (std::strcmp(argv[i], "--ops-conf") == 0 && i + 1 < argc)
+            ops_conf = argv[++i];
+        else if (std::strcmp(argv[i], "--web-bind") == 0 && i + 1 < argc)
+            web_bind = argv[++i];
+        else
+            conf_path = argv[i];
+    }
+
+    if (!web_root) web_root = web_root_default();
+
+    pitlane::Account acct{};
+    pitlane::StratCfg strat{};
+    std::string err;
+    if (!pitlane::load_account_conf(conf_path, acct, strat, err)) {
+        std::fprintf(stderr, "load conf %s: %s\n", conf_path, err.c_str());
+        std::fprintf(stderr,
+                     "usage: cd pitlane-trading && ../build/pitlane_trading [--full|--serve|--backtest|--research] "
+                     "[--tape FILE] [--record FILE] [--study FILE] [--out FILE] [--name N] "
+                     "[--web PORT] [--web-bind ADDR] [--web-root DIR] [--ops-conf FILE] conf.conf\n"
+                     "live confs name adapter = <name>; its settings load from conf/adapters/<name>.conf "
+                     "(or adapter_conf = FILE)\n");
+        return 2;
+    }
+    pitlane::apply_account_env(acct);
+    pitlane::resolve_runtime_paths(acct);
+
+    pitlane::PitConf pit{};
+    pitlane::VenueCfg vc{};
+    if (pitlane::conf_load(conf_path, pit)) vc = pitlane::conf_venue_cfg(pit);
+
+    if (research) {
+        if (!tape_path) {
+            std::fprintf(stderr, "--research needs --tape FILE\n");
+            return 2;
+        }
+        if (!ensure_dir(acct.work_dir.c_str())) return 2;
+        std::vector<pitlane::Quote> tape;
+        trading_study::TapeStats st{};
+        if (!trading_study::tape_load_csv(tape_path, tape, st, name_filter)) {
+            std::fprintf(stderr, "research: no usable rows in %s (%d skipped)\n", tape_path, st.skipped);
+            return 1;
+        }
+        std::printf("[research] tape %s rows=%d skipped=%d span_us=%lld\n", tape_path, st.rows, st.skipped,
+                    static_cast<long long>(st.last_us - st.first_us));
+        char out_buf[600];
+        const char* out = out_path;
+        if (!out) {
+            std::snprintf(out_buf, sizeof out_buf, "%s/research.conf", acct.work_dir.c_str());
+            out = out_buf;
+        }
+        pitlane::StudyCfg best{};
+        return trading_study::research_run(tape, out, best) ? 0 : 1;
+    }
+
+    if (strat.paper) {
+        if (serve) {
+            std::fprintf(stderr, "--serve needs a live conf\n");
+            return 2;
+        }
+        if (backtest) {
+            return run_backtest(acct, strat, vc, tape_path, study_path, record_path, name_filter, web_port > 0, web_port,
+                                web_root, ops_conf, web_bind);
+        }
+        if (full) {
+            pitlane::FlowCfg fcfg{};
+            if (!load_study(study_path, acct, fcfg)) return 2;
+            return run_paper_flow(acct, strat, vc, fcfg, record_path, web_port > 0, web_port, web_root, ops_conf,
+                                  web_bind, tape_path);
+        }
+        if (web_port > 0) std::fprintf(stderr, "--web needs --full, --serve, or --backtest\n");
+        return run_paper(acct, strat, vc, record_path);
+    }
+    if (backtest) {
+        std::fprintf(stderr, "--backtest needs a paper conf (paper = 1)\n");
+        return 2;
+    }
+    char adapter[32];
+    char adapter_conf[512];
+    pitlane::trading::adapter_read_conf(conf_path, adapter, sizeof adapter, adapter_conf, sizeof adapter_conf);
+    if (!pitlane::trading::adapter_supported(adapter)) {
+        std::fprintf(stderr, "adapter %s is not built in (available: %s)\n", adapter,
+                     pitlane::trading::kAdapterNames);
+        return 2;
+    }
+    if (!adapter_conf[0]) pitlane::trading::adapter_conf_default(conf_path, adapter, adapter_conf, sizeof adapter_conf);
+    pitlane::trading::CtpCfg ctp{};
+    if (!pitlane::trading::ctp_conf_load(adapter_conf, ctp, err)) {
+        std::fprintf(stderr, "load adapter conf %s: %s\n", adapter_conf, err.c_str());
+        return 2;
+    }
+    pitlane::trading::ctp_apply_env(ctp);
+    if (acct.instruments.empty()) {
+        std::fprintf(stderr, "need instruments\n");
+        return 2;
+    }
+    if (const char* miss = pitlane::trading::ctp_missing(ctp)) {
+        std::fprintf(stderr, "ctp conf %s needs %s\n", adapter_conf, miss);
+        return 2;
+    }
+    if (!ensure_dir(acct.work_dir.c_str()) || !ensure_dir(acct.flow_md_dir.c_str()) || !ensure_dir(acct.flow_td_dir.c_str())) {
+        std::fprintf(stderr, "mkdir work/flow failed under %s\n", acct.work_dir.c_str());
+        return 2;
+    }
+
+    if (acct.host_cpu >= 0) (void)pitlane::pin_thread(acct.host_cpu);
+
+    ::unlink(acct.desk_path.c_str());
+    pitlane::MapOpt opt{};
+    opt.hugepage = 0;
+    opt.lock = 0;
+    opt.prefault = 1;
+    pitlane::MapInfo map{};
+    if (pitlane::map_create(acct.desk_path.c_str(), pitlane::desk_bytes(), &map, opt) != 0) return 1;
+    pitlane::Desk* desk = pitlane::desk_view(&map, 1);
+    if (!desk) return 1;
+
+    App app;
+    app.cfg = strat;
+    app.desk = desk;
+    g_app = &app;
+    if (!warm_scale(app.scale)) return 1;
+
+    pitlane::WireLog wlog(acct.log_path.c_str(), 3);
+    wlog.log(2, pitlane::lit("live start investor="), ctp.investor_id.c_str(), pitlane::lit(" adapter="),
+             adapter, pitlane::lit(" work="), acct.work_dir.c_str());
+
+    pitlane::CtpMdEngine md(acct, ctp);
+    pitlane::CtpTdClient td(acct, ctp);
+    md.set_log(&wlog);
+    td.set_log(&wlog);
+    pitlane::TdEngine td_eng;
+    app.td = &td;
+
+    md.bind_desk(desk);
+    td_eng.bind_desk(desk);
+    td_eng.client = &td;
+    td.set_report_sink(&td_eng);
+    td.set_scale(&app.scale);
+    td.set_accept(on_accept, &app);
+    md.set_tick_fn(on_tick_hot, &app);
+    md.quote_mask = 0;
+
+    pitlane::TapeRecorder rec;
+    if (record_path && !rec.open(record_path)) {
+        std::fprintf(stderr, "record: open %s failed\n", record_path);
+        return 2;
+    }
+    app.rec = record_path ? &rec : nullptr;
+
+    pitlane::FullFlow flow;
+    trading_ops::SimOps* ops = nullptr;
+    LiveGwCtx live_gw{};
+    live_gw.td = &td;
+    live_gw.td_eng = &td_eng;
+    if (full || serve) {
+        pitlane::FlowCfg fcfg{};
+        if (!load_study(study_path, acct, fcfg)) return 2;
+        if (!flow.open(acct, 1, &wlog, fcfg)) return 1;
+        flow.set_send(send_live, &app);
+        flow.set_timing(5000000, 60000000, 20000000);
+        app.flow = &flow;
+        app.full = full;
+        app.serve = serve;
+        td.set_trade(on_trade_cb, &app);
+        td.set_done(on_done_cb, &app);
+        td.set_reject(on_reject_cb, &app);
+        if (web_port > 0) {
+            trading_ops::GwHooks hooks{};
+            hooks.start = live_gw_start;
+            hooks.stop = live_gw_stop;
+            hooks.timeouts = live_timeouts;
+            hooks.user = &live_gw;
+            ops = new (std::nothrow) trading_ops::SimOps();
+            if (ops && ops->open(flow, strat.paper, web_port, web_root, ops_conf, web_bind, tape_path, &hooks) &&
+                ops->web()) {
+                std::printf("[web] ops console http://%s:%u/\n", ops->bind_addr(), static_cast<unsigned>(ops->port()));
+            } else if (ops) {
+                ops->close();
+                delete ops;
+                ops = nullptr;
+            }
+        }
+    }
+
+    if (!md.set_up()) {
+        if (ops) {
+            ops->close();
+            delete ops;
+        }
+        if (full || serve) flow.close();
+        return 1;
+    }
+    td.bind_inst(md.inst());
+    if (ops) {
+        ops->set_market(&md.live(), &md.hops());
+        // The console ledger mirrors the counter: query every few seconds and
+        // replace the snapshot from the CTP callback thread.
+        td.set_ledger(&trading_ops::SimOps::ledger_cb, ops);
+        td.set_ledger_acct(1);
+        td.set_instrument_mult(
+            [](void* user, uint32_t name) -> int64_t {
+                return static_cast<trading_ops::SimOps*>(user)->instrument_mult(name);
+            },
+            ops);
+        ops->set_ledger_poll([](void* user) { static_cast<pitlane::CtpTdClient*>(user)->query_ledger(); }, &td);
+    }
+    if (!td.start()) {
+        if (ops) {
+            ops->close();
+            delete ops;
+        }
+        if (full || serve) flow.close();
+        return 1;
+    }
+    live_gw.td_on = true;
+    if (ops) ops->note_direct_gateway(true);
+    md.pre_run();
+
+    std::signal(SIGINT, on_sig);
+    std::signal(SIGTERM, on_sig);
+    timespec wait_t0{};
+    clock_gettime(CLOCK_MONOTONIC, &wait_t0);
+    std::printf("[trading] pitlane %s adapter=%s investor=%s n_inst=%zu samples=%d work=%s (live IOC%s)\n",
+                pitlane::kVersion, adapter, ctp.investor_id.c_str(), acct.instruments.size(), strat.t2t_samples,
+                acct.work_dir.c_str(), full ? " full-flow" : serve ? " serve" : "");
+
+    // Busy-wait for completion; no sleep on the wait path beyond cpu_relax bursts.
+    uint64_t spins = 0;
+    int64_t ready_wall = 0;
+    while (!app.stop.load(std::memory_order_acquire)) {
+        if (td.failed() || md.failed()) {
+            wlog.log(0, pitlane::lit("live stop: broker login failed"));
+            app.stop.store(true, std::memory_order_release);
+            break;
+        }
+        if (!td.ready() && strat.connect_timeout_s > 0) {
+            timespec now{};
+            clock_gettime(CLOCK_MONOTONIC, &now);
+            if (now.tv_sec - wait_t0.tv_sec >= strat.connect_timeout_s) {
+                wlog.log(0, pitlane::lit("live stop: front silent for "), strat.connect_timeout_s, pitlane::lit("s"));
+                app.stop.store(true, std::memory_order_release);
+                break;
+            }
+        }
+        if (full) {
+            const int64_t now = wall_us();
+            if (td.ready()) {
+                if (ready_wall == 0) ready_wall = now;
+                app.flow->on_beat(now);
+                if (app.flow->complete()) {
+                    app.done.store(true, std::memory_order_release);
+                    app.stop.store(true, std::memory_order_release);
+                } else if (now - ready_wall >= 240000000ll) {
+                    app.flow->fail_timeout();
+                    app.stop.store(true, std::memory_order_release);
+                }
+            }
+        } else if (serve && td.ready()) {
+            flow.on_beat(wall_us());
+        }
+        ++spins;
+        md.loop_task();
+        if ((spins & 0xffffull) == 0) {
+            // light yield every 64k spins to avoid locking a core forever if quiet
+            timespec ts{0, 100000}; // 0.1ms
+            nanosleep(&ts, nullptr);
+        } else {
+            pitlane::cpu_relax();
+        }
+    }
+
+    int rc = 0;
+    wlog.flush();
+    if (full || serve) {
+        if (full) {
+            flow.summarize(&wlog);
+            rc = flow.pass() ? 0 : 1;
+        } else {
+            rc = (td.ready() && !td.failed() && !md.failed()) ? 0 : 1;
+        }
+        if (ops) {
+            ops->note_direct_gateway(false);
+            ops->close();
+            delete ops;
+            ops = nullptr;
+        }
+        flow.close();
+    } else {
+        rc = (td.ready() && !td.failed() && !md.failed()) ? 0 : 1;
+        summarize(app);
+    }
+    md.request_stop();
+    md.post_run();
+    td.stop();
+    if (record_path) {
+        rec.close();
+        std::printf("[record] %s written=%llu dropped=%llu\n", record_path, static_cast<unsigned long long>(rec.written()),
+                    static_cast<unsigned long long>(rec.dropped()));
+    }
+    wlog.flush();
+    pitlane::map_release(&map);
+    ::unlink(acct.desk_path.c_str());
+    return rc;
+}

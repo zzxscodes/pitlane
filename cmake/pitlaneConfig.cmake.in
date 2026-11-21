@@ -1,0 +1,12 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+find_dependency(Threads)
+
+include("${CMAKE_CURRENT_LIST_DIR}/pitlaneTargets.cmake")
+
+if(TARGET pitlane::pitlane)
+  set(pitlane_FOUND TRUE)
+endif()
+
+check_required_components(pitlane)

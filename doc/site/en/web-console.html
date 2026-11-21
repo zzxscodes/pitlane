@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Web console — pitlane API</title>
+<link rel="alternate" hreflang="zh" href="../zh/网页控制台.html"/>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="side">
+    <div class="side-head">
+      <h1>pitlane API</h1>
+      <a class="lang" href="../zh/网页控制台.html" hreflang="zh">中文</a>
+    </div>
+    <nav>
+      <a href="index.html">Overview</a><a href="architecture.html">Architecture</a><a href="console-screenshots.html">Console screenshots</a><a href="startup-configuration.html">Startup configuration</a><a href="open-a-shared-desk.html">Open a shared desk</a><a href="symbol-quote-yard.html">Symbol / quote yard</a><a href="publish-and-read.html">Publish and read</a><a href="run-the-session-loop.html">Run the session loop</a><a href="prepare-an-order.html">Prepare an order</a><a href="match-on-the-paper-venue.html">Match on the paper venue</a><a href="names-signals-and-the-counter.html">Names, signals, and the counter</a><a href="helpers.html">Helpers</a><a href="caller-owned-helpers.html">Caller-owned helpers</a><a href="frames-pacing-and-snapshots.html">Frames, pacing, and snapshots</a><a href="cycles-and-fixed-low-latency-tables.html">Cycles and fixed low-latency tables</a><a href="one-order-sheet.html">One order sheet</a><a href="research-and-a-caller-decision.html">Research and a caller decision</a><a href="a-price-window-a-slot-pool-and-two-charges.html">A price window, a slot pool, and two charges</a><a href="durable-state-snapshots-and-tail-evidence.html">Durable state, snapshots, and tail evidence</a><a href="research-grid-backtest-and-strategy-instances.html">Research grid, backtest, and strategy instances</a><a href="block-tape-and-c-abi.html">Block tape and C ABI</a><a href="ledger-rows-control-replies-algo-rungs-and-counter-orders.html">Ledger rows, control replies, algo rungs, and counter orders</a><a href="web-console.html" class="active">Web console</a><a href="where-the-calls-live.html">Where the calls live</a>
+    </nav>
+  </aside>
+  <main class="main">
+    <div class="meta">Open a section from the left</div>
+    <h1>Web console</h1>
+<p><code>pitlane_trading --web &lt;port&gt;</code> serves one page that drives every endpoint above. The layout is the same in test and live mode; the mode badge only changes what the page will let you touch. A paper run:</p>
+<p><img src="../images/console-market-en.jpg" alt="Market tab"/></p>
+<p>Market data is grouped by product class, with the class, currency, and jump state on each card, and the tape-backed chart below.</p>
+<p><img src="../images/console-trade-en.jpg" alt="Trade tab"/></p>
+<p>Tickets carry a funding account, and every response surfaces the backend message as a toast, so a rejected order shows its reason. The TWAP card names its parent id and can pause, resume, re-size, or cancel that parent after it is accepted, and a T0 flag turns it into a round trip that opens the position and unwinds it back to the entry net. The Trade tab also keeps manual pair packages: create a two-leg package, record per-leg fills, adjust the target, close it, or cancel it, and the book survives a restart.</p>
+<p><img src="../images/console-risk-en.jpg" alt="Risk tab"/></p>
+<p>The Risk tab keeps the alarm banner, the pre-trade limits, the rolling flow counters, and positions across accounts on one screen. It also carries the per-account credit terms table and the manual entry form used until a counter credit feed is wired.</p>
+<p><img src="../images/console-clear-en.jpg" alt="Clearing tab"/></p>
+<p>Clearing shows the per-account totals, today/yesterday lots, both valuation bases, the day history, the cash ledger, and the run/settle buttons.</p>
+  </main>
+</div>
+</body>
+</html>

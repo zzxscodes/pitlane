@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>准备一笔委托 — pitlane API</title>
+<link rel="alternate" hreflang="en" href="../en/prepare-an-order.html"/>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="side">
+    <div class="side-head">
+      <h1>pitlane API</h1>
+      <a class="lang" href="../en/prepare-an-order.html" hreflang="en">English</a>
+    </div>
+    <nav>
+      <a href="index.html">概述</a><a href="架构.html">架构</a><a href="控制台截图.html">控制台截图</a><a href="启动配置.html">启动配置</a><a href="打开共享区.html">打开共享区</a><a href="标的-行情池-yard.html">标的 / 行情池（Yard）</a><a href="发布和读取.html">发布和读取</a><a href="运行会话循环.html">运行会话循环</a><a href="准备一笔委托.html" class="active">准备一笔委托</a><a href="纸面撮合.html">纸面撮合</a><a href="合约-信号和柜台.html">合约、信号和柜台</a><a href="辅助函数.html">辅助函数</a><a href="调用方自己保管的辅助函数.html">调用方自己保管的辅助函数</a><a href="组帧-节奏和快照.html">组帧、节奏和快照</a><a href="周期计数和定长低延迟表.html">周期计数和定长低延迟表</a><a href="一笔委托.html">一笔委托</a><a href="研究-以及调用方自己的决定.html">研究，以及调用方自己的决定</a><a href="价格窗口-槽池和两笔费用.html">价格窗口、槽池和两笔费用</a><a href="持久状态-快照与尾部证据.html">持久状态、快照与尾部证据</a><a href="因子网格-回测和策略实例.html">因子网格、回测和策略实例</a><a href="块存储-tape-与-c-abi.html">块存储 tape 与 C ABI</a><a href="账本行-控制回执-算法档位与柜台订单.html">账本行、控制回执、算法档位与柜台订单</a><a href="网页控制台.html">网页控制台</a><a href="调用所在的头文件.html">调用所在的头文件</a>
+    </nav>
+  </aside>
+  <main class="main">
+    <div class="meta">从左侧打开一节</div>
+    <h1>准备一笔委托</h1>
+<p><code>IdMint</code> 生成可以跨重启识别的订单号。字段是站点、种类、交易日个位、十秒槽和流水号，放在一个 64 位整数里。种类由调用方定义。</p>
+<pre><code class="language-cpp">
+pitlane::IdMint mint(/*site=*/1, /*kind=*/1);
+uint64_t tag = mint.next(/*day_index=*/4, /*sec_of_day=*/10 * 3600);
+</code></pre>
+<p><code>normalize_gate</code> 在委托入库前整理开平和方向。现货类强制开仓。上期所和能源中心把普通平仓改成平昨。其他期货交易所把平今和平昨收成普通平仓。开平取 CTP 的 0–6 七个码（开仓、平仓、强平、平今、平昨、强减、本地强平），强平类按平仓计入持仓但保留原码。协议方向 0–7 是买卖与信用业务（融资买入、融券卖出、卖券还款、买券还券、申购、赎回），8–14 是现金还款、还券、余券划转、担保品划入划出、锁定、解锁，17–18 是拆分、合并委托；前八种带多空方向，其余不带，业务种类写进 <code>GateResult::biz</code>。价格类型支持限价、市价、对方最优、本方最优，非限价不要求价格；限价为 0 时拒绝。结果里的 <code>Why</code> 说明原因。</p>
+<pre><code class="language-cpp">
+pitlane::GateForm form{};
+std::snprintf(form.symbol, sizeof form.symbol, &quot;rb2410.SHF&quot;);
+form.side = static_cast&lt;uint8_t&gt;(pitlane::Side::Sell);
+form.off = static_cast&lt;int8_t&gt;(pitlane::Off::Close);
+form.px_mode = static_cast&lt;int8_t&gt;(pitlane::PxMode::Limit);
+form.px = 3500;
+form.qty = 2;
+pitlane::GateResult gate = pitlane::normalize_gate(form);
+</code></pre>
+<p><code>split_lots</code> 把期货数量拆成几段。模式是 <code>TodayThenYdayThenOpen</code>、<code>CloseOnly</code> 和 <code>YdayThenStop</code>，其他模式返回 -1。超过最大手数的部分会被拆开，小于最小手数的片段会被丢弃。<code>split_against</code> 先平反向持仓。<code>CloseStyle::SplitYday</code>（上期所、能源中心）把今仓和昨仓分开，<code>Plain</code> 合并为一笔平仓；不足的数量再按最大手数拆成开仓。</p>
+<p><code>commodity_plan</code> 和 <code>index_plan</code> 各自给出推向目标仓的下一笔委托。今仓和昨仓分开时优先平昨仓。<code>index_plan</code> 里的昨仓等于持仓减去当日已经开出的数量。<code>plan_px</code> 对买入取卖一、对卖出取买一。<code>next_child_qty</code> 按完成率曲线给出下一笔数量，落后数量按 <code>share_ppm</code> 分摊；领先达到母单大约一成，再算上在途量，下一笔数量为 0。<code>price_at_quote_vwap</code> 是盘口一档的量加权价，或是主动一侧的某一档，再按最小变动价位对齐。<code>pre_px</code>、<code>post_px</code>、<code>chasing_px</code> 只根据这份盘口返回价格。</p>
+<p><code>lock_future</code> 和 <code>lock_cash_sell</code> 冻结平仓或股票卖出需要的数量。<code>book_fill</code> 按成交写回今仓、昨仓和总仓。<code>apply_open_fill</code> 增加总仓、昨仓不动，新增的部分就是今仓。<code>apply_close_fill</code> 减少总仓；普通平仓先消耗尚未冻结的昨仓，平今不消耗昨仓。<code>roll_session</code> 把剩余持仓全部转为昨仓。<code>add_session_us</code> 只在连续竞价时段里加时间。</p>
+  </main>
+</div>
+</body>
+</html>

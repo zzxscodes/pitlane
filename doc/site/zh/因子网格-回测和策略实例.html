@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>因子网格、回测和策略实例 — pitlane API</title>
+<link rel="alternate" hreflang="en" href="../en/research-grid-backtest-and-strategy-instances.html"/>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="side">
+    <div class="side-head">
+      <h1>pitlane API</h1>
+      <a class="lang" href="../en/research-grid-backtest-and-strategy-instances.html" hreflang="en">English</a>
+    </div>
+    <nav>
+      <a href="index.html">概述</a><a href="架构.html">架构</a><a href="控制台截图.html">控制台截图</a><a href="启动配置.html">启动配置</a><a href="打开共享区.html">打开共享区</a><a href="标的-行情池-yard.html">标的 / 行情池（Yard）</a><a href="发布和读取.html">发布和读取</a><a href="运行会话循环.html">运行会话循环</a><a href="准备一笔委托.html">准备一笔委托</a><a href="纸面撮合.html">纸面撮合</a><a href="合约-信号和柜台.html">合约、信号和柜台</a><a href="辅助函数.html">辅助函数</a><a href="调用方自己保管的辅助函数.html">调用方自己保管的辅助函数</a><a href="组帧-节奏和快照.html">组帧、节奏和快照</a><a href="周期计数和定长低延迟表.html">周期计数和定长低延迟表</a><a href="一笔委托.html">一笔委托</a><a href="研究-以及调用方自己的决定.html">研究，以及调用方自己的决定</a><a href="价格窗口-槽池和两笔费用.html">价格窗口、槽池和两笔费用</a><a href="持久状态-快照与尾部证据.html">持久状态、快照与尾部证据</a><a href="因子网格-回测和策略实例.html" class="active">因子网格、回测和策略实例</a><a href="块存储-tape-与-c-abi.html">块存储 tape 与 C ABI</a><a href="账本行-控制回执-算法档位与柜台订单.html">账本行、控制回执、算法档位与柜台订单</a><a href="网页控制台.html">网页控制台</a><a href="调用所在的头文件.html">调用所在的头文件</a>
+    </nav>
+  </aside>
+  <main class="main">
+    <div class="meta">从左侧打开一节</div>
+    <h1>因子网格、回测和策略实例</h1>
+<p><code>FactorLab</code> 在行情 tape 上扫描因子 kind、window 和 horizon 的固定网格。<code>sweep</code> 覆盖 kind 2、4、5、6、7、8，window 4/8/16/32/64，horizon 1/4/16，共 90 行；缓冲至少给 <code>kMaxRows</code>（96）个位置，返回行数。<code>eval_combo</code> 只算一个组合。每个 <code>LabRow</code> 带 <code>n</code>、<code>ic_ppm</code>、<code>rank_ic_ppm</code>、<code>hit_ppm</code>、<code>top_ppm</code>、<code>bottom_ppm</code>、<code>turnover_ppm</code>、<code>icir_milli</code> 和 <code>score_ppm</code>；ICIR 把 <code>[t_begin,t_end)</code> 均分成 8 段，用各段 rank IC 的均值除以标准差。<code>sort</code> 先按 score、再按 rank IC 绝对值降序。<code>pick</code> 取 <code>|factor|</code> 的 75 分位（至少 1）作阈值，符号取自 rank IC，并回填 <code>LabPick</code> 的 <code>sign</code>、<code>threshold_ppm</code>、<code>trigger</code> 和 <code>ready</code>。</p>
+<p><code>Backtester&lt;Cap&gt;</code> 对单一合约按 tick 回放。<code>run(tape, n, cfg, out)</code> 把每个 tick 输入因子引擎，每 <code>stride</code> 个 tick 评估一次。目标仓是 <code>sign * factor</code>：达到 <code>threshold_ppm</code> 为 <code>+qty</code>，低到相反数以下为 <code>-qty</code>，其余为空仓。买入付 <code>ask + slip_ticks * tick</code>，卖出得 <code>bid - slip_ticks * tick</code>，一侧没有有效盘口就跳过这次调仓。费用是 <code>名义 * fee_ppm / 1e6</code>，向上取整并取 <code>min_fee</code>。<code>BtMetrics</code> 给出 <code>points</code>、<code>trades</code>、<code>round_trips</code>、<code>wins</code>、<code>gross_pnl</code>、<code>fees</code>、<code>net_pnl</code>、<code>turnover</code>、<code>return_ppm</code>、<code>annual_ppm</code>、<code>sharpe_ppm</code>、<code>max_dd_ppm</code>、<code>win_ppm</code>、<code>exposure_ppm</code>、<code>final_equity</code>、<code>peak_equity</code> 和 <code>span_us</code>。<code>curve</code> 按时间顺序复制出采样后的权益与回撤点，最多 <code>Cap</code> 个。参数不合法（window 不在 2..256、<code>qty &lt;= 0</code>、<code>cash &lt;= 0</code>）或可用样本不足两个时返回 false。</p>
+<p><code>StrategyRegistry</code> 管理 8 个策略实例。<code>StratSpec</code> 记录 id、账户、合约、因子 kind 与 window、符号、阈值、数量、冷却和模式；槽位在 <code>Idle -&gt; Running -&gt; Paused -&gt; Running</code> 与 <code>Stopped</code> 之间迁移，出错为 <code>Failed</code>。HTTP 侧用 <code>submit</code> 把 <code>StratCmd</code> 推进定长 32 槽 SPSC 环，交易侧用 <code>take</code> 取出，<code>apply</code> 返回槽位，失败返回 -1 并把原因写入行备注。Add 拒绝重复 id 或已满的表；命令带另一模式的 <code>env</code> 会被拒绝。<code>publish</code> / <code>read</code> 通过 seqlock 读写 <code>StratRow</code>，读者不会看到写了一半的行。<code>save</code> 供 worker 或退出路径写配置；交易线程不碰文件。kind 9 为配对：<code>instrument_b</code> 与 <code>ratio_ppm</code> 扩展规格，行快照额外带 B 腿持仓、价差、均值、标准差、轮次、胜、负、超时、止损次数与就绪标志。控制台把冷路径放在 <code>pitlane-trading/jobs.hpp</code>：单 worker 线程、8 槽请求环、seqlock 发布结果，tape 文件不存在时用内置确定性合成 tape。</p>
+  </main>
+</div>
+</body>
+</html>

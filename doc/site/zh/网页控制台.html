@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>网页控制台 — pitlane API</title>
+<link rel="alternate" hreflang="en" href="../en/web-console.html"/>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="side">
+    <div class="side-head">
+      <h1>pitlane API</h1>
+      <a class="lang" href="../en/web-console.html" hreflang="en">English</a>
+    </div>
+    <nav>
+      <a href="index.html">概述</a><a href="架构.html">架构</a><a href="控制台截图.html">控制台截图</a><a href="启动配置.html">启动配置</a><a href="打开共享区.html">打开共享区</a><a href="标的-行情池-yard.html">标的 / 行情池（Yard）</a><a href="发布和读取.html">发布和读取</a><a href="运行会话循环.html">运行会话循环</a><a href="准备一笔委托.html">准备一笔委托</a><a href="纸面撮合.html">纸面撮合</a><a href="合约-信号和柜台.html">合约、信号和柜台</a><a href="辅助函数.html">辅助函数</a><a href="调用方自己保管的辅助函数.html">调用方自己保管的辅助函数</a><a href="组帧-节奏和快照.html">组帧、节奏和快照</a><a href="周期计数和定长低延迟表.html">周期计数和定长低延迟表</a><a href="一笔委托.html">一笔委托</a><a href="研究-以及调用方自己的决定.html">研究，以及调用方自己的决定</a><a href="价格窗口-槽池和两笔费用.html">价格窗口、槽池和两笔费用</a><a href="持久状态-快照与尾部证据.html">持久状态、快照与尾部证据</a><a href="因子网格-回测和策略实例.html">因子网格、回测和策略实例</a><a href="块存储-tape-与-c-abi.html">块存储 tape 与 C ABI</a><a href="账本行-控制回执-算法档位与柜台订单.html">账本行、控制回执、算法档位与柜台订单</a><a href="网页控制台.html" class="active">网页控制台</a><a href="调用所在的头文件.html">调用所在的头文件</a>
+    </nav>
+  </aside>
+  <main class="main">
+    <div class="meta">从左侧打开一节</div>
+    <h1>网页控制台</h1>
+<p><code>pitlane_trading --web &lt;port&gt;</code> 用同一个页面驱动上面所有端点。测试与实盘模式的版式完全一致，模式徽标只决定页面允许你操作哪些对象。以下为纸面盘运行：</p>
+<p><img src="../images/console-market-zh.jpg" alt="行情页"/></p>
+<p>行情按品种类别分组，每张卡片带类别、币种与跳动状态，下方是块式行情驱动的图表。</p>
+<p><img src="../images/console-trade-zh.jpg" alt="交易页"/></p>
+<p>下单表单绑定资金账号，每个回包都以 toast 呈现后端消息，被风控拒绝时会直接显示原因。 TWAP 卡片可以指定父单 ID，接受后还能暂停、恢复、改量或撤销；勾选 T0 后变为往返单，先建仓再收回起始净仓。 交易页还维护人工配对包：建包、分腿登记成交、调整目标、平仓或撤销，重启后簿记仍在。</p>
+<p><img src="../images/console-risk-zh.jpg" alt="风控页"/></p>
+<p>风控页把告警横幅、盘前规则、滚动流量计数与按账号持仓放在同一屏。 同屏还有按账号的信用额度表，以及柜台额度接口接入前使用的手工录入表单。</p>
+<p><img src="../images/console-clear-zh.jpg" alt="清算页"/></p>
+<p>清算页给出每账号汇总、今/昨仓、双基准估值、日终历史、资金流水，以及运行快照与日终结算按钮。</p>
+  </main>
+</div>
+</body>
+</html>

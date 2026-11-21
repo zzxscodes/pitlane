@@ -1,0 +1,160 @@
+#pragma once
+
+#include "pitlane/book/arrive.hpp"
+#include "pitlane/book/extprint.hpp"
+#include "pitlane/book/drill.hpp"
+#include "pitlane/book/gap.hpp"
+#include "pitlane/book/lags.hpp"
+#include "pitlane/desk/types.hpp"
+#include "pitlane/time/simclock.hpp"
+
+#include <cstdint>
+
+namespace pitlane {
+
+struct VenueCfg {
+    LagTable lag{};
+    SimClock* clock{nullptr}; // when set with samples, admit uses go/back; else lag bands
+    int64_t rigid_extra{0};  // buy fills a print only at or below limit - extra
+    int64_t lot{1};
+    double cancel_pow{1.0};
+    int rate_cap{0};         // admits per name per second, 0 disables
+    int64_t notional_cap{0}; // px * qty ceiling, 0 disables
+    uint8_t trade_open{1};   // 0 → admit Enter fails Why::Closed (session closed)
+    uint8_t tape_first{0};   // prefer on_tape before quote cross
+    uint8_t rigid{1};        // same-side aggressor skip via tape_keep
+};
+
+struct VenueOut {
+    Why why{Why::None};
+    int reports{0};
+};
+
+// Paper venue. An order is judged only once its go-lag has elapsed, against the
+// book as of that moment. Pulls wait for the pull-lag. Resting orders then lose
+// queue position only through prints and displayed-size changes.
+class PaperVenue {
+public:
+    static constexpr uint32_t kNames = 256;
+    static constexpr uint32_t kTickets = 1024;
+    static constexpr int kDepth = 10;
+
+    explicit PaperVenue(const VenueCfg& cfg) noexcept;
+
+    void set_band(uint32_t name, int64_t down, int64_t up) noexcept;
+    void set_top(uint32_t name, int64_t bid_px, int64_t bid_qty, int64_t ask_px, int64_t ask_qty, int64_t last_px) noexcept;
+    void set_levels(uint32_t name, const Rung* bids, int nbid, const Rung* asks, int nask) noexcept;
+    void set_open(uint8_t open) noexcept { cfg_.trade_open = open ? 1 : 0; }
+    void set_clock(SimClock* clock) noexcept { cfg_.clock = clock; }
+    uint8_t is_open() const noexcept { return cfg_.trade_open; }
+    uint8_t tape_first() const noexcept { return cfg_.tape_first; }
+    const VenueCfg& cfg() const noexcept { return cfg_; }
+
+    VenueOut admit(const Intent& in, int64_t now_us, Report* buf, int cap) noexcept;
+    int on_clock(int64_t now_us, Report* buf, int cap) noexcept;
+    // TimerMatch and TimerCancel: due admits and pulls. Does not block the order ring.
+    int timer_due(int64_t now_us, Report* buf, int cap) noexcept { return on_clock(now_us, buf, cap); }
+    int on_print(uint32_t name, int64_t px, int64_t qty, int64_t now_us, Report* buf, int cap) noexcept;
+    // aggressor 0 keeps every print. A buy aggressor does not fill a resting buy, and the reverse.
+    int on_tape(uint32_t name, int64_t px, int64_t qty, uint8_t aggressor, int64_t now_us, Report* buf, int cap) noexcept;
+    // Resting orders against prints that carry bid and ask numbers. One print's quantity is shared.
+    int on_ext(uint32_t name, const ExtPrint* prints, int nprints, int64_t now_us, Report* buf, int cap) noexcept;
+    int on_shown(uint32_t name, uint8_t side, int64_t px, int64_t prev_qty, int64_t now_qty, int64_t now_us, Report* buf,
+                 int cap) noexcept;
+
+    // Deterministic drills. Fail-closed on miss/full.
+    int force_fill(uint64_t tag, int64_t px, int64_t qty, int64_t now_us, Report* buf, int cap) noexcept;
+    int force_pull(uint64_t tag, int64_t now_us, Report* buf, int cap) noexcept;
+    int force_deny(uint64_t tag, int64_t now_us, Report* buf, int cap) noexcept;
+    bool hang(uint64_t tag, uint8_t on) noexcept; // sticky: on_clock skips promote/cancel
+    int drill_apply(const DrillRow& row, int64_t now_us, Report* buf, int cap) noexcept;
+
+private:
+    struct Ticket {
+        uint64_t tag;
+        uint32_t name;
+        uint32_t acct;
+        int64_t px;
+        int64_t qty;
+        int64_t done;
+        int64_t born_us;
+        int64_t ready_us;
+        int64_t pull_ready_us;
+        Gap gap;
+        int64_t lot;
+        uint8_t side;
+        uint8_t style;
+        uint8_t cause;  // force-close reason echoed on every report
+        uint8_t biz;    // business kind echoed on every report
+        uint8_t phase;
+        uint8_t used;
+        uint8_t sticky; // 1 → HangEnter / HangPull
+    };
+    struct NameState {
+        int64_t down;
+        int64_t up;
+        int64_t bid_px;
+        int64_t ask_px;
+        int64_t last_px;
+        int64_t bid_qty;
+        int64_t ask_qty;
+        Rung bids[kDepth];
+        Rung asks[kDepth];
+        int nbid;
+        int nask;
+        int64_t window_sec;
+        int admits;
+    };
+
+    static uint32_t tag_mix(uint64_t tag) noexcept;
+    int find_tag(uint64_t tag) const noexcept;
+    bool tag_put(int idx, uint64_t tag) noexcept;
+    void tag_del(uint64_t tag) noexcept;
+    void live_link(int i) noexcept;
+    void live_unlink(int i) noexcept;
+    void due_update(int i) noexcept;
+    void due_unlink(int i) noexcept;
+    int alloc_ticket(uint32_t name) noexcept;
+    void free_ticket(int i) noexcept;
+    static bool timed_phase(uint8_t phase) noexcept {
+        return phase == static_cast<uint8_t>(Phase::Staged) || phase == static_cast<uint8_t>(Phase::PullWait);
+    }
+    int64_t shown_at(const NameState& ns, uint8_t side, int64_t px) const noexcept;
+    bool washes(const Intent& in) const noexcept;
+    int activate(int ti, int64_t now_us, Report* buf, int cap, int filled_base) noexcept;
+    int emit(Report* buf, int cap, int n, const Report& r) const noexcept;
+    int fill_ticket(int ti, int64_t px, int64_t qty, int64_t now_us, Report* buf, int cap, int n) noexcept;
+    int fill_silent(int ti, int64_t qty) noexcept;
+
+    // Open-address map from tag to ticket. Live tickets stay in index order so a print
+    // still reaches the lower slot first. Empty books do not walk the whole table.
+    static constexpr uint32_t kTagMap = 2048;
+    static_assert((kTagMap & (kTagMap - 1u)) == 0u, "tag map");
+    struct TagRef {
+        uint64_t tag{0};
+        int32_t idx{-1};
+        uint8_t state{0}; // 0 empty, 1 live, 2 tomb
+    };
+
+    VenueCfg cfg_;
+    Ticket tickets_[kTickets]{};
+    NameState names_[kNames]{};
+    TagRef tag_[kTagMap]{};
+    int free_head_{0};
+    int free_next_[kTickets]{};
+    // Pending Staged/PullWait tickets in ascending slot order. on_clock only walks
+    // this list, so a resting book costs nothing per beat.
+    int due_head_{-1};
+    int due_tail_{-1};
+    int due_next_[kTickets]{};
+    int due_prev_[kTickets]{};
+    uint8_t due_on_[kTickets]{};
+    // Per-name live list in ascending slot order, so a print or a wash check only
+    // touches the orders of its own instrument. Slot order matches the global list.
+    int name_head_[kNames];
+    int name_tail_[kNames];
+    int name_next_[kTickets]{};
+    int name_prev_[kTickets]{};
+};
+
+} // namespace pitlane

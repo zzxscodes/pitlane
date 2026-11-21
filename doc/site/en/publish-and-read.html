@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Publish and read — pitlane API</title>
+<link rel="alternate" hreflang="zh" href="../zh/发布和读取.html"/>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="side">
+    <div class="side-head">
+      <h1>pitlane API</h1>
+      <a class="lang" href="../zh/发布和读取.html" hreflang="zh">中文</a>
+    </div>
+    <nav>
+      <a href="index.html">Overview</a><a href="architecture.html">Architecture</a><a href="console-screenshots.html">Console screenshots</a><a href="startup-configuration.html">Startup configuration</a><a href="open-a-shared-desk.html">Open a shared desk</a><a href="symbol-quote-yard.html">Symbol / quote yard</a><a href="publish-and-read.html" class="active">Publish and read</a><a href="run-the-session-loop.html">Run the session loop</a><a href="prepare-an-order.html">Prepare an order</a><a href="match-on-the-paper-venue.html">Match on the paper venue</a><a href="names-signals-and-the-counter.html">Names, signals, and the counter</a><a href="helpers.html">Helpers</a><a href="caller-owned-helpers.html">Caller-owned helpers</a><a href="frames-pacing-and-snapshots.html">Frames, pacing, and snapshots</a><a href="cycles-and-fixed-low-latency-tables.html">Cycles and fixed low-latency tables</a><a href="one-order-sheet.html">One order sheet</a><a href="research-and-a-caller-decision.html">Research and a caller decision</a><a href="a-price-window-a-slot-pool-and-two-charges.html">A price window, a slot pool, and two charges</a><a href="durable-state-snapshots-and-tail-evidence.html">Durable state, snapshots, and tail evidence</a><a href="research-grid-backtest-and-strategy-instances.html">Research grid, backtest, and strategy instances</a><a href="block-tape-and-c-abi.html">Block tape and C ABI</a><a href="ledger-rows-control-replies-algo-rungs-and-counter-orders.html">Ledger rows, control replies, algo rungs, and counter orders</a><a href="web-console.html">Web console</a><a href="where-the-calls-live.html">Where the calls live</a>
+    </nav>
+  </aside>
+  <main class="main">
+    <div class="meta">Open a section from the left</div>
+    <h1>Publish and read</h1>
+<p><code>Desk</code> contains nineteen rings: <code>intents</code>, <code>reports</code>, <code>quotes</code>, <code>algos</code>, <code>controls</code>, <code>ctl_acks</code>, <code>ext_ords</code>, <code>pulses</code>, <code>prints</code>, <code>queries</code>, <code>ledger_assets</code>, <code>ledger_positions</code>, <code>pack_reqs</code>, <code>pack_rsps</code>, <code>logs</code>, <code>subs</code>, <code>signals</code>, <code>mkt_ords</code>, and <code>rebuilds</code>. Compile-time capacities track trade / package scale: <code>kIntentCap</code>/<code>kReportCap</code>/<code>kAlgoCap</code> 32768, <code>kQuoteCap</code> 8192, <code>kControlCap</code>/<code>kExtOrdCap</code> 16384, <code>kPulseCap</code>/<code>kPrintCap</code>/<code>kSigCap</code>/<code>kMktCap</code>/<code>kCtlAckCap</code> 4096, <code>kQueryCap</code> 1024, <code>kPackReqCap</code>/<code>kLogCap</code>/<code>kSubCap</code>/<code>kRebuildCap</code>/<code>kLedgerCap</code> 2048, <code>kPackRspCap</code> 16384. Soft capacity after <code>desk_apply_conf</code> / <code>FanRing::tune</code> is at most that size and is reported by <code>capacity()</code>. Cash and positions occupy <code>cash</code> (<code>kCashCap</code> 512) and <code>hold</code> (<code>kHoldCap</code> 4096).</p>
+<p><code>publish</code> takes the message and a reader mask. A mask of 0 means the first reader to acknowledge the slot claims it. Any other mask lists the readers that must acknowledge before the slot can be reused. Reader numbers are 0 through 63. The session loop is reader 7, <code>kLoopReader</code>.</p>
+<pre><code class="language-cpp">
+pitlane::Intent in{};
+in.tag = 1;
+in.name = 1;
+in.acct = 2;
+in.px = 100;
+in.qty = 5;
+in.stamp_us = 1;
+in.side = static_cast&lt;uint8_t&gt;(pitlane::Side::Buy);
+in.act = static_cast&lt;uint8_t&gt;(pitlane::Act::Enter);
+in.style = static_cast&lt;uint8_t&gt;(pitlane::Style::Day);
+in.off = pitlane::Off::Open;
+
+const uint64_t readers = 1ull &lt;&lt; pitlane::kLoopReader;
+if (!desk-&gt;intents.publish(in, readers)) {
+    // The ring is full. The new order was not stored.
+}
+</code></pre>
+<p>A reader copies one slot with <code>at</code>. The position is absolute, starting at 0. <code>fresh</code> is true when this reader has not acknowledged it. <code>ack</code> records that acknowledgement. <code>latest</code> copies the newest published item. <code>tail</code> is the next position a writer will use.</p>
+<pre><code class="language-cpp">
+pitlane::Intent got{};
+bool fresh = false;
+if (desk-&gt;intents.at(0, pitlane::kLoopReader, got, &amp;fresh) &amp;&amp; fresh) {
+    desk-&gt;intents.ack(0, pitlane::kLoopReader);
+}
+</code></pre>
+<p><code>Intent::off</code> is one of the seven CTP offset codes — <code>Open 0</code>, <code>Close 1</code>, <code>ForceClose 2</code>, <code>CloseToday 3</code>, <code>CloseYday 4</code>, <code>ForceOff 5</code>, <code>LocalForceClose 6</code> — that decides whether the child opens or closes, and it occupies bytes the record already reserved, so an <code>Intent</code> stays 56 bytes. The force reason sits in <code>Intent::force_reason</code> (CTP <code>THOST_FTDC_FCC_*</code>) and comes back in <code>Report::cause</code>; a <code>Report</code> is 64 bytes. <code>ManualBook::direct</code> takes an offset, a basket or T0 child whose side reduces the signed net is marked <code>Close</code> and capped to the closable quantity, and a plain close is normalized to the product class at the counter. <code>Intent</code>, <code>Report</code>, and <code>Quote</code> are defined in <code>desk/types.hpp</code>. <code>Intent::hedge</code> selects speculation, arbitrage, hedge, or covered. The other slot types — <code>AlgoJob</code>, <code>AlgoRung</code>, <code>ControlNote</code>, <code>ControlAck</code>, <code>ExecNote</code>, <code>ExtOrder</code>, <code>LedgerAssetNote</code>, <code>LedgerPositionNote</code>, <code>Pulse</code>, <code>TapePrint</code>, <code>QueryNote</code>, <code>SubNote</code>, <code>SigNote</code>, <code>MktNote</code>, <code>PackageNote</code>, and <code>LogNote</code> — are defined in <code>desk/wire.hpp</code>. <code>publish_exec</code> publishes an exercise (kind 1) or abandon (kind 2) request that <code>TdEngine</code> hands to <code>TdClient::exercise</code>. A payload larger than those slots uses <code>Parcel&lt;Bytes&gt;</code> on a ring the caller owns. <code>publish_parcel</code> fails when the length is greater than <code>Bytes</code>. Hot path may <code>desk_log_publish</code> a <code>LogNote</code>; cold side drains the <code>logs</code> ring. <code>WireLog</code> is the process logger: <code>log</code> packs one <code>PackedLine</code> (literals via <code>lit</code>, dynamic strings copied, scalars memcpy&#x27;d) into a fixed fail-full ring and does not format. A background thread, or <code>flush</code> in caller mode, turns the slot into text. Put the file on tmpfs when the disk must stay off the hot path.</p>
+  </main>
+</div>
+</body>
+</html>

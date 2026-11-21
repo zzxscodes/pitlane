@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>一笔委托 — pitlane API</title>
+<link rel="alternate" hreflang="en" href="../en/one-order-sheet.html"/>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="side">
+    <div class="side-head">
+      <h1>pitlane API</h1>
+      <a class="lang" href="../en/one-order-sheet.html" hreflang="en">English</a>
+    </div>
+    <nav>
+      <a href="index.html">概述</a><a href="架构.html">架构</a><a href="控制台截图.html">控制台截图</a><a href="启动配置.html">启动配置</a><a href="打开共享区.html">打开共享区</a><a href="标的-行情池-yard.html">标的 / 行情池（Yard）</a><a href="发布和读取.html">发布和读取</a><a href="运行会话循环.html">运行会话循环</a><a href="准备一笔委托.html">准备一笔委托</a><a href="纸面撮合.html">纸面撮合</a><a href="合约-信号和柜台.html">合约、信号和柜台</a><a href="辅助函数.html">辅助函数</a><a href="调用方自己保管的辅助函数.html">调用方自己保管的辅助函数</a><a href="组帧-节奏和快照.html">组帧、节奏和快照</a><a href="周期计数和定长低延迟表.html">周期计数和定长低延迟表</a><a href="一笔委托.html" class="active">一笔委托</a><a href="研究-以及调用方自己的决定.html">研究，以及调用方自己的决定</a><a href="价格窗口-槽池和两笔费用.html">价格窗口、槽池和两笔费用</a><a href="持久状态-快照与尾部证据.html">持久状态、快照与尾部证据</a><a href="因子网格-回测和策略实例.html">因子网格、回测和策略实例</a><a href="块存储-tape-与-c-abi.html">块存储 tape 与 C ABI</a><a href="账本行-控制回执-算法档位与柜台订单.html">账本行、控制回执、算法档位与柜台订单</a><a href="网页控制台.html">网页控制台</a><a href="调用所在的头文件.html">调用所在的头文件</a>
+    </nav>
+  </aside>
+  <main class="main">
+    <div class="meta">从左侧打开一节</div>
+    <h1>一笔委托</h1>
+<p><code>phase_text</code> 给出状态名称。<code>sheet_open</code> 在调用方自己的委托上写入本地编号、方向、价格和数量。编号为 0、方向无法识别，或价格、数量不是正数时拒绝，原委托保持不变。<code>sheet_bind</code> 记下一次柜台编号。再来一个不同的编号会被拒绝。</p>
+<p><code>sheet_apply</code> 按状态表推进该委托。状态表不允许的事件，所有字段都保持原样；成交数量大于还没完成的数量时，整笔不动。一次成交消耗完剩余数量时，状态停在部分成交，剩余为 0，全部完成要再给一次结束事件。拒绝会记下调用方传入的原因。发送、接受和结束这几类事件只保留第一次非负的时刻，负数时刻不写。<code>sheet_ack_ns</code> 和 <code>sheet_done_ns</code> 把这些时刻相减。<code>sheet_line</code> 用一行替换文本缓冲，内容为编号、方向、状态、原因、数量、已成和剩余。本地编号放不进有符号 64 位时拒绝，原行保持不变。</p>
+<p><code>gate_ask</code> 对一次下单或一次撤单按顺序做检查，返回第一个原因。名单、通道规则、自成交表、资金行、持仓锁、风控上限、<code>BrokerWatch</code> 或流速窗口是空指针时，这一项跳过。限价下单要求价格和数量都是正数。名字在名单上就是拦截。通道不接受撤单时，返回撤单上限这一原因。通道不接受这种价格类型时，返回价格原因。通道的其他拒绝都是拦截。偏离只在限价下单、并且上限大于等于 0 时检查。自成交只在下单、并且表存在时检查。设置了 <code>cash</code> 与 <code>cash_need</code> 时走 <code>cash_enough</code>。设置了 <code>lots</code> 与 <code>lock_qty</code> 时只读检查持仓（<code>lock_future_ok</code> / <code>lock_cash_sell_ok</code>）。今仓不够返回 <code>NoToday</code>，昨仓不够返回 <code>NoYday</code>，总仓不够返回 <code>NoPos</code>。名单就是黑名单。限价下单的 <code>fee_den</code> 大于 0 时，冻结额是名义金额加上品种费用（<code>prelock_ok</code>）。设置了 <code>risk</code> 时检查数量/名义/在途上限（有 <code>watch</code> 时走 <code>BrokerWatch::screen</code>）。前面这些检查都通过以后，才改流速窗口；任一更早失败都不改流速窗与在途侧状态。窗口已经到达上限时，下单返回流速原因，撤单返回撤单流速原因，窗口保持原样。这次调用不发单。</p>
+<p><code>risk_merge</code> 对每个正上限取更严（更小）的一侧，0 表示该轴关闭。<code>AcctRiskTab</code> 存账户级上限，未命中 fail-closed。<code>sign_begin(need)</code> 复位 <code>SignSlip</code> 并设定模块数，各模块再 <code>sign_pass</code> / <code>sign_reject</code>，最后 <code>sign_ready</code>（常见 need=3：全局/账户/通道）；拒绝一直保持到复位。</p>
+<p><code>PreTradeGuard</code> 是 <code>Rms</code> 之后的柜台侧规则管线，顺序固定：入参、熔断、开/平黑名单、分类名义上限、账户 1 秒与 10 秒流量、市场 1 秒流量、带预热笔数的累计撤单率、滚动窗口撤单金额比、自成交；首个失败项给出原因（<code>pre_code_name</code>）。<code>FlowGate</code> 用每账户、每市场 16 个一秒桶承载窗口，单次查询最多 16 个单元，过期桶按纪元忽略，无需清理扫描。<code>on_submit</code> 记录下单，可挂单的同时写入 128 槽活动表；开启自成交保护且活动表已满时返回 <code>ActiveFull</code> 而不是丢失保护。<code>on_cancel</code> 与 <code>on_done</code> 维护撤单侧与活动表。全程零分配，上限为 0 即关闭该规则。</p>
+<p><code>GroupRiskBook</code> 把带符号数量乘标记价汇总为账户名义，再按组汇总总敞口、净敞口与最大账户敞口。它在 1 Hz 冷线程运行，违规位保持到下次清零，并可查询总/净剩余额度。</p>
+<p><code>ReplayPace</code> 把行情时间映射为回放墙钟。速度是以 ppm 表示的整数倍（1,000,000 为 1 倍），最多 16 个有序区段覆盖默认速度，用于开盘前空档、午休和隔夜。<code>due</code> 推进游标，顺序前进为 O(1)，只有回退才从起点重算。</p>
+  </main>
+</div>
+</body>
+</html>
