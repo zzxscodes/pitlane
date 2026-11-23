@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 730" width="960" height="730" role="img" aria-labelledby="arch-title arch-desc">
+  <title id="arch-title">pitlane core architecture</title>
+  <desc id="arch-desc">Market data, strategy, risk and matching, and clearing run as separate processes around one memory-mapped desk. Each process writes its own ring and reads the rings it needs; a full ring fails the write.</desc>
+  <style>
+    text { font-family: "SF Pro Text", "Segoe UI", system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; }
+    .bg { fill: #F7F7F8; stroke: #D9D9DE; stroke-width: 1; }
+    .eyebrow { font-size: 12px; font-weight: 600; letter-spacing: 1.4px; fill: #047857; }
+    .head { font-size: 20px; font-weight: 600; fill: #171717; }
+    .lede { font-size: 13px; fill: #52525B; }
+    .desk { fill: #FFFFFF; stroke: #05994F; stroke-width: 2; stroke-dasharray: 7 5; }
+    .node { fill: #FFFFFF; stroke: #D4D4D8; stroke-width: 1.5; }
+    .chip { fill: #EFEFF2; stroke: #D4D4D8; stroke-width: 1; }
+    .cap-box { fill: #F7F7F8; stroke: #D4D4D8; stroke-width: 1; }
+    .desk-title { font-size: 15px; font-weight: 600; fill: #171717; }
+    .desk-cap { font-size: 12px; fill: #71717A; font-family: "JetBrains Mono", ui-monospace, monospace; }
+    .node-title { font-size: 15px; font-weight: 600; fill: #171717; text-anchor: middle; }
+    .node-sub { font-size: 12px; fill: #71717A; text-anchor: middle; font-family: "JetBrains Mono", ui-monospace, monospace; }
+    .chip-title { font-size: 14px; font-weight: 500; fill: #171717; text-anchor: middle; }
+    .chip-sub { font-size: 12px; fill: #52525B; text-anchor: middle; }
+    .cap-text { font-size: 12px; fill: #52525B; text-anchor: middle; }
+    .foot { font-size: 12px; fill: #71717A; text-anchor: middle; }
+    .note { font-size: 12px; fill: #71717A; }
+    .conn { fill: none; stroke: #71717A; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+  </style>
+
+  <defs>
+    <marker id="arw" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto">
+      <path d="M1 1 L7 4 L1 7 Z" fill="#71717A"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="1" y="1" width="958" height="728" rx="12"/>
+
+  <text class="eyebrow" x="40" y="50">CORE ARCHITECTURE</text>
+  <text class="head" x="40" y="82">One desk, many processes</text>
+  <text class="lede" x="40" y="106">Fixed-size messages over one memory-mapped region</text>
+
+  <!-- Shared-memory desk -->
+  <rect class="desk" x="360" y="150" width="260" height="430" rx="14"/>
+  <text class="desk-title" x="380" y="178">Shared-memory desk</text>
+  <text class="desk-cap" x="380" y="198">PITLANE1 · layout 8</text>
+
+  <rect class="chip" x="380" y="216" width="220" height="48" rx="8"/>
+  <text class="chip-title" x="490" y="246">quotes</text>
+
+  <rect class="chip" x="380" y="306" width="220" height="48" rx="8"/>
+  <text class="chip-title" x="490" y="336">intents</text>
+
+  <rect class="chip" x="380" y="396" width="220" height="48" rx="8"/>
+  <text class="chip-title" x="490" y="426">reports</text>
+
+  <rect class="chip" x="380" y="486" width="220" height="48" rx="8"/>
+  <text class="chip-title" x="490" y="505">Cash · Hold</text>
+  <text class="chip-sub" x="490" y="524">updated in place</text>
+
+  <text class="foot" x="490" y="562">one writer per ring · full means fail</text>
+
+  <!-- Processes -->
+  <rect class="node" x="480" y="60" width="180" height="64" rx="8"/>
+  <text class="node-title" x="570" y="86">Market data gateway</text>
+  <text class="node-sub" x="570" y="106">CTP MdEngine</text>
+
+  <rect class="node" x="110" y="216" width="190" height="138" rx="8"/>
+  <text class="node-title" x="205" y="282">Strategy engine</text>
+  <text class="node-sub" x="205" y="302">FactorEngine</text>
+
+  <rect class="node" x="690" y="306" width="190" height="138" rx="8"/>
+  <text class="node-title" x="785" y="372">Risk · matching</text>
+  <text class="node-sub" x="785" y="392">Rms · Venue</text>
+
+  <rect class="node" x="435" y="630" width="180" height="64" rx="8"/>
+  <text class="node-title" x="525" y="656">Clearing · console</text>
+  <text class="node-sub" x="525" y="676">Clearing · Web</text>
+
+  <!-- Connectors -->
+  <path class="conn" d="M570 124 V216" marker-end="url(#arw)"/>
+  <path class="conn" d="M380 240 H300" marker-end="url(#arw)"/>
+  <path class="conn" d="M300 330 H380" marker-end="url(#arw)"/>
+  <path class="conn" d="M600 330 H690" marker-end="url(#arw)"/>
+  <path class="conn" d="M690 420 H600" marker-end="url(#arw)"/>
+  <path class="conn" d="M525 580 V630" marker-end="url(#arw)"/>
+
+  <!-- Connector labels -->
+  <rect class="cap-box" x="308" y="250" width="44" height="20" rx="8"/>
+  <text class="cap-text" x="330" y="264">read</text>
+
+  <rect class="cap-box" x="308" y="290" width="44" height="20" rx="8"/>
+  <text class="cap-text" x="330" y="304">write</text>
+
+  <rect class="cap-box" x="628" y="290" width="44" height="20" rx="8"/>
+  <text class="cap-text" x="650" y="304">orders</text>
+
+  <rect class="cap-box" x="628" y="430" width="44" height="20" rx="8"/>
+  <text class="cap-text" x="650" y="444">reports</text>
+
+  <rect class="cap-box" x="533" y="588" width="48" height="20" rx="8"/>
+  <text class="cap-text" x="557" y="602">state</text>
+
+  <text class="note" x="40" y="716">Hot path: no locks, no heap, no file I/O · Cross-host: TermLog → UdpLink → ReplicaLog</text>
+</svg>

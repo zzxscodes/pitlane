@@ -1,0 +1,28 @@
+# CTP 柜台配置（SimNow 实盘示例）。
+# 由系统 conf 的 adapter = ctp 选中，默认从系统 conf 同目录的
+# adapters/ctp.conf 读取；adapter_conf = FILE 可指定其他位置。
+#
+#   cp -n conf/adapters/ctp.conf.example conf/adapters/ctp.conf
+# 然后填 password，或 export SIMNOW_PASSWORD=...
+# 也认 PITLANE_CTP_PASSWORD / PITLANE_CTP_INVESTOR。
+#
+# SimNow 前置（BrokerID 9999，182.254.243.31）：
+#   盘中 第一组：Trade 30001 / Market 30011（看穿式，监控中心生产秘钥）
+#   盘中 第二组：Trade 30002 / Market 30012
+#   盘中 第三组：Trade 30003 / Market 30013
+#   7×24：Trade 40001 / Market 40011（仅交易日 16:00 起开放；该时段外
+#   连接会被拒，因此默认写第一组盘中地址）
+# 一次只能连一组；前置不可用时换成同组另一个端口，不要只换 Trade 不换 Market。
+
+broker_id = 9999
+investor_id = 249674
+password =
+# 仅当前置返回 141（密码过期）时设置；改密成功后把新值移到 password 并清空这里。
+# 至少 10 位、含 3 类字符。
+# new_password =
+
+app_id = simnow_client_test
+auth_code = 0000000000000000
+
+md_front = tcp://182.254.243.31:30011
+td_front = tcp://182.254.243.31:30001

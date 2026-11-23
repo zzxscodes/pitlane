@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Block tape and C ABI — pitlane API</title>
+<link rel="alternate" hreflang="zh" href="../zh/块存储-tape-与-c-abi.html"/>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="side">
+    <div class="side-head">
+      <h1>pitlane API</h1>
+      <a class="lang" href="../zh/块存储-tape-与-c-abi.html" hreflang="zh">中文</a>
+    </div>
+    <nav>
+      <a href="index.html">Overview</a><a href="architecture.html">Architecture</a><a href="console-screenshots.html">Console screenshots</a><a href="startup-configuration.html">Startup configuration</a><a href="open-a-shared-desk.html">Open a shared desk</a><a href="symbol-quote-yard.html">Symbol / quote yard</a><a href="publish-and-read.html">Publish and read</a><a href="run-the-session-loop.html">Run the session loop</a><a href="prepare-an-order.html">Prepare an order</a><a href="match-on-the-paper-venue.html">Match on the paper venue</a><a href="names-signals-and-the-counter.html">Names, signals, and the counter</a><a href="helpers.html">Helpers</a><a href="caller-owned-helpers.html">Caller-owned helpers</a><a href="frames-pacing-and-snapshots.html">Frames, pacing, and snapshots</a><a href="cycles-and-fixed-low-latency-tables.html">Cycles and fixed low-latency tables</a><a href="one-order-sheet.html">One order sheet</a><a href="research-and-a-caller-decision.html">Research and a caller decision</a><a href="a-price-window-a-slot-pool-and-two-charges.html">A price window, a slot pool, and two charges</a><a href="durable-state-snapshots-and-tail-evidence.html">Durable state, snapshots, and tail evidence</a><a href="research-grid-backtest-and-strategy-instances.html">Research grid, backtest, and strategy instances</a><a href="block-tape-and-c-abi.html" class="active">Block tape and C ABI</a><a href="ledger-rows-control-replies-algo-rungs-and-counter-orders.html">Ledger rows, control replies, algo rungs, and counter orders</a><a href="web-console.html">Web console</a><a href="where-the-calls-live.html">Where the calls live</a>
+    </nav>
+  </aside>
+  <main class="main">
+    <div class="meta">Open a section from the left</div>
+    <h1>Block tape and C ABI</h1>
+<p><code>study/block_tape.hpp</code> stores recorded ticks in an append-only, columnar file. The writer batches rows and publishes a version:</p>
+<pre><code class="language-cpp">
+pitlane::BlockTapeWriter w;
+w.open(&quot;ticks.plt&quot;, 1);          // symbol 1; creates the file
+w.append(ticks, n);              // copies rows into a staging block
+w.commit();                      // flushes the partial block, appends a commit, fsyncs
+</code></pre>
+<p><code>append</code> writes a block whenever 1024 rows are staged. <code>commit</code> is the only call that <code>fsync</code>s and the only one that publishes a version; a writer that never commits leaves no visible version. <code>rows()</code> and <code>versions()</code> report progress and the destructor closes the file.</p>
+<pre><code class="language-cpp">
+pitlane::BlockTapeReader r;
+if (!r.open(&quot;ticks.plt&quot;)) return 1;           // bad magic, bad header, or truncated tail
+pitlane::TapeMeta m{};
+r.meta(m);                                     // versions, blocks, symbol, rows, bytes, first/last ts
+pitlane::TapeTick buf[256];
+uint32_t n = 0;
+r.rows(0, INT64_MIN, INT64_MAX, 0, 256, pitlane::kTapeColLast, buf, 256, n);
+</code></pre>
+<p><code>open</code> validates the magic, the format version, the column and block-row counts, and the whole commit chain; a missing file, a different format, or a truncated or trailing-garbage tail fails. <code>meta</code> fills <code>TapeMeta</code>. <code>describe(version, TapeStats&amp;)</code> fills <code>version</code>, <code>rows</code>, and per-column <code>min</code>, <code>max</code>, <code>last</code>, and <code>mean</code> (a <code>double</code>). <code>load_quotes(version, Quote*, cap, n)</code> reads a whole version for the backtester. <code>blocks_read</code> / <code>reset_blocks_read</code> report how many blocks the queries touched.</p>
+<h3 id="on-disk-layout">On-disk layout</h3>
+<table><thead><tr>
+<th>Part</th>
+<th>Size</th>
+<th>Contents</th>
+</tr></thead><tbody>
+<tr>
+<td>File header</td>
+<td>64 B</td>
+<td>magic <code>PLTAPE01</code>, format version 1, 8 columns, 1024 block rows, symbol</td>
+</tr>
+<tr>
+<td>Block</td>
+<td>64 B + 64 KiB</td>
+<td>header (<code>PLBLK001</code>, row count, block sequence, first and last <code>exch_us</code>), then 8 columns × 1024 rows × 8 B in column-major order; unused tail rows are zero</td>
+</tr>
+<tr>
+<td>Commit</td>
+<td>64 B</td>
+<td><code>PLCMT001</code>, version, cumulative rows, end offset, first and last <code>exch_us</code>, block count</td>
+</tr>
+</tbody></table>
+<p>Blocks are immutable. A commit publishes version N over exactly the rows written so far; the next commit publishes N+1 over the same prefix. Version 0 means the latest, and a version in <code>1..versions</code> never changes. Reads take no lock and never map the file: <code>pread</code> fills one column run of one block at a time, so a file truncated after <code>open</code> cannot raise <code>SIGBUS</code>.</p>
+<h3 id="rows-semantics">rows() semantics</h3>
+<p><code>rows(version, since_us, until_us, offset, limit, cols, out, cap, n)</code>:</p>
+<ul>
+<li><code>version</code> 0 is the latest; a value below 1 or above <code>versions</code> fails.</li>
+<li><code>since_us</code> / <code>until_us</code> are inclusive; <code>INT64_MIN</code> / <code>INT64_MAX</code> mean no bound. Blocks outside the range are skipped by their header timestamps and the edges are found by binary search inside a block.</li>
+<li><code>offset</code> and <code>limit</code> apply after the time filter. <code>limit</code> 0 copies up to <code>cap</code>, which is also the hard ceiling of one call.</li>
+<li><code>cols</code> is a bitmask in on-disk order: <code>kTapeColExch</code> (bit 0) through <code>kTapeColLastQty</code> (bit 7), with <code>kTapeColAll</code> (<code>0xff</code>); 0 selects all. Columns not selected keep whatever the output buffer held, so clear it when only part of a row is wanted.</li>
+<li>The call returns false on a bad version or an I/O error; <code>n</code> is the number of rows copied.</li>
+</ul>
+<p>Timestamps must be non-decreasing, because the block header and the in-block binary search assume it.</p>
+<h3 id="tape-source-adapters">tape_source adapters</h3>
+<p><code>study/tape_source.hpp</code> defines <code>TapeLoadFn</code> and <code>TapeSourceApi{name, load}</code>, so research code can take a function pointer instead of a concrete file. <code>tape_load_block</code> loads a whole version into <code>Quote</code> rows and reports the version read; <code>tape_tail_block</code> reads only the last <code>cap</code> ticks for live-style replay. Both return false when the path is missing, is not a block tape, or does not fit.</p>
+<h3 id="c-abi">C ABI</h3>
+<p><code>include/pitlane/capi/pitlane_c.h</code> is an optional C surface built into <code>libpitlane_c.so</code>; it is never linked into the hot path. <code>pl_tick</code>, <code>pl_meta</code>, <code>pl_stats</code>, <code>pl_query</code>, <code>pl_bt_cfg</code>, and <code>pl_bt_metrics</code> are plain C structs; <code>pl_tape</code> is opaque. <code>pl_event</code> and <code>pl_cmd</code> are 64-byte records, <code>pl_log</code> is a 128-byte log line, and <code>pl_bridge</code> is an opaque handle over three bounded rings: two wait-free single-producer/single-consumer rings carry events from the engine to the strategy and orders and queries back, and one carries strategy log lines to the engine. A full ring drops and counts the record instead of blocking.</p>
+<table><thead><tr>
+<th>Function</th>
+<th>Returns</th>
+<th>Purpose</th>
+</tr></thead><tbody>
+<tr>
+<td><code>pl_tape_open(path)</code></td>
+<td><code>pl_tape*</code></td>
+<td>Open and validate a tape; <code>NULL</code> on a missing file, bad magic, or truncated tail</td>
+</tr>
+<tr>
+<td><code>pl_tape_close(t)</code></td>
+<td><code>void</code></td>
+<td>Close and free the handle</td>
+</tr>
+<tr>
+<td><code>pl_tape_meta(t, out)</code></td>
+<td>1/0</td>
+<td>Header summary</td>
+</tr>
+<tr>
+<td><code>pl_tape_rows(t, q, out, cap, n)</code></td>
+<td>1/0</td>
+<td>Rows of <code>q-&gt;version</code> with time bounds, offset, limit, and projection</td>
+</tr>
+<tr>
+<td><code>pl_tape_describe(t, version, out)</code></td>
+<td>1/0</td>
+<td>Per-column statistics</td>
+</tr>
+<tr>
+<td><code>pl_tape_write(path, symbol, ticks, n)</code></td>
+<td>1/0</td>
+<td>Write <code>n</code> ticks as one committed version</td>
+</tr>
+<tr>
+<td><code>pl_backtest(path, cfg, out)</code></td>
+<td>1/0</td>
+<td>Read the whole tape and run <code>Backtester</code></td>
+</tr>
+<tr>
+<td><code>pl_version()</code></td>
+<td><code>const char*</code></td>
+<td>Library version, for example <code>&quot;1.0.0&quot;</code></td>
+</tr>
+</tbody></table>
+<p>The bridge adds one handle and fifteen calls:</p>
+<table><thead><tr>
+<th>Function</th>
+<th>Returns</th>
+<th>Purpose</th>
+</tr></thead><tbody>
+<tr>
+<td><code>pl_bridge_open(event_cap, cmd_cap)</code></td>
+<td><code>pl_bridge*</code></td>
+<td>Allocate the rings; zero selects 4096 events and 1024 commands, rounded up to a power of two; the log ring holds 1024 lines</td>
+</tr>
+<tr>
+<td><code>pl_bridge_close(b)</code></td>
+<td>void</td>
+<td>Free the handle and its rings</td>
+</tr>
+<tr>
+<td><code>pl_bridge_post(b, ev)</code></td>
+<td>1/0</td>
+<td>Engine side: publish one event, 0 when full</td>
+</tr>
+<tr>
+<td><code>pl_bridge_poll(b, out, cap, n)</code></td>
+<td>1/0</td>
+<td>Strategy side: drain up to <code>cap</code> events in order</td>
+</tr>
+<tr>
+<td><code>pl_bridge_send(b, cmd)</code></td>
+<td>1/0</td>
+<td>Strategy side: publish one order or query, 0 when full</td>
+</tr>
+<tr>
+<td><code>pl_bridge_take_cmd(b, out)</code></td>
+<td>1/0</td>
+<td>Engine side: take one command, 0 when idle</td>
+</tr>
+<tr>
+<td><code>pl_bridge_log(b, level, text)</code></td>
+<td>1/0</td>
+<td>Strategy side: publish one log line, text truncated to <code>PL_LOG_TEXT</code>-1 bytes, 0 when full</td>
+</tr>
+<tr>
+<td><code>pl_bridge_take_log(b, out)</code></td>
+<td>1/0</td>
+<td>Engine side: take one log line, 0 when idle</td>
+</tr>
+<tr>
+<td><code>pl_bridge_events_pending(b)</code> / <code>pl_bridge_cmds_pending(b)</code> / <code>pl_bridge_logs_pending(b)</code></td>
+<td>count</td>
+<td>Queue depth</td>
+</tr>
+<tr>
+<td><code>pl_bridge_events_lost(b)</code> / <code>pl_bridge_cmds_lost(b)</code> / <code>pl_bridge_logs_lost(b)</code></td>
+<td>count</td>
+<td>Records dropped on a full ring</td>
+</tr>
+<tr>
+<td><code>pl_now_us()</code></td>
+<td>microseconds</td>
+<td>Monotonic clock shared by both sides</td>
+</tr>
+</tbody></table>
+<p><code>PL_EV_QUOTE</code>, <code>PL_EV_ORDER</code>, <code>PL_EV_TRADE</code>, <code>PL_EV_SIGNAL</code>, <code>PL_EV_ASSET</code>, <code>PL_EV_POSITION</code>, <code>PL_EV_PACKAGE_REQ</code>, <code>PL_EV_PACKAGE_RSP</code>, <code>PL_EV_TIMER</code>, <code>PL_EV_REBUILD_QUOTE</code>, <code>PL_EV_MKT_ORDER</code>, <code>PL_EV_MKT_TRADE</code>, <code>PL_EV_ALGO_REQ</code>, <code>PL_EV_ALGO_RSP</code>, <code>PL_EV_SIGNAL_BATCH</code>, <code>PL_EV_CONTROL_REQ</code>, <code>PL_EV_CONTROL_RSP</code>, <code>PL_EV_PROPERTY</code>, <code>PL_EV_LOG</code>, <code>PL_EV_NEW_PARAM</code>, <code>PL_EV_ONE_PARAM_DONE</code>, <code>PL_EV_NEW_DATE</code>, <code>PL_EV_ONE_DATE_DONE</code>, and <code>PL_EV_BACKTEST_DONE</code> tag events; <code>PL_CMD_INSERT</code>, <code>PL_CMD_CANCEL</code>, <code>PL_CMD_PAUSE</code>, <code>PL_CMD_RESUME</code>, <code>PL_CMD_SUBSCRIBE</code>, <code>PL_CMD_UNSUBSCRIBE</code>, <code>PL_CMD_QUERY_ASSET</code>, <code>PL_CMD_QUERY_POSITION</code>, <code>PL_CMD_SIGNAL_SUB</code>, <code>PL_CMD_SIGNAL_UNSUB</code>, <code>PL_CMD_INSERT_ALGO</code>, <code>PL_CMD_CANCEL_ALGO</code>, <code>PL_CMD_SUB_MKT_ORDER</code>, <code>PL_CMD_SUB_MKT_TRADE</code>, <code>PL_CMD_SUB_REBUILD</code>, <code>PL_CMD_QUERY_SOURCE</code>, <code>PL_CMD_SET_LOG_STATE</code>, and <code>PL_CMD_CONTROL_RSP</code> tag commands. Side is 0 none, 1 buy/long, 2 sell/short. Each record is a compact integer projection of the engine-side typed row, so the full ladder, order, algo, asset, and position fields stay in C++ while the wire record stays 64 bytes. <code>pl_now_us()</code> returns the monotonic clock in microseconds.</p>
+<p>A <code>ctypes</code> caller maps the structs directly:</p>
+<pre><code class="language-python">
+import ctypes
+
+lib = ctypes.CDLL(&quot;build/libpitlane_c.so&quot;)
+lib.pl_version.restype = ctypes.c_char_p
+print(lib.pl_version().decode())
+
+class Tick(ctypes.Structure):
+    _fields_ = [(name, ctypes.c_int64) for name in
+                (&quot;exch_us&quot;, &quot;local_us&quot;, &quot;bid_px&quot;, &quot;ask_px&quot;,
+                 &quot;last_px&quot;, &quot;bid_qty&quot;, &quot;ask_qty&quot;, &quot;last_qty&quot;)]
+
+lib.pl_tape_open.argtypes = [ctypes.c_char_p]
+lib.pl_tape_open.restype = ctypes.c_void_p
+tape = lib.pl_tape_open(b&quot;run/tape.plt&quot;)
+</code></pre>
+<p><code>python/pitlane</code> does this and adds <code>version</code>, <code>Tick</code>, <code>Tape</code>, <code>write_tape</code>, and <code>backtest</code>. It also exposes the bridge as <code>Bridge</code>, <code>Event</code>, <code>Cmd</code>, <code>Log</code>, <code>Context</code>, <code>Strategy</code>, <code>pump</code>, <code>run</code>, and <code>now_us</code>: subclass <code>Strategy</code>, override any of the 24 handlers (<code>on_quote</code> through <code>on_backtest_done</code>), and call <code>self.ctx.insert</code>, <code>cancel</code>, <code>pause</code>, <code>resume</code>, <code>subscribe</code>, <code>unsubscribe</code>, <code>query_asset</code>, <code>query_position</code>, <code>signal_sub</code>, <code>signal_unsub</code>, <code>insert_algo</code>, <code>cancel_algo</code>, <code>subscribe_mkt_order</code>, <code>subscribe_mkt_trade</code>, <code>subscribe_rebuild</code>, <code>query_source</code>, <code>set_log_state</code>, <code>control_rsp</code>, or <code>log</code>; <code>self.info</code>, <code>warn</code>, <code>error</code>, and <code>debug</code> write one line to the bridge log ring alongside <code>bridge.log(level, text)</code>, and <code>bridge.take_log()</code> drains it on the engine side. <code>pitlane.run(strategy, bridge)</code> serves until <code>stop()</code>. The core stays header-only and the engine never calls into Python.</p>
+  </main>
+</div>
+</body>
+</html>

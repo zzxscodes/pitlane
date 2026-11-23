@@ -1,0 +1,219 @@
+#pragma once
+
+// Ops command channel and audit trail. HTTP threads allocate a sequence and
+// push a command; the trading thread takes, validates, and acks. Every ack
+// lands in a small per-seq result table the request thread can poll.
+
+#include "pitlane/order/rms.hpp"
+#include "pitlane/util/hint.hpp"
+#include "pitlane/util/sendjoin.hpp"
+#include "pitlane/util/seqpub.hpp"
+
+#include <atomic>
+#include <cstdint>
+#include <cstring>
+
+namespace pitlane {
+
+enum class OpsKind : uint8_t {
+    Direct = 1,
+    Basket = 2,
+    Algo = 3,
+    CancelAll = 4,
+    Pause = 5,
+    Resume = 6,
+    Halt = 7,
+    ResumeRisk = 8,
+    Reload = 9,
+    Stop = 10,
+    GatewayStart = 11,
+    GatewayStop = 12,
+    AlgoPause = 13,
+    AlgoResume = 14,
+    AlgoCancel = 15,
+    AlgoUpdate = 16,
+    RiskLimits = 17,
+    CondCreate = 18,
+    CondCancel = 19,
+    ChaseCreate = 20,
+    ChaseCancel = 21,
+};
+
+inline constexpr int kOpsBasketLegs = 8;
+
+struct OpsLeg {
+    uint32_t name{0};
+    int64_t target{0};
+};
+
+struct OpsCommand {
+    uint64_t seq{0};
+    uint64_t id{0};
+    uint8_t kind{0};
+    uint8_t side{0};
+    uint16_t legs{0};
+    uint32_t name{0};
+    int64_t qty{0};
+    int64_t px{0};
+    int64_t trig_px{0}; // CondCreate: trigger reference price
+    int64_t step_px{0}; // ChaseCreate: reprice distance (0 = one tick)
+    int64_t horizon_us{0};
+    int64_t slice_us{0};
+    uint32_t acct{0};   // 0 = the control plane's default account
+    uint8_t env{0};     // 0 test, 1 live (used only for alarm tagging)
+    uint8_t mode{0};    // Algo: 0 slice-only, 1 T0 round trip; Chase: 0 reprice, 1 take
+    uint8_t trig{0};    // CondCreate: 0 last>=,1 last<=,2 ask>=,3 ask<=,4 bid>=,5 bid<=
+    uint8_t off{0};     // Direct: Off, 0..6 as in CTP
+    uint8_t biz{0};     // Direct: Biz; non-directional kinds are refused
+    uint8_t hedge{0};   // Direct: Hedge, 0 speculation, 1 arbitrage, 2 hedge, 3 covered
+    uint8_t px_mode{0}; // Direct: PxMode, 0 limit, 1 market, 2 opponent best, 3 own best
+    uint8_t tif{0};     // Direct: 0 IOC (FAK), 1 FOK, 2 day
+    RmsLimits limits{}; // RiskLimits
+    char target[24]{};  // gateway id for GatewayStart/GatewayStop
+    OpsLeg basket[kOpsBasketLegs]{};
+};
+
+struct OpsResult {
+    uint64_t seq{0};
+    uint64_t id{0};
+    int32_t code{0};
+    char msg[96]{};
+};
+
+enum : int32_t {
+    kOpsOk = 0,
+    kOpsBadReq = 1,
+    kOpsHalted = 2,
+    kOpsRisk = 3,
+    kOpsBusy = 4,
+    kOpsUnknown = 5,
+};
+
+struct OpsAuditRec {
+    uint64_t seq{0};
+    uint64_t id{0};
+    int64_t stamp_us{0};
+    int32_t code{0};
+    uint8_t kind{0};
+    uint8_t pad[3]{};
+};
+
+inline const char* ops_kind_name(uint8_t kind) noexcept {
+    switch (static_cast<OpsKind>(kind)) {
+        case OpsKind::Direct: return "direct";
+        case OpsKind::Basket: return "basket";
+        case OpsKind::Algo: return "algo";
+        case OpsKind::CancelAll: return "cancel_all";
+        case OpsKind::Pause: return "pause";
+        case OpsKind::Resume: return "resume";
+        case OpsKind::Halt: return "halt";
+        case OpsKind::ResumeRisk: return "resume_risk";
+        case OpsKind::RiskLimits: return "risk_limits";
+        case OpsKind::Reload: return "reload";
+        case OpsKind::Stop: return "stop";
+        case OpsKind::GatewayStart: return "gateway_start";
+        case OpsKind::GatewayStop: return "gateway_stop";
+        case OpsKind::AlgoPause: return "algo_pause";
+        case OpsKind::AlgoResume: return "algo_resume";
+        case OpsKind::AlgoCancel: return "algo_cancel";
+        case OpsKind::AlgoUpdate: return "algo_update";
+        case OpsKind::CondCreate: return "cond_create";
+        case OpsKind::CondCancel: return "cond_cancel";
+        case OpsKind::ChaseCreate: return "chase_create";
+        case OpsKind::ChaseCancel: return "chase_cancel";
+    }
+    return "other";
+}
+
+inline const char* ops_code_name(int32_t code) noexcept {
+    switch (code) {
+        case kOpsOk: return "ok";
+        case kOpsBadReq: return "bad_request";
+        case kOpsHalted: return "blocked";
+        case kOpsRisk: return "risk";
+        case kOpsBusy: return "busy";
+        case kOpsUnknown: return "unknown";
+    }
+    return "error";
+}
+
+template <int Cap = 64>
+class OpsAudit {
+public:
+    static_assert(Cap >= 2 && (Cap & (Cap - 1)) == 0, "audit capacity");
+
+    void add(const OpsAuditRec& r) noexcept { ring_.publish([&](OpsAuditRec& slot) { slot = r; }); }
+
+    // Copies the most recent records in chronological order. Returns the count.
+    int recent(OpsAuditRec* out, int cap) const noexcept {
+        if (!out || cap <= 0) return 0;
+        const int64_t claimed = ring_.claimed();
+        if (claimed <= 0) return 0;
+        const int n = claimed < cap ? static_cast<int>(claimed) : cap;
+        int got = 0;
+        ring_.drain_from(claimed - n, [&](const OpsAuditRec& r) {
+            if (got < cap) out[got++] = r;
+        });
+        return got;
+    }
+
+    int64_t claimed() const noexcept { return ring_.claimed(); }
+
+private:
+    SeqPublishRing<OpsAuditRec, Cap> ring_{};
+};
+
+template <int Cap = 256>
+class OpsChannel {
+public:
+    static_assert(Cap >= 2 && (Cap & (Cap - 1)) == 0, "ops channel capacity");
+
+    uint64_t alloc_seq() noexcept { return next_seq_.fetch_add(1, std::memory_order_relaxed); }
+
+    bool submit(const OpsCommand& c) noexcept { return queue_.try_push(c); }
+
+    bool take(OpsCommand& c) noexcept { return queue_.try_pop(c); }
+
+    void ack(const OpsResult& r, int64_t stamp_us = 0, uint8_t kind = 0) noexcept {
+        Slot& s = result_[r.seq & (Cap - 1)];
+        s.seq.store(0, std::memory_order_release);
+        s.body = r;
+        s.seq.store(r.seq, std::memory_order_release);
+        if (stamp_us > 0) {
+            OpsAuditRec rec{};
+            rec.seq = r.seq;
+            rec.id = r.id;
+            rec.code = r.code;
+            rec.kind = kind;
+            rec.stamp_us = stamp_us;
+            audit_.add(rec);
+        }
+    }
+
+    bool result(uint64_t seq, OpsResult& out) const noexcept {
+        const Slot& s = result_[seq & (Cap - 1)];
+        if (s.seq.load(std::memory_order_acquire) != seq) return false;
+        out = s.body;
+        std::atomic_thread_fence(std::memory_order_acquire);
+        return s.seq.load(std::memory_order_relaxed) == seq;
+    }
+
+    void audit(const OpsAuditRec& r) noexcept { audit_.add(r); }
+
+    int recent_audit(OpsAuditRec* out, int cap) const noexcept { return audit_.recent(out, cap); }
+
+    int64_t audit_claimed() const noexcept { return audit_.claimed(); }
+
+private:
+    struct Slot {
+        std::atomic<uint64_t> seq{0};
+        OpsResult body{};
+    };
+
+    SendJoinRing<OpsCommand, Cap> queue_{};
+    Slot result_[Cap]{};
+    OpsAudit<64> audit_{};
+    std::atomic<uint64_t> next_seq_{1};
+};
+
+}  // namespace pitlane

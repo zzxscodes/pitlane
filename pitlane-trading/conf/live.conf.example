@@ -1,0 +1,35 @@
+# pitlane_trading — 实盘闭环示例（真实 IOC）。
+# 柜台账号、前置地址等私有参数不在这里：本文件只选择适配器，参数由适配器
+# 自己的 conf/adapters/<name>.conf 读取。
+#
+#   cp -n conf/live.conf.example conf/live.conf
+#   cp -n conf/adapters/ctp.conf.example conf/adapters/ctp.conf   # 填 password
+#   cd pitlane-trading && ../build-trading/pitlane_trading conf/live.conf
+#
+# 从本目录启动，work_dir=./run 才会落在 pitlane-trading 下。
+# 窗口：交易日 16:00–次日 09:00；非交易日 16:00–次日 12:00。
+
+mode = live
+
+# 柜台适配器。实现在 adapters/<name>/，配置默认取本文件同目录的
+# adapters/<name>.conf；也可用 adapter_conf = FILE 覆盖。
+adapter = ctp
+# adapter_conf = conf/adapters/ctp.conf
+
+# 当日可交易合约，按前置给出的月份调整。
+instruments = au2612,ag2612
+
+# 运行产物都留在本项目内（不要放到仓库根目录）。
+work_dir = ./run
+# flow_md_dir / flow_td_dir / desk_path / log_path 默认在 work_dir 下
+# log_path = ./run/wire.log
+# host_cpu = 0
+
+# 价格按 ×10000 定点。buy_px 取高值以便吃掉卖盘做 T2T 验证。
+buy_px_x10000 = 999999999
+max_spread_x10000 = 500
+order_qty = 1
+min_order_gap_us = 3000000
+max_live_orders = 2
+t2t_samples = 30
+connect_timeout_s = 30

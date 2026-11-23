@@ -1,0 +1,940 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>调用所在的头文件 — pitlane API</title>
+<link rel="alternate" hreflang="en" href="../en/where-the-calls-live.html"/>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="side">
+    <div class="side-head">
+      <h1>pitlane API</h1>
+      <a class="lang" href="../en/where-the-calls-live.html" hreflang="en">English</a>
+    </div>
+    <nav>
+      <a href="index.html">概述</a><a href="架构.html">架构</a><a href="控制台截图.html">控制台截图</a><a href="启动配置.html">启动配置</a><a href="打开共享区.html">打开共享区</a><a href="标的-行情池-yard.html">标的 / 行情池（Yard）</a><a href="发布和读取.html">发布和读取</a><a href="运行会话循环.html">运行会话循环</a><a href="准备一笔委托.html">准备一笔委托</a><a href="纸面撮合.html">纸面撮合</a><a href="合约-信号和柜台.html">合约、信号和柜台</a><a href="辅助函数.html">辅助函数</a><a href="调用方自己保管的辅助函数.html">调用方自己保管的辅助函数</a><a href="组帧-节奏和快照.html">组帧、节奏和快照</a><a href="周期计数和定长低延迟表.html">周期计数和定长低延迟表</a><a href="一笔委托.html">一笔委托</a><a href="研究-以及调用方自己的决定.html">研究，以及调用方自己的决定</a><a href="价格窗口-槽池和两笔费用.html">价格窗口、槽池和两笔费用</a><a href="持久状态-快照与尾部证据.html">持久状态、快照与尾部证据</a><a href="因子网格-回测和策略实例.html">因子网格、回测和策略实例</a><a href="块存储-tape-与-c-abi.html">块存储 tape 与 C ABI</a><a href="账本行-控制回执-算法档位与柜台订单.html">账本行、控制回执、算法档位与柜台订单</a><a href="网页控制台.html">网页控制台</a><a href="调用所在的头文件.html" class="active">调用所在的头文件</a>
+    </nav>
+  </aside>
+  <main class="main">
+    <div class="meta">从左侧打开一节</div>
+    <h1>调用所在的头文件</h1>
+<table><thead><tr>
+<th>头文件</th>
+<th>内容</th>
+</tr></thead><tbody>
+<tr>
+<td><code>version.hpp</code></td>
+<td>库的发行版本 <code>kVersion</code></td>
+</tr>
+<tr>
+<td><code>book/arrive.hpp</code></td>
+<td>纸面到价成交：被动单遇交叉即撤销，当日单余量继续成交，买单逐档穿过（<code>ArrivalHit</code>）</td>
+</tr>
+<tr>
+<td><code>book/bar.hpp</code></td>
+<td>由调用方标成可交易的 tick 生成的 K 线</td>
+</tr>
+<tr>
+<td><code>book/depth.hpp</code></td>
+<td>固定深度展示簿与聚合侧（<code>DepthBoard</code>、<code>AggSide</code>）</td>
+</tr>
+<tr>
+<td><code>book/gap.hpp</code></td>
+<td>模拟挂单前方的待成交量（<code>Gap</code>）</td>
+</tr>
+<tr>
+<td><code>book/calendar.hpp</code></td>
+<td>交易日和交易时段</td>
+</tr>
+<tr>
+<td><code>book/sessions.hpp</code></td>
+<td>会话总时长、已过与剩余分钟、下一开盘与收盘、跳过休市的加减</td>
+</tr>
+<tr>
+<td><code>book/slice.hpp</code></td>
+<td>按时间戳有序行的半开时间区间与“某时刻之前最新值”查询</td>
+</tr>
+<tr>
+<td><code>book/snapshot.hpp</code></td>
+<td>十档快照盘口与当日统计，含微价格、深度失衡与陈旧判定</td>
+</tr>
+<tr>
+<td><code>book/cover.hpp</code></td>
+<td>满足限价的可见数量</td>
+</tr>
+<tr>
+<td><code>book/cumtick.hpp</code></td>
+<td>由两帧累计成交量与成交额推算分价位手数</td>
+</tr>
+<tr>
+<td><code>book/cross.hpp</code></td>
+<td>限价簿和集合竞价</td>
+</tr>
+<tr>
+<td><code>book/lags.hpp</code></td>
+<td>时段时延和采样时延</td>
+</tr>
+<tr>
+<td><code>book/ladder.hpp</code></td>
+<td>固定价格窗口和有量的最优价</td>
+</tr>
+<tr>
+<td><code>book/mbo.hpp</code></td>
+<td>逐单盘口构建器（<code>MboBook</code>）</td>
+</tr>
+<tr>
+<td><code>book/own.hpp</code></td>
+<td>调用方本地双边最优价</td>
+</tr>
+<tr>
+<td><code>book/quote.hpp</code></td>
+<td>行情批次、有序 apply、逐笔记录和分钟滚动</td>
+</tr>
+<tr>
+<td><code>book/steps.hpp</code></td>
+<td>价位档、价格移动，以及带档位游标缓存的 <code>TickGrid</code></td>
+</tr>
+<tr>
+<td><code>book/touch.hpp</code></td>
+<td>纸面/柜台价格解析模式（<code>TouchMode</code>）与逐笔过滤视图（<code>TouchView</code>）</td>
+</tr>
+<tr>
+<td><code>study/factorcal.hpp</code></td>
+<td>定长因子日历序列、日历映射、对齐存储与按名挂载环</td>
+</tr>
+<tr>
+<td><code>study/faces.hpp</code></td>
+<td>因子、采样与开放信号的命名环，独立消费游标与启动期 face 池</td>
+</tr>
+<tr>
+<td><code>book/extprint.hpp</code></td>
+<td>按买卖序号的逐笔撮合，以及主动盘口路径</td>
+</tr>
+<tr>
+<td><code>book/venue.hpp</code></td>
+<td><code>PaperVenue</code></td>
+</tr>
+<tr>
+<td><code>book/tradelane.hpp</code></td>
+<td>本地交易通道 <code>TradeLane</code> / <code>lane_beat</code></td>
+</tr>
+<tr>
+<td><code>book/drill.hpp</code></td>
+<td><code>DrillCue</code> / <code>DrillBook</code></td>
+</tr>
+<tr>
+<td><code>desk/acct.hpp</code></td>
+<td>交易员→多账户表与 <code>acct_idle</code></td>
+</tr>
+<tr>
+<td><code>desk/broker.hpp</code></td>
+<td><code>BrokerWatch</code>、<code>QueryFold</code> 与 <code>QueryWant</code></td>
+</tr>
+<tr>
+<td><code>desk/risk.hpp</code></td>
+<td><code>risk_merge</code> 与 <code>AcctRiskTab</code></td>
+</tr>
+<tr>
+<td><code>desk/cash.hpp</code></td>
+<td>资金/持仓板与 <code>cash_enough</code></td>
+</tr>
+<tr>
+<td><code>desk/config.hpp</code></td>
+<td>启动期 <code>PitConf</code> 加载、纠偏、host 应用、资金/持仓软上限、<code>conf_yard_plan</code> / <code>conf_venue_cfg</code></td>
+</tr>
+<tr>
+<td><code>desk/feedhub.hpp</code></td>
+<td>本地行情组合层 <code>FeedHub</code> / <code>feed_push_*</code></td>
+</tr>
+<tr>
+<td><code>desk/seed.hpp</code></td>
+<td>启动期 <code>CashSeed</code> / <code>HoldSeed</code></td>
+</tr>
+<tr>
+<td><code>desk/shelf.hpp</code></td>
+<td>本地基础数据种子（<code>seed_facts</code> / hours / holidays / <code>load_facts</code> / <code>load_hours</code> / <code>load_holidays</code>）</td>
+</tr>
+<tr>
+<td><code>desk/bus.hpp</code></td>
+<td>本地 topic 总线（<code>TopicBus</code>）</td>
+</tr>
+<tr>
+<td><code>desk/routebook.hpp</code></td>
+<td>本地算法路由表（<code>RouteBook</code>）</td>
+</tr>
+<tr>
+<td><code>desk/router.hpp</code></td>
+<td>柜台路由与请求关联（<code>RouteTable</code>、<code>route_binding</code>、<code>RequestBook</code>）</td>
+</tr>
+<tr>
+<td><code>desk/pulsehub.hpp</code></td>
+<td><code>pulse_bridge</code>：推送板 <code>PulseBoard</code> → Desk <code>pulses</code></td>
+</tr>
+<tr>
+<td><code>desk/yard.hpp</code></td>
+<td>启动期标的/行情池（<code>YardPlan</code>、claim/bind/publish/latest）</td>
+</tr>
+<tr>
+<td><code>desk/center.hpp</code></td>
+<td><code>Center</code> 进程内交易中枢与引擎路由白名单</td>
+</tr>
+<tr>
+<td><code>desk/instmap.hpp</code></td>
+<td><code>InstMap</code> 启动期定长名称表（1024 个合约），热路径开放寻址查找</td>
+</tr>
+<tr>
+<td><code>desk/layout.hpp</code></td>
+<td><code>Footprint</code>：desk、名称簿与推送板的字节占用</td>
+</tr>
+<tr>
+<td><code>desk/session.hpp</code></td>
+<td>与柜台无关的会话配置（<code>Account</code>、<code>StratCfg</code>），启动期读取一次</td>
+</tr>
+<tr>
+<td><code>desk/store.hpp</code></td>
+<td>冷路径列存（<code>Dict</code>、<code>Column</code>、<code>TimeIndex</code>）</td>
+</tr>
+<tr>
+<td><code>desk/tape_md.hpp</code></td>
+<td><code>TapeMd</code> 行情回放引擎，行情数组由调用方持有</td>
+</tr>
+<tr>
+<td><code>desk/tape_rec.hpp</code></td>
+<td><code>TapeRecorder</code> 把行情流录成可回放的 CSV tape</td>
+</tr>
+<tr>
+<td><code>order/prelock.hpp</code></td>
+<td>两阶段冻结 reserve / commit</td>
+</tr>
+<tr>
+<td><code>order/ledger_view.hpp</code></td>
+<td>按账本层级保存完整资产与持仓快照，键归一化、分页查询与汇总</td>
+</tr>
+<tr>
+<td><code>order/ledger_feed.hpp</code></td>
+<td><code>LedgerFeed</code> 快照：柜台适配器写入、控制台读取，用自旋锁保证 CTP 回包线程与 HTTP 线程不会读到撕裂的行</td>
+</tr>
+<tr>
+<td><code>clear/clearing.hpp</code></td>
+<td><code>ClearingBook</code> FIFO 批次、今昨仓、费用、资金流水、公司行为、收益费用、份额与净值、双价估值、结算、流水</td>
+</tr>
+<tr>
+<td><code>clear/statement.hpp</code></td>
+<td>对账单导入（<code>StmtBook</code>）与三方核对（<code>recon_three_way</code>、<code>recon_csv</code>）</td>
+</tr>
+<tr>
+<td><code>clear/report.hpp</code></td>
+<td>定长净值环（<code>NavTrack</code>）、区间折叠（<code>report_fold</code>）、区间起点（<code>rpt_since</code>）与报表 CSV</td>
+</tr>
+<tr>
+<td><code>match/kernel.hpp</code></td>
+<td>连续竞价与集合竞价共用簿的撮合内核（<code>MatchingKernel</code>）、队列位置、涨跌停、停牌、撤改单</td>
+</tr>
+<tr>
+<td><code>ops/accounts.hpp</code></td>
+<td><code>AccountRegistry</code>：资金账户按模式与网关绑定</td>
+</tr>
+<tr>
+<td><code>ops/alarm.hpp</code></td>
+<td><code>AlarmBoard</code> 定长 info / warn / critical 告警环</td>
+</tr>
+<tr>
+<td><code>ops/auth.hpp</code></td>
+<td><code>OpsUserStore</code> / <code>OpsSessionStore</code>：PBKDF2 用户、角色与 8 小时会话</td>
+</tr>
+<tr>
+<td><code>ops/canary.hpp</code></td>
+<td>灰度分发计划、拒单与滑点门槛、晋级与回滚（<code>Canary</code>）</td>
+</tr>
+<tr>
+<td><code>ops/command.hpp</code></td>
+<td><code>OpsCommand</code> / <code>OpsResult</code>、风控限额下发与带审计的命令通道</td>
+</tr>
+<tr>
+<td><code>ops/control.hpp</code></td>
+<td><code>ControlPlane</code> 暂停、熔断、风控、重载与手工意图</td>
+</tr>
+<tr>
+<td><code>ops/gateway.hpp</code></td>
+<td><code>GatewayRegistry</code> 行情与交易网关状态</td>
+</tr>
+<tr>
+<td><code>ops/health.hpp</code></td>
+<td>主机健康采集（<code>health_sample</code>）与阈值评估（<code>health_eval</code>）</td>
+</tr>
+<tr>
+<td><code>ops/host.hpp</code></td>
+<td><code>HostSample</code> 读取 <code>/proc</code> 计数器</td>
+</tr>
+<tr>
+<td><code>ops/http.hpp</code></td>
+<td><code>HttpServer</code> 控制台服务：单 poll 线程、8 KB 请求上限</td>
+</tr>
+<tr>
+<td><code>ops/logsearch.hpp</code></td>
+<td>定容日志环与大小写不敏感检索（<code>LogIndex</code>）</td>
+</tr>
+<tr>
+<td><code>ops/policy.hpp</code></td>
+<td><code>OpsPolicy</code> 控制面与风控共用的限额</td>
+</tr>
+<tr>
+<td><code>ops/replayctl.hpp</code></td>
+<td>行情回放时间轴控制（<code>ReplayCtl</code>）</td>
+</tr>
+<tr>
+<td><code>ops/seats.hpp</code></td>
+<td>席位与通道台账（<code>SeatRegistry</code>）、启停、故障与每秒窗口</td>
+</tr>
+<tr>
+<td><code>ops/series.hpp</code></td>
+<td><code>SeriesRing</code> / <code>SeriesSet</code>：控制台逐笔、OHLC 与 tape 历史</td>
+</tr>
+<tr>
+<td><code>ops/sha256.hpp</code></td>
+<td>基于调用方内存的 SHA-256、HMAC 与 PBKDF2</td>
+</tr>
+<tr>
+<td><code>ops/status.hpp</code></td>
+<td><code>StatusBoard</code> 经 seqlock 发布的封存快照</td>
+</tr>
+<tr>
+<td><code>order/credit.hpp</code></td>
+<td><code>CreditTerms</code> 与 <code>CreditBook</code> 柜台信用视图（负债、担保比例、融资与融券额度），以及负债空头池与 <code>option_free</code></td>
+</tr>
+<tr>
+<td><code>order/pair_package.hpp</code></td>
+<td><code>PairPackageBook</code> 人工配对包：建包、改量、撤销、平仓、分腿成交、按比例推导 B 腿与恢复</td>
+</tr>
+<tr>
+<td><code>study/fair.hpp</code></td>
+<td>整数公允价、盘口偏置、压力分</td>
+</tr>
+<tr>
+<td><code>util/breach.hpp</code></td>
+<td>首次越界粘滞标志与池水位</td>
+</tr>
+<tr>
+<td><code>desk/codec.hpp</code></td>
+<td>品种、开平和方向</td>
+</tr>
+<tr>
+<td><code>desk/feed.hpp</code></td>
+<td>订阅掩码、价格缩放和原始行情</td>
+</tr>
+<tr>
+<td><code>desk/ids.hpp</code></td>
+<td><code>IdMint</code></td>
+</tr>
+<tr>
+<td><code>desk/logline.hpp</code></td>
+<td><code>Log</code></td>
+</tr>
+<tr>
+<td><code>desk/names.hpp</code></td>
+<td><code>NameBook</code>，包含重名、关联与市场/品种列表查询</td>
+</tr>
+<tr>
+<td><code>desk/region.hpp</code></td>
+<td>工作区、<code>MapOpt</code> 文件映射、环容量与 <code>kDeskVersion</code> 8 布局</td>
+</tr>
+<tr>
+<td><code>desk/ring.hpp</code></td>
+<td><code>FanRing</code></td>
+</tr>
+<tr>
+<td><code>desk/replay.hpp</code></td>
+<td>确定性环回放与故障注入</td>
+</tr>
+<tr>
+<td><code>desk/snapring.hpp</code></td>
+<td>固定布局跨语言快照环</td>
+</tr>
+<tr>
+<td><code>desk/wal.hpp</code></td>
+<td>文件后备预写日志</td>
+</tr>
+<tr>
+<td><code>desk/runtime.hpp</code></td>
+<td><code>DeskLoop</code></td>
+</tr>
+<tr>
+<td><code>desk/signal.hpp</code></td>
+<td><code>PulseBoard</code></td>
+</tr>
+<tr>
+<td><code>desk/types.hpp</code></td>
+<td><code>Intent</code>、<code>Report</code>、<code>Quote</code>，以及方向、开平、业务种类、价格模式、套保标志、方式、阶段和 <code>Why</code></td>
+</tr>
+<tr>
+<td><code>desk/wire.hpp</code></td>
+<td>算法单、控制、行权、推送、逐笔、查询、订阅、信号、市场委托和载荷槽</td>
+</tr>
+<tr>
+<td><code>desk/engine.hpp</code></td>
+<td><code>Engine</code> 进程角色</td>
+</tr>
+<tr>
+<td><code>desk/md_engine.hpp</code></td>
+<td><code>MdEngine</code> 行情网关</td>
+</tr>
+<tr>
+<td><code>desk/td_engine.hpp</code></td>
+<td><code>TdEngine</code> / <code>TdClient</code> 交易网关</td>
+</tr>
+<tr>
+<td><code>desk/plane.hpp</code></td>
+<td><code>SimRole</code>、回放时延与播放倍率</td>
+</tr>
+<tr>
+<td><code>study/strat_engine.hpp</code></td>
+<td><code>StratEngine</code> 策略与上下文</td>
+</tr>
+<tr>
+<td><code>study/shadow.hpp</code></td>
+<td>影子成交对比与按算法滑点</td>
+</tr>
+<tr>
+<td><code>host/affinity.hpp</code></td>
+<td>设置调用线程或进程的 CPU 亲和性掩码</td>
+</tr>
+<tr>
+<td><code>host/hugepage.hpp</code></td>
+<td><code>nr_hugepages</code>、Hugepagesize、<code>thp_disable</code></td>
+</tr>
+<tr>
+<td><code>host/memlock.hpp</code></td>
+<td>进程级 <code>mlockall</code> / <code>munlockall</code></td>
+</tr>
+<tr>
+<td><code>host/irq.hpp</code></td>
+<td>读写 IRQ <code>smp_affinity_list</code></td>
+</tr>
+<tr>
+<td><code>host/numa.hpp</code></td>
+<td>NUMA 节点查询与区间 <code>mbind</code></td>
+</tr>
+<tr>
+<td><code>host/priority.hpp</code></td>
+<td><code>SCHED_FIFO</code> / <code>SCHED_RR</code> / <code>SCHED_OTHER</code> 与 nice</td>
+</tr>
+<tr>
+<td><code>order/ack.hpp</code></td>
+<td>下单确认和撤单确认计时</td>
+</tr>
+<tr>
+<td><code>order/bind.hpp</code></td>
+<td>柜台单号和乱序回报</td>
+</tr>
+<tr>
+<td><code>order/idclaim.hpp</code></td>
+<td>定容 id 状态表（Wait / Live / Final）</td>
+</tr>
+<tr>
+<td><code>order/inbound.hpp</code></td>
+<td>等到到期时刻再放出的命令</td>
+</tr>
+<tr>
+<td><code>order/judge.hpp</code></td>
+<td>名单、流速、比例、偏离和自成交</td>
+</tr>
+<tr>
+<td><code>order/inflight.hpp</code></td>
+<td>只列出超时在途标签的扫描</td>
+</tr>
+<tr>
+<td><code>order/lane.hpp</code></td>
+<td>通道规则、<code>LaneBook</code> 和 <code>Cause</code></td>
+</tr>
+<tr>
+<td><code>order/latch.hpp</code></td>
+<td>粘滞节奏开关与滞回门（<code>PaceLatch</code>、<code>HysteresisGate</code>）</td>
+</tr>
+<tr>
+<td><code>order/manual.hpp</code></td>
+<td><code>ManualBook</code> 手工直接单、目标篮子与 TWAP，共用同一发送回调</td>
+</tr>
+<tr>
+<td><code>order/notion.hpp</code></td>
+<td><code>LinearBook</code> / <code>InverseBook</code> 整数名义金额费率</td>
+</tr>
+<tr>
+<td><code>order/pace.hpp</code></td>
+<td><code>PaceOrder</code> / <code>SliceCfg</code> 执行节奏状态机，只产出决策不发单</td>
+</tr>
+<tr>
+<td><code>order/basket.hpp</code></td>
+<td>按合约的篮子目标账本（单账本最多 2048 条腿）、单腿控制（<code>BasketLegCtl</code>）与下一笔子单（<code>basket_child</code>）</td>
+</tr>
+<tr>
+<td><code>order/algo.hpp</code></td>
+<td>自适应母单执行器（<code>ExecAlgo</code>）：TWAP、曲线 VWAP、直通、追赶、撤补、参与率、涨跌停停止</td>
+</tr>
+<tr>
+<td><code>order/auction.hpp</code></td>
+<td><code>AuctionAlgo</code> 开盘/收盘集合竞价执行器：三种定价、触板防护、重发与剩余量交接</td>
+</tr>
+<tr>
+<td><code>order/ledger.hpp</code></td>
+<td>冻结、保证金、费用、成交回写、登录编号和在途槽</td>
+</tr>
+<tr>
+<td><code>order/linkstate.hpp</code></td>
+<td>报单链路状态机（<code>OrderLink</code>）：心跳、在途超时、序号缺口、重发代次与降级</td>
+</tr>
+<tr>
+<td><code>order/life.hpp</code></td>
+<td>委托状态迁移和状态名字</td>
+</tr>
+<tr>
+<td><code>order/line.hpp</code></td>
+<td>同一个价格上编号的到达顺序</td>
+</tr>
+<tr>
+<td><code>order/lots.hpp</code></td>
+<td>手数拆分、整手校验与两融数量辅助</td>
+</tr>
+<tr>
+<td><code>order/parent.hpp</code></td>
+<td>母单时间切片、下一笔数量和篮子控制头</td>
+</tr>
+<tr>
+<td><code>order/quoteprice.hpp</code></td>
+<td>只看盘口的挂单价、被动价和追价</td>
+</tr>
+<tr>
+<td><code>order/plan.hpp</code></td>
+<td>下一笔委托、可挂数量、切片和追价</td>
+</tr>
+<tr>
+<td><code>order/pool.hpp</code></td>
+<td>按编号查找的固定槽</td>
+</tr>
+<tr>
+<td><code>order/recon.hpp</code></td>
+<td>本地成交和柜台成交对齐</td>
+</tr>
+<tr>
+<td><code>order/shed.hpp</code></td>
+<td>按停留时长丢弃</td>
+</tr>
+<tr>
+<td><code>order/sheet.hpp</code></td>
+<td>委托单、部分撤与 <code>gate_ask</code></td>
+</tr>
+<tr>
+<td><code>order/sign.hpp</code></td>
+<td>多模块签字组合与开仓额度</td>
+</tr>
+<tr>
+<td><code>order/ticket.hpp</code></td>
+<td>命令快照和版本</td>
+</tr>
+<tr>
+<td><code>order/typed.hpp</code></td>
+<td>带编译期标签的票据类型</td>
+</tr>
+<tr>
+<td><code>study/acb.hpp</code></td>
+<td>FIFO 手数队列与平均成本持仓账本</td>
+</tr>
+<tr>
+<td><code>study/corp.hpp</code></td>
+<td>公司行为的价格因子</td>
+</tr>
+<tr>
+<td><code>study/decide.hpp</code></td>
+<td>带评分候选意图的暂存与比较</td>
+</tr>
+<tr>
+<td><code>study/extreme.hpp</code></td>
+<td>最近一段固定价格里的最高价和最低价</td>
+</tr>
+<tr>
+<td><code>study/flow.hpp</code></td>
+<td>整数微观结构辅助（<code>OfiWin</code>、<code>FootBin</code>、<code>TopSnap</code>）</td>
+</tr>
+<tr>
+<td><code>study/plan.hpp</code></td>
+<td>灰/黑染色因子拓扑序与固定动作表</td>
+</tr>
+<tr>
+<td><code>study/perf.hpp</code></td>
+<td><code>PerfCurve</code> 整数净值统计、Sharpe 与回撤</td>
+</tr>
+<tr>
+<td><code>study/study.hpp</code></td>
+<td>盘口特征、事后偏移、关联、因子、回放，以及一次研究步骤</td>
+</tr>
+<tr>
+<td><code>study/strathook.hpp</code></td>
+<td>策略门面 <code>StratHook</code> / <code>strat_stage_*</code></td>
+</tr>
+<tr>
+<td><code>time/clock.hpp</code></td>
+<td>发布出去的周期比例和墙钟</td>
+</tr>
+<tr>
+<td><code>time/cut.hpp</code></td>
+<td>依已测间隔判定是否切分路径</td>
+</tr>
+<tr>
+<td><code>time/cycle.hpp</code></td>
+<td>周期读取、整数比例和缓存的微秒</td>
+</tr>
+<tr>
+<td><code>time/global.hpp</code></td>
+<td>进程内共享的整数 TSC 周期换算系数</td>
+</tr>
+<tr>
+<td><code>time/lap.hpp</code></td>
+<td>调用方已经记下的时刻之差</td>
+</tr>
+<tr>
+<td><code>time/mag.hpp</code></td>
+<td>按数量级分桶和按间隔补记</td>
+</tr>
+<tr>
+<td><code>time/sample.hpp</code></td>
+<td>定长样本</td>
+</tr>
+<tr>
+<td><code>time/simclock.hpp</code></td>
+<td><code>SimClock</code></td>
+</tr>
+<tr>
+<td><code>time/span.hpp</code></td>
+<td>留在消息旁边的时刻</td>
+</tr>
+<tr>
+<td><code>time/tape.hpp</code></td>
+<td>开关、每核轨迹、封存的段和超阈值通知</td>
+</tr>
+<tr>
+<td><code>time/tail.hpp</code></td>
+<td>按 lane 的 TSC 尾延迟直方图与触发冻结 tape</td>
+</tr>
+<tr>
+<td><code>time/hops.hpp</code></td>
+<td>逐跳延迟账本（<code>HopLedger</code>）与单笔时间戳轨迹（<code>HopTrace</code>）</td>
+</tr>
+<tr>
+<td><code>time/baseline.hpp</code></td>
+<td>性能基线捕获、序列化与带容差的回归比较（<code>PerfBaseline</code>）</td>
+</tr>
+<tr>
+<td><code>time/flame.hpp</code></td>
+<td>嵌套作用域计时累积成 folded stack（<code>FlameBook</code>）</td>
+</tr>
+<tr>
+<td><code>time/trace.hpp</code></td>
+<td>耗时样本、时钟差和分桶</td>
+</tr>
+<tr>
+<td><code>time/tsc.hpp</code></td>
+<td>校准后的 TSC 微秒时钟与 desk 发布</td>
+</tr>
+<tr>
+<td><code>time/urgent.hpp</code></td>
+<td>不进队列的一个标签</td>
+</tr>
+<tr>
+<td><code>time/wheel.hpp</code></td>
+<td>时间轮</td>
+</tr>
+<tr>
+<td><code>util/arena.hpp</code></td>
+<td>默认显式大页的定容 bump 字节 arena</td>
+</tr>
+<tr>
+<td><code>util/batch.hpp</code></td>
+<td>按积压自适应的微批大小</td>
+</tr>
+<tr>
+<td><code>util/bound.hpp</code></td>
+<td>单次比较的边界检查和行走预算</td>
+</tr>
+<tr>
+<td><code>util/corebank.hpp</code></td>
+<td>调用方自持的每核固定步长银行</td>
+</tr>
+<tr>
+<td><code>util/chunk.hpp</code></td>
+<td>稀疏价位块和撤单句柄</td>
+</tr>
+<tr>
+<td><code>util/drill.hpp</code></td>
+<td>测试用的时钟、预算、档位和普通记录</td>
+</tr>
+<tr>
+<td><code>util/duallane.hpp</code></td>
+<td><code>DualLane</code> 单调请求道、连续回报道与缺口判定</td>
+</tr>
+<tr>
+<td><code>util/ema.hpp</code></td>
+<td><code>IntEma</code> / <code>IntEmaDev</code> Q16 整数平滑</td>
+</tr>
+<tr>
+<td><code>util/fillring.hpp</code></td>
+<td>原地填写的槽</td>
+</tr>
+<tr>
+<td><code>util/authbits.hpp</code></td>
+<td>MAC 白名单（≤3）与角色位校验</td>
+</tr>
+<tr>
+<td><code>util/frame.hpp</code></td>
+<td>组帧、序号缺口和重排</td>
+</tr>
+<tr>
+<td><code>util/grace.hpp</code></td>
+<td>读者代和回收列表</td>
+</tr>
+<tr>
+<td><code>util/hex.hpp</code></td>
+<td>十六进制和逐字节比较</td>
+</tr>
+<tr>
+<td><code>util/hint.hpp</code></td>
+<td>分支提示、冷热段布局和预取</td>
+</tr>
+<tr>
+<td><code>util/latest.hpp</code></td>
+<td><code>LatestKeep</code> 每个 key 只保留最新载荷，落后读者排空脏槽</td>
+</tr>
+<tr>
+<td><code>util/mix64.hpp</code></td>
+<td>分裂混合</td>
+</tr>
+<tr>
+<td><code>util/mold.hpp</code></td>
+<td>预备报文、块长度和可以退回的编号</td>
+</tr>
+<tr>
+<td><code>util/objpool.hpp</code></td>
+<td>线程私有定容对象池</td>
+</tr>
+<tr>
+<td><code>util/numeric.hpp</code></td>
+<td>检查用的宽乘积</td>
+</tr>
+<tr>
+<td><code>util/page.hpp</code></td>
+<td>普通页与 Hugepagesize、按字节向上对齐</td>
+</tr>
+<tr>
+<td><code>util/pace.hpp</code></td>
+<td>令牌桶和理论到达时间</td>
+</tr>
+<tr>
+<td><code>util/phase.hpp</code></td>
+<td>有符号票号 PhaseGate；<code>flip_ready</code> 非阻塞等待上一轮排空；ActiveSum 轮换计数器</td>
+</tr>
+<tr>
+<td><code>util/pinbank.hpp</code></td>
+<td>PrioSnap 优先级三槽缓冲；PinBank 按槽引用计数的多读者快照</td>
+</tr>
+<tr>
+<td><code>util/readwin.hpp</code></td>
+<td>最慢读者再加上一段窗口</td>
+</tr>
+<tr>
+<td><code>util/seqgate.hpp</code></td>
+<td>序号缺口恢复、<code>gap_width</code> 与 <code>reset</code></td>
+</tr>
+<tr>
+<td><code>util/seqpub.hpp</code></td>
+<td>无背压、可覆写未消费槽的序号发布环</td>
+</tr>
+<tr>
+<td><code>util/seqwin.hpp</code></td>
+<td>遇到空洞就停下的序号窗口</td>
+</tr>
+<tr>
+<td><code>util/sendjoin.hpp</code></td>
+<td><code>SendJoinRing</code> 多生产者发送环，满环拒绝</td>
+</tr>
+<tr>
+<td><code>util/seqfield.hpp</code></td>
+<td><code>SeqField</code> 单行小记录的 seqlock</td>
+</tr>
+<tr>
+<td><code>util/rankbits.hpp</code></td>
+<td><code>RankBits</code> 稠密下标与 <code>QuadTab</code> 四键表</td>
+</tr>
+<tr>
+<td><code>util/sig.hpp</code></td>
+<td>签名桶</td>
+</tr>
+<tr>
+<td><code>util/simd.hpp</code></td>
+<td>打包清零、打包拷贝和 cover 辅助</td>
+</tr>
+<tr>
+<td><code>util/snap.hpp</code></td>
+<td>整份发布的快照槽</td>
+</tr>
+<tr>
+<td><code>util/spin.hpp</code></td>
+<td>独占缓存行的 TTAS 自旋锁</td>
+</tr>
+<tr>
+<td><code>util/stage.hpp</code></td>
+<td>按占槽顺序完成的环</td>
+</tr>
+<tr>
+<td><code>util/stream.hpp</code></td>
+<td>帧校验和字节流重组</td>
+</tr>
+<tr>
+<td><code>util/sticky.hpp</code></td>
+<td>wait-free <code>StickyCounter</code>（写入后读侧可见最终值）</td>
+</tr>
+<tr>
+<td><code>util/stride.hpp</code></td>
+<td>某一个核那一槽的地址</td>
+</tr>
+<tr>
+<td><code>util/textbuf.hpp</code></td>
+<td>定长文本</td>
+</tr>
+<tr>
+<td><code>util/textutil.hpp</code></td>
+<td><code>CellGrid</code> 与 <code>FlatMap</code> 文本辅助</td>
+</tr>
+<tr>
+<td><code>util/touch.hpp</code></td>
+<td>按缓存行预取并加载</td>
+</tr>
+<tr>
+<td><code>util/wirepx.hpp</code></td>
+<td>尾数指数价格与定点换算</td>
+</tr>
+<tr>
+<td><code>util/wirelog.hpp</code></td>
+<td><code>WireLog</code> 异步定长环日志，热路径不格式化</td>
+</tr>
+<tr>
+<td><code>net/frame.hpp</code></td>
+<td><code>NetHeader</code>、<code>NetKind</code>、<code>net_pack</code>、<code>net_unpack</code>、CRC32C</td>
+</tr>
+<tr>
+<td><code>net/logbuf.hpp</code></td>
+<td><code>TermLog</code> term 缓冲，含 pad 帧与流控</td>
+</tr>
+<tr>
+<td><code>net/udp.hpp</code></td>
+<td><code>UdpAddr</code>、<code>udp_addr</code>、<code>udp_parse</code>、<code>UdpLink</code></td>
+</tr>
+<tr>
+<td><code>net/replicate.hpp</code></td>
+<td>leader/follower <code>ReplicaLog</code>，多数派提交</td>
+</tr>
+<tr>
+<td><code>net/hub.hpp</code></td>
+<td><code>RemoteHub</code>，desk 与日志双向桥接</td>
+</tr>
+<tr>
+<td><code>order/oms.hpp</code></td>
+<td><code>Oms</code>、<code>OmsOrder</code>、<code>OmsFill</code>，订单状态与父子进度</td>
+</tr>
+<tr>
+<td><code>order/sor.hpp</code></td>
+<td>柜台有效价格、主动/被动路由、<code>ShownHold</code></td>
+</tr>
+<tr>
+<td><code>order/ems.hpp</code></td>
+<td><code>Ems</code> 通过 <code>SlicePlan</code> 和 SOR 切父单</td>
+</tr>
+<tr>
+<td><code>order/pms.hpp</code></td>
+<td><code>Pms</code> 平均成本持仓与盈亏</td>
+</tr>
+<tr>
+<td><code>order/rms.hpp</code></td>
+<td><code>Rms</code> 盘前限额检查，按业务轴区分方向性与本地记账</td>
+</tr>
+<tr>
+<td><code>order/risk_guard.hpp</code></td>
+<td><code>RiskGuard</code> 1 Hz 事后风控，粘滞阻断或熔断</td>
+</tr>
+<tr>
+<td><code>order/flowgate.hpp</code></td>
+<td><code>FlowGate</code> 按账户和市场滚动的下单、撤单、金额窗口</td>
+</tr>
+<tr>
+<td><code>order/precheck.hpp</code></td>
+<td><code>PreTradeGuard</code> 按固定顺序执行黑白名单、分类限额、流量、撤单率、自成交检查</td>
+</tr>
+<tr>
+<td><code>order/unlock.hpp</code></td>
+<td><code>UnlockPlan</code> 解对锁：配对目标、整手裁剪，并在单边成交后补齐另一条腿</td>
+</tr>
+<tr>
+<td><code>order/netting.hpp</code></td>
+<td><code>NetBook</code> 篮子净额：按账户柜台、账户或标的作用域合并买卖，整手取整并汇总总量与净量</td>
+</tr>
+<tr>
+<td><code>order/credit.hpp</code></td>
+<td><code>CreditTerms</code> 与 <code>CreditBook</code>：按柜台资产查询对齐的账户信用字段、推导担保比例、剩余额度与空头库存</td>
+</tr>
+<tr>
+<td><code>order/pair_package.hpp</code></td>
+<td><code>PairPackageBook</code> 人工双腿配对包：定容、建包/改量/撤销/平仓、分腿成交、自动完成与恢复</td>
+</tr>
+<tr>
+<td><code>ops/instruments.hpp</code></td>
+<td><code>InstrSpec</code> 与 <code>InstrumentRegistry</code>：分档 tick、整手、单笔上下限、<code>px_step</code>、<code>qty_ok</code></td>
+</tr>
+<tr>
+<td><code>ops/group_risk.hpp</code></td>
+<td><code>GroupRiskBook</code> 组合级总敞口、净敞口、单账户名义上限</td>
+</tr>
+<tr>
+<td><code>time/replay_pace.hpp</code></td>
+<td><code>ReplayPace</code> 整数化的行情时间到墙钟时间回放节拍</td>
+</tr>
+<tr>
+<td><code>study/factor.hpp</code></td>
+<td><code>FactorEngine</code> 整数因子序列</td>
+</tr>
+<tr>
+<td><code>study/factor_eval.hpp</code></td>
+<td><code>FactorEval</code> IC、rank IC、命中率、分位</td>
+</tr>
+<tr>
+<td><code>study/pipeline.hpp</code></td>
+<td><code>FactorPipeline</code> 研究/回测/纸面/实盘阶段</td>
+</tr>
+<tr>
+<td><code>study/backtest.hpp</code></td>
+<td><code>Backtester</code>、<code>BtCfg</code>、<code>BtMetrics</code>、<code>BtPoint</code> 单合约事件驱动回测</td>
+</tr>
+<tr>
+<td><code>study/block_tape.hpp</code></td>
+<td><code>BlockTapeWriter</code> / <code>BlockTapeReader</code> 只追加的列式逐笔 tape</td>
+</tr>
+<tr>
+<td><code>study/tape_source.hpp</code></td>
+<td><code>TapeSourceApi</code> 适配器，把块存储 tape 或其尾部读成 <code>Quote</code> 行</td>
+</tr>
+<tr>
+<td><code>study/factor_lab.hpp</code></td>
+<td><code>FactorLab</code> kind/window/horizon 扫描、IC/rank IC/ICIR、排序与选取</td>
+</tr>
+<tr>
+<td><code>ops/strategy.hpp</code></td>
+<td><code>StrategyRegistry</code> 8 个策略槽、状态机、命令环、seqlock 行快照</td>
+</tr>
+<tr>
+<td><code>strat/pair.hpp</code></td>
+<td><code>PairEngine</code> 双腿价差策略：滚动 z 值、开/持/平状态机、比例下单、主动腿吃价、被动腿在盘内挂价、被动腿改价与撤单阈值、未回报窗口、顺序双腿、单腿批量上限、组合入场校验、暂停/恢复/停止、单腿超时、行情偏斜防护、已实现盈亏</td>
+</tr>
+</tbody></table>
+  </main>
+</div>
+</body>
+</html>

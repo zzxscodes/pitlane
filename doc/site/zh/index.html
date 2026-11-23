@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>概述 — pitlane API</title>
+<link rel="alternate" hreflang="en" href="../en/index.html"/>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="side">
+    <div class="side-head">
+      <h1>pitlane API</h1>
+      <a class="lang" href="../en/index.html" hreflang="en">English</a>
+    </div>
+    <nav>
+      <a href="index.html" class="active">概述</a><a href="架构.html">架构</a><a href="控制台截图.html">控制台截图</a><a href="启动配置.html">启动配置</a><a href="打开共享区.html">打开共享区</a><a href="标的-行情池-yard.html">标的 / 行情池（Yard）</a><a href="发布和读取.html">发布和读取</a><a href="运行会话循环.html">运行会话循环</a><a href="准备一笔委托.html">准备一笔委托</a><a href="纸面撮合.html">纸面撮合</a><a href="合约-信号和柜台.html">合约、信号和柜台</a><a href="辅助函数.html">辅助函数</a><a href="调用方自己保管的辅助函数.html">调用方自己保管的辅助函数</a><a href="组帧-节奏和快照.html">组帧、节奏和快照</a><a href="周期计数和定长低延迟表.html">周期计数和定长低延迟表</a><a href="一笔委托.html">一笔委托</a><a href="研究-以及调用方自己的决定.html">研究，以及调用方自己的决定</a><a href="价格窗口-槽池和两笔费用.html">价格窗口、槽池和两笔费用</a><a href="持久状态-快照与尾部证据.html">持久状态、快照与尾部证据</a><a href="因子网格-回测和策略实例.html">因子网格、回测和策略实例</a><a href="块存储-tape-与-c-abi.html">块存储 tape 与 C ABI</a><a href="账本行-控制回执-算法档位与柜台订单.html">账本行、控制回执、算法档位与柜台订单</a><a href="网页控制台.html">网页控制台</a><a href="调用所在的头文件.html">调用所在的头文件</a>
+    </nav>
+  </aside>
+  <main class="main">
+    <div class="meta">从左侧打开一节</div>
+    <h1>概述</h1>
+<p>这是调用说明。项目介绍在仓库根目录的 <code>README_CN.md</code>。</p>
+<p>包含一个头文件：</p>
+<pre><code class="language-cpp">
+#include &quot;pitlane/pitlane.hpp&quot;
+</code></pre>
+<p>所有名字都在命名空间 <code>pitlane</code> 里。链接 <code>libpitlane.a</code>，或者用 <code>-lpitlane</code> 链接动态库。动态库的 soname 是 <code>libpitlane.so.1</code>。两种链接方式使用同一套头文件。</p>
+<p>发行版本是 <code>kVersion</code>，当前是 1.0.0，并拆成 <code>kVersionMajor</code>、<code>kVersionMinor</code> 和 <code>kVersionPatch</code>。<code>kDeskVersion</code> 是 desk 映射文件的布局版本，当前是 8。<code>kYardVersion</code> 是独立的标的/行情池布局版本，当前是 2。库的一次新发行可以保持任一布局版本不动。</p>
+<p>带左侧分节导航的静态网页在 <code>doc/site/zh/</code>（由 <code>python3 doc/gen_site.py</code> 生成）。请打开本地的 <code>doc/site/zh/index.html</code> 或 GitHub Pages；直接访问 <code>github.com/.../blob/...</code> 只能看到源码。启动期设置见 <strong>启动配置</strong>。</p>
+<p>头文件分在 <code>pitlane/desk/</code>、<code>pitlane/book/</code>、<code>pitlane/order/</code>、<code>pitlane/clear/</code>、<code>pitlane/match/</code>、<code>pitlane/strat/</code>、<code>pitlane/time/</code>、<code>pitlane/study/</code>、<code>pitlane/net/</code>、<code>pitlane/util/</code> 和 <code>pitlane/host/</code> 下面。<code>version.hpp</code> 与 <code>pitlane.hpp</code> 同一层。下面的表在路径里写了区域。柜台适配层（<code>adapters/ctp/decode.hpp</code>、<code>adapters/ctp/book.hpp</code>、<code>adapters/ctp/fanout.hpp</code>、<code>adapters/market_view.hpp</code>）属于 <code>pitlane-trading/</code>，不随核心库安装；其他柜台放在同级的 <code>adapters/&lt;name&gt;/</code> 目录，由配置里的 <code>adapter = &lt;name&gt;</code> 选择。</p>
+<p>价格和数量是整数，时间是微秒，方向 1 为买入、2 为卖出。普通拒绝以 <code>false</code>、负数或非 <code>Why::None</code> 的 <code>Why</code> 返回，不会抛出异常。环或队列写满时，本次写入失败，已有内容保持不变。</p>
+  </main>
+</div>
+</body>
+</html>

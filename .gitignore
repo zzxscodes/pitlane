@@ -1,0 +1,39 @@
+build/
+build-*/
+prefix/
+cmake-build-*/
+.vscode/
+.idea/
+*.bin
+*.o
+*.a
+*.so
+*.so.*
+# Vendored SimNow CTP API ships prebuilt shared objects; keep them.
+!pitlane-trading/third_party/ctp/lib/*.so
+*.user
+*.profraw
+*.profdata
+CMakeCache.txt
+CMakeFiles/
+compile_commands.json
+.cache/
+.tools/
+Testing/
+CTestTestfile.cmake
+DartConfiguration.tcl
+
+# Local live/adapter secrets and runtime (never at repo root)
+pitlane-trading/conf/live.conf
+pitlane-trading/conf/adapters/*.conf
+!pitlane-trading/conf/adapters/*.conf.example
+pitlane-trading/run/**
+!pitlane-trading/run/.gitkeep
+!pitlane-trading/run/ops.conf
+!pitlane-trading/run/gateways.conf
+!pitlane-trading/run/accounts.conf
+!pitlane-trading/run/instruments.conf
+
+# Python caches
+__pycache__/
+*.pyc

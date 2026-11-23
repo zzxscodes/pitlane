@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>控制台截图 — pitlane API</title>
+<link rel="alternate" hreflang="en" href="../en/console-screenshots.html"/>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="side">
+    <div class="side-head">
+      <h1>pitlane API</h1>
+      <a class="lang" href="../en/console-screenshots.html" hreflang="en">English</a>
+    </div>
+    <nav>
+      <a href="index.html">概述</a><a href="架构.html">架构</a><a href="控制台截图.html" class="active">控制台截图</a><a href="启动配置.html">启动配置</a><a href="打开共享区.html">打开共享区</a><a href="标的-行情池-yard.html">标的 / 行情池（Yard）</a><a href="发布和读取.html">发布和读取</a><a href="运行会话循环.html">运行会话循环</a><a href="准备一笔委托.html">准备一笔委托</a><a href="纸面撮合.html">纸面撮合</a><a href="合约-信号和柜台.html">合约、信号和柜台</a><a href="辅助函数.html">辅助函数</a><a href="调用方自己保管的辅助函数.html">调用方自己保管的辅助函数</a><a href="组帧-节奏和快照.html">组帧、节奏和快照</a><a href="周期计数和定长低延迟表.html">周期计数和定长低延迟表</a><a href="一笔委托.html">一笔委托</a><a href="研究-以及调用方自己的决定.html">研究，以及调用方自己的决定</a><a href="价格窗口-槽池和两笔费用.html">价格窗口、槽池和两笔费用</a><a href="持久状态-快照与尾部证据.html">持久状态、快照与尾部证据</a><a href="因子网格-回测和策略实例.html">因子网格、回测和策略实例</a><a href="块存储-tape-与-c-abi.html">块存储 tape 与 C ABI</a><a href="账本行-控制回执-算法档位与柜台订单.html">账本行、控制回执、算法档位与柜台订单</a><a href="网页控制台.html">网页控制台</a><a href="调用所在的头文件.html">调用所在的头文件</a>
+    </nav>
+  </aside>
+  <main class="main">
+    <div class="meta">从左侧打开一节</div>
+    <h1>控制台截图</h1>
+<p><code>pitlane-trading</code> 的网页控制台（页面在 <code>client/index.html</code>）只有一页，读写的正是下文这些环、簿与策略槽位。以下截图来自纸面盘运行，覆盖行情看板、交易订单簿、七个品种工作区、算法与组合页、两融、风控、清算、运维、账号、策略、研究、回测与数据。</p>
+<table><thead><tr>
+<th>策略</th>
+<th>研究</th>
+</tr></thead><tbody>
+<tr>
+<td><img src="../images/console-strategies-zh.jpg" alt="策略页"/></td>
+<td><img src="../images/console-research-zh.jpg" alt="研究页"/></td>
+</tr>
+<tr>
+<td><img src="../images/console-backtest-zh.jpg" alt="回测页"/></td>
+<td><img src="../images/console-data-zh.jpg" alt="数据页"/></td>
+</tr>
+<tr>
+<td><img src="../images/console-ops-zh.jpg" alt="运维页"/></td>
+<td><img src="../images/console-risk-zh.jpg" alt="风控页"/></td>
+</tr>
+<tr>
+<td><img src="../images/console-market-zh.jpg" alt="行情页"/></td>
+<td><img src="../images/console-trade-zh.jpg" alt="交易页"/></td>
+</tr>
+<tr>
+<td><img src="../images/console-clear-zh.jpg" alt="清算页"/></td>
+<td><img src="../images/console-account-zh.jpg" alt="账号页"/></td>
+</tr>
+<tr>
+<td><img src="../images/console-future-zh.jpg" alt="期货页"/></td>
+<td><img src="../images/console-option-zh.jpg" alt="期权页"/></td>
+</tr>
+<tr>
+<td><img src="../images/console-credit-zh.jpg" alt="两融页"/></td>
+<td><img src="../images/console-algo-zh.jpg" alt="算法页"/></td>
+</tr>
+<tr>
+<td><img src="../images/console-portfolio-zh.jpg" alt="组合页"/></td>
+<td><img src="../images/console-astock-zh.jpg" alt="股票页"/></td>
+</tr>
+<tr>
+<td><img src="../images/console-hkstock-zh.jpg" alt="港股页"/></td>
+<td><img src="../images/console-etf-zh.jpg" alt="ETF 页"/></td>
+</tr>
+<tr>
+<td><img src="../images/console-bond-zh.jpg" alt="债券页"/></td>
+<td><img src="../images/console-usstock-zh.jpg" alt="美股页"/></td>
+</tr>
+</tbody></table>
+<p>策略页把配对价差卡片（价差、均值、ppm 单位的 <code>z</code>、两腿持仓、回合数、胜场、已实现盈亏）放在单腿因子表旁边。研究与回测读取的是 <strong>Tape</strong> 一节里的同一套 API，数据页用 <code>GET /api/tape/meta</code>、<code>/rows</code>、<code>/describe</code> 直接读块式 tape。</p>
+  </main>
+</div>
+</body>
+</html>

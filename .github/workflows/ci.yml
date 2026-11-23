@@ -1,0 +1,125 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [g++, clang++]
+        sanitize: ["OFF", "ON"]
+        exclude:
+          - compiler: clang++
+            sanitize: "ON"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install clang
+        if: matrix.compiler == 'clang++'
+        run: sudo apt-get update && sudo apt-get install -y clang
+      - name: Configure
+        env:
+          CXX: ${{ matrix.compiler }}
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DPITLANE_NATIVE=OFF \
+            -DPITLANE_LTO=OFF \
+            -DPITLANE_RELAX_LATENCY=ON \
+            -DPITLANE_SANITIZE=${{ matrix.sanitize }} \
+            -DPITLANE_BUILD_SHARED=ON \
+            -DPITLANE_BUILD_TESTS=ON \
+            -DPITLANE_BUILD_TRADING=ON
+      - name: Build
+        run: cmake --build build -j$(nproc)
+      - name: Test
+        working-directory: build
+        run: ctest --output-on-failure
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+
+  docs:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Regenerate site and diff
+        run: |
+          python3 doc/gen_site.py
+          git diff --exit-code -- doc/site
+      - name: clang-format dry-run (2.12 headers)
+        run: |
+          sudo apt-get update && sudo apt-get install -y clang-format
+          clang-format --dry-run --Werror \
+            include/pitlane/order/prelock.hpp \
+            include/pitlane/order/credit.hpp \
+            include/pitlane/study/fair.hpp \
+            include/pitlane/util/breach.hpp
+
+  trading:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure the console on its own
+        run: |
+          cmake -S pitlane-trading -B build-trading \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DPITLANE_NATIVE=OFF \
+            -DPITLANE_LTO=OFF \
+            -DPITLANE_TRADING_BUILD_TESTS=ON
+      - name: Build
+        run: cmake --build build-trading -j$(nproc)
+      - name: Binary check
+        # The vendor libraries have no SONAME, so an absolute link would bake
+        # the build path into DT_NEEDED. Keep every dependency a bare name, and
+        # keep RUNPATH free of absolute build or source paths.
+        run: |
+          if readelf -d build-trading/pitlane_trading | grep NEEDED | grep -q '/'; then
+            echo "DT_NEEDED must not carry a path" >&2
+            readelf -d build-trading/pitlane_trading | grep NEEDED >&2
+            exit 1
+          fi
+          rpath=$(readelf -d build-trading/pitlane_trading | sed -n 's/.*(RUNPATH).*\[\(.*\)\]/\1/p')
+          if echo "$rpath" | tr ':' '\n' | grep -q '^/'; then
+            echo "RUNPATH must not carry an absolute path: $rpath" >&2
+            exit 1
+          fi
+      - name: Test
+        working-directory: build-trading
+        run: ctest --output-on-failure
+
+  package:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure install tree
+        run: |
+          cmake -S . -B build-pkg \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DPITLANE_NATIVE=OFF \
+            -DPITLANE_LTO=OFF \
+            -DPITLANE_BUILD_TESTS=OFF \
+            -DPITLANE_BUILD_TRADING=OFF \
+            -DCMAKE_INSTALL_PREFIX=$PWD/prefix
+      - name: Install
+        run: cmake --build build-pkg -j$(nproc) --target install
+      - name: find_package smoke
+        run: |
+          cat > /tmp/consume.cpp <<'EOF'
+          #include <pitlane/version.hpp>
+          int main() { return pitlane::kVersionMajor >= 1 ? 0 : 1; }
+          EOF
+          cat > /tmp/CMakeLists.txt <<'EOF'
+          cmake_minimum_required(VERSION 3.16)
+          project(consume LANGUAGES CXX)
+          find_package(pitlane REQUIRED)
+          add_executable(consume /tmp/consume.cpp)
+          target_link_libraries(consume PRIVATE pitlane::pitlane)
+          EOF
+          cmake -S /tmp -B /tmp/build -DCMAKE_PREFIX_PATH=$PWD/prefix
+          cmake --build /tmp/build
+          /tmp/build/consume

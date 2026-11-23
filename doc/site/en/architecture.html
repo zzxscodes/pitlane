@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Architecture — pitlane API</title>
+<link rel="alternate" hreflang="zh" href="../zh/架构.html"/>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="side">
+    <div class="side-head">
+      <h1>pitlane API</h1>
+      <a class="lang" href="../zh/架构.html" hreflang="zh">中文</a>
+    </div>
+    <nav>
+      <a href="index.html">Overview</a><a href="architecture.html" class="active">Architecture</a><a href="console-screenshots.html">Console screenshots</a><a href="startup-configuration.html">Startup configuration</a><a href="open-a-shared-desk.html">Open a shared desk</a><a href="symbol-quote-yard.html">Symbol / quote yard</a><a href="publish-and-read.html">Publish and read</a><a href="run-the-session-loop.html">Run the session loop</a><a href="prepare-an-order.html">Prepare an order</a><a href="match-on-the-paper-venue.html">Match on the paper venue</a><a href="names-signals-and-the-counter.html">Names, signals, and the counter</a><a href="helpers.html">Helpers</a><a href="caller-owned-helpers.html">Caller-owned helpers</a><a href="frames-pacing-and-snapshots.html">Frames, pacing, and snapshots</a><a href="cycles-and-fixed-low-latency-tables.html">Cycles and fixed low-latency tables</a><a href="one-order-sheet.html">One order sheet</a><a href="research-and-a-caller-decision.html">Research and a caller decision</a><a href="a-price-window-a-slot-pool-and-two-charges.html">A price window, a slot pool, and two charges</a><a href="durable-state-snapshots-and-tail-evidence.html">Durable state, snapshots, and tail evidence</a><a href="research-grid-backtest-and-strategy-instances.html">Research grid, backtest, and strategy instances</a><a href="block-tape-and-c-abi.html">Block tape and C ABI</a><a href="ledger-rows-control-replies-algo-rungs-and-counter-orders.html">Ledger rows, control replies, algo rungs, and counter orders</a><a href="web-console.html">Web console</a><a href="where-the-calls-live.html">Where the calls live</a>
+    </nav>
+  </aside>
+  <main class="main">
+    <div class="meta">Open a section from the left</div>
+    <h1>Architecture</h1>
+<p><img src="../images/architecture-en.svg" alt="pitlane core architecture: processes meet at one shared-memory desk"/></p>
+<p>One file mapping (<code>PITLANE1</code>, <code>kDeskVersion</code> 8) holds the rings and the cash/hold rows. <code>desk_view</code> attaches only when the magic and layout match; every ring then has a single writer and one cursor per reader. A write to a full ring fails and leaves the ring unchanged — nothing grows and no unacked slot is overwritten. The sections below open that mapping, publish and read messages, run the session loop, and put orders through the paper venue.</p>
+  </main>
+</div>
+</body>
+</html>

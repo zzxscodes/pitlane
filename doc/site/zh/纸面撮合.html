@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>纸面撮合 — pitlane API</title>
+<link rel="alternate" hreflang="en" href="../en/match-on-the-paper-venue.html"/>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="side">
+    <div class="side-head">
+      <h1>pitlane API</h1>
+      <a class="lang" href="../en/match-on-the-paper-venue.html" hreflang="en">English</a>
+    </div>
+    <nav>
+      <a href="index.html">概述</a><a href="架构.html">架构</a><a href="控制台截图.html">控制台截图</a><a href="启动配置.html">启动配置</a><a href="打开共享区.html">打开共享区</a><a href="标的-行情池-yard.html">标的 / 行情池（Yard）</a><a href="发布和读取.html">发布和读取</a><a href="运行会话循环.html">运行会话循环</a><a href="准备一笔委托.html">准备一笔委托</a><a href="纸面撮合.html" class="active">纸面撮合</a><a href="合约-信号和柜台.html">合约、信号和柜台</a><a href="辅助函数.html">辅助函数</a><a href="调用方自己保管的辅助函数.html">调用方自己保管的辅助函数</a><a href="组帧-节奏和快照.html">组帧、节奏和快照</a><a href="周期计数和定长低延迟表.html">周期计数和定长低延迟表</a><a href="一笔委托.html">一笔委托</a><a href="研究-以及调用方自己的决定.html">研究，以及调用方自己的决定</a><a href="价格窗口-槽池和两笔费用.html">价格窗口、槽池和两笔费用</a><a href="持久状态-快照与尾部证据.html">持久状态、快照与尾部证据</a><a href="因子网格-回测和策略实例.html">因子网格、回测和策略实例</a><a href="块存储-tape-与-c-abi.html">块存储 tape 与 C ABI</a><a href="账本行-控制回执-算法档位与柜台订单.html">账本行、控制回执、算法档位与柜台订单</a><a href="网页控制台.html">网页控制台</a><a href="调用所在的头文件.html">调用所在的头文件</a>
+    </nav>
+  </aside>
+  <main class="main">
+    <div class="meta">从左侧打开一节</div>
+    <h1>纸面撮合</h1>
+<p><code>PaperVenue</code> 最多处理 256 个合约（<code>kNames</code>）和 1024 张未完成委托（<code>kTickets</code>），合约编号必须小于 256。新单需经过报单时延，再按当时的盘口判断；撤单同样需经过撤单时延。</p>
+<pre><code class="language-cpp">
+pitlane::VenueCfg cfg{};
+cfg.lot = 1;
+pitlane::PaperVenue venue(cfg);
+const pitlane::Rung asks[] = {{100, 5}};
+venue.set_levels(1, nullptr, 0, asks, 1);
+
+pitlane::Report reps[4]{};
+pitlane::VenueOut out = venue.admit(in, in.stamp_us, reps, 4);
+</code></pre>
+<p><code>on_ext</code> 用序号和买卖委托号匹配未完成的挂单。<code>print_hits</code> 要求成交不早于该单；<code>rigid</code> 打开时价格必须严格穿过滑点后的限价。<code>same_side_print</code> 在该方向的委托号更晚时为真。同向成交仍计入该挂单，成交价用逐笔价。另一方向计入时用委托价。<code>match_quote</code> 是主动路径：买价触及卖盘、卖价触及买盘时，按可见量成交。一笔逐笔成交的数量在多张挂单之间共用。</p>
+<p><code>admit</code> 把回报写入调用方缓冲区并设置 <code>out.why</code>。<code>trade_open=0</code> 时新开仓得到 <code>Why::Closed</code>。<code>on_clock</code> 在延迟到期后推进暂存委托并完成到期撤单（<code>hang</code> 时跳过）。<code>on_print</code> / <code>on_tape</code> 削减队列前方数量；打开 <code>rigid</code> 时 <code>tape_keep</code> 丢弃同向主动成交。<code>force_fill</code> / <code>force_pull</code> / <code>force_deny</code> / <code>drill_apply</code> 通过 <code>DrillCue</code> 提供强制注入（<code>DrillCue::Closed</code> = 10，即休市）。<code>TouchMode</code> / <code>resolve_px</code> 解析对手/本方/最新/中间/五档。主动方为 0 时保留每笔成交。<code>on_shown</code> 应用后续的显示量变化，且不会重复扣减已有成交。</p>
+<p>PitConf <code>[venue]</code> 的九段 go/pull 延迟可用整数微秒（<code>go_usN</code> / <code>pull_usN</code>）或按秒的小数（<code>go_secN</code> / <code>pull_secN</code>），另有 <code>rigid</code>、<code>tape_first</code>、lot/rate/notional、<code>cancel_pow_x1000</code>。用 <code>conf_venue_cfg</code> 生成 <code>VenueCfg</code>。</p>
+<p><code>Center::step</code> 是交易中心循环（交易中心进程角色）：可选 <code>TapeMd</code> 或实盘 <code>MdEngine</code>，行情顶档写入 <code>PaperVenue</code>，再驱动 <code>StratEngine</code>，然后是已就绪的 <code>TdEngine</code> 或 <code>TradeLane</code>。它把 <code>now_us</code> 写入 desk 时钟。<code>RouteAllow</code> 位图为 0 表示不过滤。心跳往推送环 <code>pulses</code> 写主题 <code>hb</code>。<code>TapeMd</code> 重放调用方持有的行情数组。</p>
+<p><code>Engine</code> 是进程角色：<code>set_up</code>、<code>pre_run</code>、<code>loop_task</code>、<code>post_run</code>、定时器、控制消息、合约表和 <code>housekeep</code>。<code>MdEngine</code> 排空 <code>subs</code>（行情、信号、重建、市场委托、市场成交）。连续五次订阅失败后不再发送。<code>copy_subs</code> 先复制订阅名单再发送。<code>write_quote</code>、<code>write_print</code>、<code>write_signal</code>、<code>write_factor</code>、<code>write_mkt</code>、<code>write_rebuild</code> 是网关写入。<code>TdClient</code> 是网关要实现的柜台面（<code>insert</code>、<code>cancel</code>、<code>on_algo</code>、<code>query_asset</code>、<code>query_position</code>、<code>exercise</code>）。<code>TdEngine</code> 依次处理报单、资金查询、持仓查询、算法单、行权请求，再处理 <code>BrokerWatch</code> 超时；应答、存续、撤单三类超时分别计数。<code>risk_filter</code> 可以在调用柜台前拒掉一笔报入。<code>StratEngine</code> 同时是策略和它的上下文：它收取回报、行情、重建、市场委托、逐笔、算法单、查询应答和信号，并发布报单、订阅和查询。<code>order_precheck</code> 在发布前丢弃数量、方向、编号或时间不合法的子单。库内不含券商套接字；CTP 网关位于继承这些类型的程序中，<code>pitlane-trading/adapters/ctp</code> 就是示例。</p>
+<p><code>SimRole</code> 标出纸面四角色（回放、行情适配、交易、撮合）。<code>order_delay</code> 和 <code>tape_speed</code> 控制回放节奏。<code>timer_due</code> 处理到期的撮合与撤单。<code>adjust_offset</code> 是先平反向持仓再开仓的拆分。</p>
+<p>组合层（热路径仍无堆）：<code>FeedHub</code>、<code>TradeLane</code>、<code>StratHook</code>（含算法单、篮子、日志与暂停）、<code>seed_cash</code> / <code>seed_hold</code>；本地基础数据用 <code>seed_facts</code> / <code>seed_hours</code> / <code>seed_holidays</code> 以及冷加载 <code>load_facts</code> / <code>load_hours</code> / <code>load_holidays</code>，盘中刷新用 <code>reload_facts</code> / <code>reload_hours</code>（只更新已存在的槽位，未知合约返回 -1，版本幂等）；本机 topic 用 <code>TopicBus</code>；策略→算法绑定用 <code>RouteBook</code>。<code>pulse_bridge</code> 把推送板 <code>PulseBoard</code> 的队列扇入 Desk <code>pulses</code>（本机 topic 分发）。</p>
+<p><code>Style::Day</code> 触及限价时，剩余数量全部成交，可以多于该档显示量。<code>Style::Passive</code> 一旦会穿越对手价就过期。<code>Style::Immediate</code> 只成交可见量（FAK）。<code>Style::All</code> 在可见量不足时整笔过期（FOK）。<code>Style::BestFive</code> 最多吃对手前五档的可见量，剩余过期。同一账户的买卖自成交时，该委托停止撮合。</p>
+<p>9 点 30 分之前，时延表是 0。之后 <code>session_band</code> 按 10:00、10:30、11:00、11:30、13:30、14:00、14:30 和 15:00 把一天分开。没有载入采样点时，<code>SimClock</code> 使用这九段。<code>SimClock::go</code> 返回负数时，表示该委托未进入盘口。这个结果由调用方决定如何处理。<code>admit</code> 自己不读该时钟。</p>
+<p><code>auction_clear</code> 选择成交量最大的价格。<code>tie_higher</code> 在成交量相同时取更高的价格。否则取更接近参考价的价格。</p>
+  </main>
+</div>
+</body>
+</html>

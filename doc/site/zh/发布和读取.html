@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>发布和读取 — pitlane API</title>
+<link rel="alternate" hreflang="en" href="../en/publish-and-read.html"/>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="side">
+    <div class="side-head">
+      <h1>pitlane API</h1>
+      <a class="lang" href="../en/publish-and-read.html" hreflang="en">English</a>
+    </div>
+    <nav>
+      <a href="index.html">概述</a><a href="架构.html">架构</a><a href="控制台截图.html">控制台截图</a><a href="启动配置.html">启动配置</a><a href="打开共享区.html">打开共享区</a><a href="标的-行情池-yard.html">标的 / 行情池（Yard）</a><a href="发布和读取.html" class="active">发布和读取</a><a href="运行会话循环.html">运行会话循环</a><a href="准备一笔委托.html">准备一笔委托</a><a href="纸面撮合.html">纸面撮合</a><a href="合约-信号和柜台.html">合约、信号和柜台</a><a href="辅助函数.html">辅助函数</a><a href="调用方自己保管的辅助函数.html">调用方自己保管的辅助函数</a><a href="组帧-节奏和快照.html">组帧、节奏和快照</a><a href="周期计数和定长低延迟表.html">周期计数和定长低延迟表</a><a href="一笔委托.html">一笔委托</a><a href="研究-以及调用方自己的决定.html">研究，以及调用方自己的决定</a><a href="价格窗口-槽池和两笔费用.html">价格窗口、槽池和两笔费用</a><a href="持久状态-快照与尾部证据.html">持久状态、快照与尾部证据</a><a href="因子网格-回测和策略实例.html">因子网格、回测和策略实例</a><a href="块存储-tape-与-c-abi.html">块存储 tape 与 C ABI</a><a href="账本行-控制回执-算法档位与柜台订单.html">账本行、控制回执、算法档位与柜台订单</a><a href="网页控制台.html">网页控制台</a><a href="调用所在的头文件.html">调用所在的头文件</a>
+    </nav>
+  </aside>
+  <main class="main">
+    <div class="meta">从左侧打开一节</div>
+    <h1>发布和读取</h1>
+<p><code>Desk</code> 有十九条环：<code>intents</code>、<code>reports</code>、<code>quotes</code>、<code>algos</code>、<code>controls</code>、<code>ctl_acks</code>、<code>ext_ords</code>、<code>pulses</code>、<code>prints</code>、<code>queries</code>、<code>ledger_assets</code>、<code>ledger_positions</code>、<code>pack_reqs</code>、<code>pack_rsps</code>、<code>logs</code>、<code>subs</code>、<code>signals</code>、<code>mkt_ords</code> 与 <code>rebuilds</code>。编译期容量对齐交易/篮子规模：<code>kIntentCap</code>/<code>kReportCap</code>/<code>kAlgoCap</code> 32768、<code>kQuoteCap</code> 8192、<code>kControlCap</code>/<code>kExtOrdCap</code> 16384、<code>kPulseCap</code>/<code>kPrintCap</code>/<code>kSigCap</code>/<code>kMktCap</code>/<code>kCtlAckCap</code> 4096、<code>kQueryCap</code> 1024、<code>kPackReqCap</code>/<code>kLogCap</code>/<code>kSubCap</code>/<code>kRebuildCap</code>/<code>kLedgerCap</code> 2048、<code>kPackRspCap</code> 16384。经 <code>desk_apply_conf</code> / <code>FanRing::tune</code> 后的软容量不超过该上限，由 <code>capacity()</code> 报告。资金和持仓在 <code>cash</code>（<code>kCashCap</code> 512）与 <code>hold</code>（<code>kHoldCap</code> 4096）里。</p>
+<p><code>publish</code> 接收一条消息和一个读者掩码。掩码为 0 时，第一个确认的读者取走这个槽。其他掩码列出必须确认的读者，这些读者都确认之后槽才能再次使用。读者编号从 0 到 63。会话循环是读者 7，也就是 <code>kLoopReader</code>。</p>
+<pre><code class="language-cpp">
+pitlane::Intent in{};
+in.tag = 1;
+in.name = 1;
+in.acct = 2;
+in.px = 100;
+in.qty = 5;
+in.stamp_us = 1;
+in.side = static_cast&lt;uint8_t&gt;(pitlane::Side::Buy);
+in.act = static_cast&lt;uint8_t&gt;(pitlane::Act::Enter);
+in.style = static_cast&lt;uint8_t&gt;(pitlane::Style::Day);
+in.off = pitlane::Off::Open;
+
+const uint64_t readers = 1ull &lt;&lt; pitlane::kLoopReader;
+if (!desk-&gt;intents.publish(in, readers)) {
+    // 环已满，该新单未写入。
+}
+</code></pre>
+<p>读者用 <code>at</code> 复制一个槽。位置是绝对序号，从 0 开始。这个读者还没有确认时，<code>fresh</code> 为真。<code>ack</code> 记下这次确认。<code>latest</code> 复制最新发布的一条。<code>tail</code> 是写入者下一次要使用的位置。</p>
+<pre><code class="language-cpp">
+pitlane::Intent got{};
+bool fresh = false;
+if (desk-&gt;intents.at(0, pitlane::kLoopReader, got, &amp;fresh) &amp;&amp; fresh) {
+    desk-&gt;intents.ack(0, pitlane::kLoopReader);
+}
+</code></pre>
+<p><code>Intent::off</code> 取 CTP 的 <code>Open 0</code>、<code>Close 1</code>、<code>ForceClose 2</code>、<code>CloseToday 3</code>、<code>CloseYday 4</code>、<code>ForceOff 5</code>、<code>LocalForceClose 6</code> 七个码——决定这笔子单是开仓还是平仓；它占用记录原本预留的字节，<code>Intent</code> 仍为 56 字节。强平原因写在 <code>Intent::force_reason</code>（CTP <code>THOST_FTDC_FCC_*</code>），回报通过 <code>Report::cause</code> 带回。<code>Report</code> 为 64 字节。<code>ManualBook::direct</code> 接受开平参数，篮子与 T0 子单在方向减少净仓时标记为 <code>Close</code> 并截断到可平数量，普通平仓在柜台按品种类别归一化。<code>Intent</code>、<code>Report</code> 和 <code>Quote</code> 在 <code>desk/types.hpp</code>。<code>Intent::hedge</code> 选择投机、套利、套保或备兑。其余槽类型——<code>AlgoJob</code>、<code>AlgoRung</code>、<code>ControlNote</code>、<code>ControlAck</code>、<code>ExecNote</code>、<code>ExtOrder</code>、<code>LedgerAssetNote</code>、<code>LedgerPositionNote</code>、<code>Pulse</code>、<code>TapePrint</code>、<code>QueryNote</code>、<code>SubNote</code>、<code>SigNote</code>、<code>MktNote</code>、<code>PackageNote</code>、<code>LogNote</code>——在 <code>desk/wire.hpp</code>。<code>publish_exec</code> 发布行权（kind 1）或放弃行权（kind 2）请求，<code>TdEngine</code> 交给 <code>TdClient::exercise</code>。比这些槽更大的数据，由调用方放在自己的环上，类型是 <code>Parcel&lt;Bytes&gt;</code>。长度大于 <code>Bytes</code> 时，<code>publish_parcel</code> 失败。热路径可用 <code>desk_log_publish</code> 写入 <code>LogNote</code>，再由冷路径排空 <code>logs</code> 环。<code>WireLog</code> 是进程日志：<code>log</code> 把一行打进一个 <code>PackedLine</code>（字面量用 <code>lit</code>，动态串复制到槽，标量 <code>memcpy</code>），满环丢弃该行，热路径不格式化。后台线程或调用方 <code>flush</code> 再把槽写成文本。日志文件放 tmpfs，热路径就不碰块设备。</p>
+  </main>
+</div>
+</body>
+</html>

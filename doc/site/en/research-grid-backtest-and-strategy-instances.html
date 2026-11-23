@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Research grid, backtest, and strategy instances — pitlane API</title>
+<link rel="alternate" hreflang="zh" href="../zh/因子网格-回测和策略实例.html"/>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="side">
+    <div class="side-head">
+      <h1>pitlane API</h1>
+      <a class="lang" href="../zh/因子网格-回测和策略实例.html" hreflang="zh">中文</a>
+    </div>
+    <nav>
+      <a href="index.html">Overview</a><a href="architecture.html">Architecture</a><a href="console-screenshots.html">Console screenshots</a><a href="startup-configuration.html">Startup configuration</a><a href="open-a-shared-desk.html">Open a shared desk</a><a href="symbol-quote-yard.html">Symbol / quote yard</a><a href="publish-and-read.html">Publish and read</a><a href="run-the-session-loop.html">Run the session loop</a><a href="prepare-an-order.html">Prepare an order</a><a href="match-on-the-paper-venue.html">Match on the paper venue</a><a href="names-signals-and-the-counter.html">Names, signals, and the counter</a><a href="helpers.html">Helpers</a><a href="caller-owned-helpers.html">Caller-owned helpers</a><a href="frames-pacing-and-snapshots.html">Frames, pacing, and snapshots</a><a href="cycles-and-fixed-low-latency-tables.html">Cycles and fixed low-latency tables</a><a href="one-order-sheet.html">One order sheet</a><a href="research-and-a-caller-decision.html">Research and a caller decision</a><a href="a-price-window-a-slot-pool-and-two-charges.html">A price window, a slot pool, and two charges</a><a href="durable-state-snapshots-and-tail-evidence.html">Durable state, snapshots, and tail evidence</a><a href="research-grid-backtest-and-strategy-instances.html" class="active">Research grid, backtest, and strategy instances</a><a href="block-tape-and-c-abi.html">Block tape and C ABI</a><a href="ledger-rows-control-replies-algo-rungs-and-counter-orders.html">Ledger rows, control replies, algo rungs, and counter orders</a><a href="web-console.html">Web console</a><a href="where-the-calls-live.html">Where the calls live</a>
+    </nav>
+  </aside>
+  <main class="main">
+    <div class="meta">Open a section from the left</div>
+    <h1>Research grid, backtest, and strategy instances</h1>
+<p><code>FactorLab</code> sweeps a fixed grid of factor kind, window, and horizon over a quote tape. <code>sweep</code> covers kinds 2, 4, 5, 6, 7, and 8, windows 4/8/16/32/64, and horizons 1/4/16, which is 90 rows; pass a buffer of at least <code>kMaxRows</code> (96) and it returns the row count. <code>eval_combo</code> evaluates one combination. Each <code>LabRow</code> carries <code>n</code>, <code>ic_ppm</code>, <code>rank_ic_ppm</code>, <code>hit_ppm</code>, <code>top_ppm</code>, <code>bottom_ppm</code>, <code>turnover_ppm</code>, <code>icir_milli</code>, and <code>score_ppm</code>; the ICIR splits <code>[t_begin,t_end)</code> into eight segments and divides the mean segment rank IC by its deviation. <code>sort</code> orders by score and then by absolute rank IC, both descending. <code>pick</code> takes the 75th percentile of <code>|factor|</code> (at least 1) as the threshold and the sign of the rank IC, and fills <code>LabPick</code> with <code>sign</code>, <code>threshold_ppm</code>, <code>trigger</code>, and <code>ready</code>.</p>
+<p><code>Backtester&lt;Cap&gt;</code> replays one instrument from ticks. <code>run(tape, n, cfg, out)</code> reads every tick into the factor engine and evaluates every <code>stride</code> ticks. The target is <code>sign * factor</code>: at or above <code>threshold_ppm</code> it is <code>+qty</code>, at or below the negative it is <code>-qty</code>, otherwise flat. A buy pays <code>ask + slip_ticks * tick</code>, a sell receives <code>bid - slip_ticks * tick</code>, and a side without a valid touch skips that rebalance. Fees are <code>notional * fee_ppm / 1e6</code>, rounded up and raised to <code>min_fee</code>. <code>BtMetrics</code> reports <code>points</code>, <code>trades</code>, <code>round_trips</code>, <code>wins</code>, <code>gross_pnl</code>, <code>fees</code>, <code>net_pnl</code>, <code>turnover</code>, <code>return_ppm</code>, <code>annual_ppm</code>, <code>sharpe_ppm</code>, <code>max_dd_ppm</code>, <code>win_ppm</code>, <code>exposure_ppm</code>, <code>final_equity</code>, <code>peak_equity</code>, and <code>span_us</code>. <code>curve</code> copies the sampled equity and drawdown points in time order, at most <code>Cap</code>. Invalid parameters (window outside 2..256, <code>qty &lt;= 0</code>, <code>cash &lt;= 0</code>) or fewer than two usable samples return false.</p>
+<p><code>StrategyRegistry</code> holds eight strategy instances. A <code>StratSpec</code> names an id, account, instrument, factor kind and window, sign, threshold, quantity, cooldown, and mode; a slot moves <code>Idle -&gt; Running -&gt; Paused -&gt; Running</code> and to <code>Stopped</code>, with <code>Failed</code> as the error state. <code>submit</code> pushes a <code>StratCmd</code> into a fixed 32-entry SPSC ring from the HTTP side, <code>take</code> drains it on the trading side, and <code>apply</code> returns the slot or -1 with a reason in the row note. Add rejects a duplicate id or a full table; a command carrying the other mode&#x27;s <code>env</code> is refused. <code>publish</code> and <code>read</code> move a <code>StratRow</code> through a seqlock, so readers never see a torn row. <code>save</code> writes the configuration for a worker or shutdown path; the trading thread never touches a file. Kind 9 is a pair: <code>instrument_b</code> and <code>ratio_ppm</code> extend the spec, and the row carries the second-leg position, spread, mean, standard deviation, rounds, wins, losses, timeouts, stop hits, and a ready flag. The console wraps the cold path in <code>pitlane-trading/jobs.hpp</code>: one worker thread, an eight-entry request ring, seqlock-published results, and a deterministic synthetic tape when the tape file is missing.</p>
+  </main>
+</div>
+</body>
+</html>

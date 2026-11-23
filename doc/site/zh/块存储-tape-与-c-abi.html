@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>块存储 tape 与 C ABI — pitlane API</title>
+<link rel="alternate" hreflang="en" href="../en/block-tape-and-c-abi.html"/>
+<link rel="stylesheet" href="../assets/style.css"/>
+</head>
+<body>
+<div class="layout">
+  <aside class="side">
+    <div class="side-head">
+      <h1>pitlane API</h1>
+      <a class="lang" href="../en/block-tape-and-c-abi.html" hreflang="en">English</a>
+    </div>
+    <nav>
+      <a href="index.html">概述</a><a href="架构.html">架构</a><a href="控制台截图.html">控制台截图</a><a href="启动配置.html">启动配置</a><a href="打开共享区.html">打开共享区</a><a href="标的-行情池-yard.html">标的 / 行情池（Yard）</a><a href="发布和读取.html">发布和读取</a><a href="运行会话循环.html">运行会话循环</a><a href="准备一笔委托.html">准备一笔委托</a><a href="纸面撮合.html">纸面撮合</a><a href="合约-信号和柜台.html">合约、信号和柜台</a><a href="辅助函数.html">辅助函数</a><a href="调用方自己保管的辅助函数.html">调用方自己保管的辅助函数</a><a href="组帧-节奏和快照.html">组帧、节奏和快照</a><a href="周期计数和定长低延迟表.html">周期计数和定长低延迟表</a><a href="一笔委托.html">一笔委托</a><a href="研究-以及调用方自己的决定.html">研究，以及调用方自己的决定</a><a href="价格窗口-槽池和两笔费用.html">价格窗口、槽池和两笔费用</a><a href="持久状态-快照与尾部证据.html">持久状态、快照与尾部证据</a><a href="因子网格-回测和策略实例.html">因子网格、回测和策略实例</a><a href="块存储-tape-与-c-abi.html" class="active">块存储 tape 与 C ABI</a><a href="账本行-控制回执-算法档位与柜台订单.html">账本行、控制回执、算法档位与柜台订单</a><a href="网页控制台.html">网页控制台</a><a href="调用所在的头文件.html">调用所在的头文件</a>
+    </nav>
+  </aside>
+  <main class="main">
+    <div class="meta">从左侧打开一节</div>
+    <h1>块存储 tape 与 C ABI</h1>
+<p><code>study/block_tape.hpp</code> 用只追加的列式文件保存逐笔。写入端批量攒行，再由提交发布版本：</p>
+<pre><code class="language-cpp">
+pitlane::BlockTapeWriter w;
+w.open(&quot;ticks.plt&quot;, 1);          // 合约号为 1；建立文件
+w.append(ticks, n);              // 行先复制进定长暂存块
+w.commit();                      // 刷出未满块，追加提交记录并 fsync
+</code></pre>
+<p><code>append</code> 每攒满 1024 行写一个块。只有 <code>commit</code> 会 <code>fsync</code>，也只有它发布版本；从未提交的写入端不会留下可见版本。<code>rows()</code> 和 <code>versions()</code> 返回进度，析构时关闭文件。</p>
+<pre><code class="language-cpp">
+pitlane::BlockTapeReader r;
+if (!r.open(&quot;ticks.plt&quot;)) return 1;           // 魔数、头、或尾部截断都会失败
+pitlane::TapeMeta m{};
+r.meta(m);                                     // versions、blocks、symbol、rows、bytes、首尾时间
+pitlane::TapeTick buf[256];
+uint32_t n = 0;
+r.rows(0, INT64_MIN, INT64_MAX, 0, 256, pitlane::kTapeColLast, buf, 256, n);
+</code></pre>
+<p><code>open</code> 校验魔数、格式版本、列数与每块行数，以及整条提交链；文件缺失、格式不同、尾部截断或带垃圾都会失败。<code>meta</code> 填 <code>TapeMeta</code>。<code>describe(version, TapeStats&amp;)</code> 填 <code>version</code>、<code>rows</code> 以及逐列的 <code>min</code>、<code>max</code>、<code>last</code> 和 <code>mean</code>（<code>double</code>）。<code>load_quotes(version, Quote*, cap, n)</code> 读整份版本给回测用。<code>blocks_read</code> / <code>reset_blocks_read</code> 给出查询实际碰到的块数。</p>
+<h3 id="盘上布局">盘上布局</h3>
+<table><thead><tr>
+<th>部分</th>
+<th>大小</th>
+<th>内容</th>
+</tr></thead><tbody>
+<tr>
+<td>文件头</td>
+<td>64 B</td>
+<td>魔数 <code>PLTAPE01</code>、格式版本 1、8 列、每块 1024 行、合约号</td>
+</tr>
+<tr>
+<td>块</td>
+<td>64 B + 64 KiB</td>
+<td>块头（<code>PLBLK001</code>、行数、块序号、首尾 <code>exch_us</code>），随后是 8 列 × 1024 行 × 8 B，按列存放；尾部未用行补 0</td>
+</tr>
+<tr>
+<td>提交记录</td>
+<td>64 B</td>
+<td><code>PLCMT001</code>、版本号、累计行数、结束偏移、首尾 <code>exch_us</code>、块数</td>
+</tr>
+</tbody></table>
+<p>块写入后不再改变。一次提交在已写行数处发布版本 N，下一次提交在同一前缀上发布 N+1。版本 0 表示最新；<code>1..versions</code> 中的版本永远不变。读取不加锁、不做文件映射：<code>pread</code> 每次只取一个块的一段列，所以 <code>open</code> 之后文件被截断也不会触发 <code>SIGBUS</code>。</p>
+<h3 id="rows-的语义">rows() 的语义</h3>
+<p><code>rows(version, since_us, until_us, offset, limit, cols, out, cap, n)</code>：</p>
+<ul>
+<li><code>version</code> 为 0 取最新；小于 1 或大于 <code>versions</code> 失败。</li>
+<li><code>since_us</code> / <code>until_us</code> 为闭区间；<code>INT64_MIN</code> / <code>INT64_MAX</code> 表示不限。区间外的块按块头时间跳过，边界在块内二分查找。</li>
+<li><code>offset</code> 与 <code>limit</code> 在时间过滤之后生效。<code>limit</code> 为 0 时最多复制 <code>cap</code> 行，<code>cap</code> 也是单次调用的硬上限。</li>
+<li><code>cols</code> 是按盘上顺序的位掩码：<code>kTapeColExch</code>（bit 0）到 <code>kTapeColLastQty</code>（bit 7），<code>kTapeColAll</code>（<code>0xff</code>）；0 表示全选。未选中的列保留输出缓冲原值，只需要部分列时请先清零。</li>
+<li>版本非法或 I/O 出错返回 false；<code>n</code> 是实际复制的行数。</li>
+</ul>
+<p>时间必须非递减，块头和块内二分都以此为前提。</p>
+<h3 id="tape-source-适配器">tape_source 适配器</h3>
+<p><code>study/tape_source.hpp</code> 定义 <code>TapeLoadFn</code> 和 <code>TapeSourceApi{name, load}</code>，研究代码可以只拿一个函数指针，而不必绑定具体文件。<code>tape_load_block</code> 把整份版本读成 <code>Quote</code> 行并回传版本号；<code>tape_tail_block</code> 只读最后 <code>cap</code> 笔，供实盘式回放使用。路径缺失、不是块存储 tape、或容量放不下时都返回 false。</p>
+<h3 id="c-abi">C ABI</h3>
+<p><code>include/pitlane/capi/pitlane_c.h</code> 是可选的 C 接口，编成 <code>libpitlane_c.so</code>，从不链进热路径。<code>pl_tick</code>、<code>pl_meta</code>、<code>pl_stats</code>、<code>pl_query</code>、<code>pl_bt_cfg</code>、<code>pl_bt_metrics</code> 都是普通 C 结构体；<code>pl_tape</code> 不透明。<code>pl_event</code> 与 <code>pl_cmd</code> 是 64 字节记录，<code>pl_log</code> 是 128 字节日志行，<code>pl_bridge</code> 是三条有界环形队列的不透明句柄：两条无等待单生产/单消费环分别承载引擎到策略的事件、策略到引擎的委托与查询，第三条把策略日志送往引擎。队列满时丢弃并计数，不阻塞。</p>
+<table><thead><tr>
+<th>函数</th>
+<th>返回</th>
+<th>用途</th>
+</tr></thead><tbody>
+<tr>
+<td><code>pl_tape_open(path)</code></td>
+<td><code>pl_tape*</code></td>
+<td>打开并校验 tape；文件缺失、魔数错误或尾部截断返回 <code>NULL</code></td>
+</tr>
+<tr>
+<td><code>pl_tape_close(t)</code></td>
+<td><code>void</code></td>
+<td>关闭并释放句柄</td>
+</tr>
+<tr>
+<td><code>pl_tape_meta(t, out)</code></td>
+<td>1/0</td>
+<td>文件头摘要</td>
+</tr>
+<tr>
+<td><code>pl_tape_rows(t, q, out, cap, n)</code></td>
+<td>1/0</td>
+<td>按时间、offset、limit 和列投影读取 <code>q-&gt;version</code> 的行</td>
+</tr>
+<tr>
+<td><code>pl_tape_describe(t, version, out)</code></td>
+<td>1/0</td>
+<td>逐列统计</td>
+</tr>
+<tr>
+<td><code>pl_tape_write(path, symbol, ticks, n)</code></td>
+<td>1/0</td>
+<td>把 <code>n</code> 笔写成一次提交的版本</td>
+</tr>
+<tr>
+<td><code>pl_backtest(path, cfg, out)</code></td>
+<td>1/0</td>
+<td>读整份 tape 并跑 <code>Backtester</code></td>
+</tr>
+<tr>
+<td><code>pl_version()</code></td>
+<td><code>const char*</code></td>
+<td>库版本，例如 <code>&quot;1.0.0&quot;</code></td>
+</tr>
+</tbody></table>
+<p>策略桥新增一个句柄与十五个调用：</p>
+<table><thead><tr>
+<th>函数</th>
+<th>返回</th>
+<th>用途</th>
+</tr></thead><tbody>
+<tr>
+<td><code>pl_bridge_open(event_cap, cmd_cap)</code></td>
+<td><code>pl_bridge*</code></td>
+<td>分配各条环；传 0 取 4096 事件与 1024 命令，向上取 2 的幂；日志环固定 1024 行</td>
+</tr>
+<tr>
+<td><code>pl_bridge_close(b)</code></td>
+<td>无</td>
+<td>释放句柄与各条环</td>
+</tr>
+<tr>
+<td><code>pl_bridge_post(b, ev)</code></td>
+<td>1/0</td>
+<td>引擎侧：发布一个事件，满则返回 0</td>
+</tr>
+<tr>
+<td><code>pl_bridge_poll(b, out, cap, n)</code></td>
+<td>1/0</td>
+<td>策略侧：按序排空至多 <code>cap</code> 个事件</td>
+</tr>
+<tr>
+<td><code>pl_bridge_send(b, cmd)</code></td>
+<td>1/0</td>
+<td>策略侧：发布一条委托或查询，满则返回 0</td>
+</tr>
+<tr>
+<td><code>pl_bridge_take_cmd(b, out)</code></td>
+<td>1/0</td>
+<td>引擎侧：取一条命令，无命令返回 0</td>
+</tr>
+<tr>
+<td><code>pl_bridge_log(b, level, text)</code></td>
+<td>1/0</td>
+<td>策略侧：发布一行日志，文本截断到 <code>PL_LOG_TEXT</code>-1 字节，满则返回 0</td>
+</tr>
+<tr>
+<td><code>pl_bridge_take_log(b, out)</code></td>
+<td>1/0</td>
+<td>引擎侧：取一行日志，无日志返回 0</td>
+</tr>
+<tr>
+<td><code>pl_bridge_events_pending(b)</code> / <code>pl_bridge_cmds_pending(b)</code> / <code>pl_bridge_logs_pending(b)</code></td>
+<td>计数</td>
+<td>队列深度</td>
+</tr>
+<tr>
+<td><code>pl_bridge_events_lost(b)</code> / <code>pl_bridge_cmds_lost(b)</code> / <code>pl_bridge_logs_lost(b)</code></td>
+<td>计数</td>
+<td>队列满时丢弃的记录数</td>
+</tr>
+<tr>
+<td><code>pl_now_us()</code></td>
+<td>微秒</td>
+<td>两侧共用的单调时钟</td>
+</tr>
+</tbody></table>
+<p>事件用 <code>PL_EV_QUOTE</code>、<code>PL_EV_ORDER</code>、<code>PL_EV_TRADE</code>、<code>PL_EV_SIGNAL</code>、<code>PL_EV_ASSET</code>、<code>PL_EV_POSITION</code>、<code>PL_EV_PACKAGE_REQ</code>、<code>PL_EV_PACKAGE_RSP</code>、<code>PL_EV_TIMER</code>、<code>PL_EV_REBUILD_QUOTE</code>、<code>PL_EV_MKT_ORDER</code>、<code>PL_EV_MKT_TRADE</code>、<code>PL_EV_ALGO_REQ</code>、<code>PL_EV_ALGO_RSP</code>、<code>PL_EV_SIGNAL_BATCH</code>、<code>PL_EV_CONTROL_REQ</code>、<code>PL_EV_CONTROL_RSP</code>、<code>PL_EV_PROPERTY</code>、<code>PL_EV_LOG</code>、<code>PL_EV_NEW_PARAM</code>、<code>PL_EV_ONE_PARAM_DONE</code>、<code>PL_EV_NEW_DATE</code>、<code>PL_EV_ONE_DATE_DONE</code>、<code>PL_EV_BACKTEST_DONE</code> 标记；命令用 <code>PL_CMD_INSERT</code>、<code>PL_CMD_CANCEL</code>、<code>PL_CMD_PAUSE</code>、<code>PL_CMD_RESUME</code>、<code>PL_CMD_SUBSCRIBE</code>、<code>PL_CMD_UNSUBSCRIBE</code>、<code>PL_CMD_QUERY_ASSET</code>、<code>PL_CMD_QUERY_POSITION</code>、<code>PL_CMD_SIGNAL_SUB</code>、<code>PL_CMD_SIGNAL_UNSUB</code>、<code>PL_CMD_INSERT_ALGO</code>、<code>PL_CMD_CANCEL_ALGO</code>、<code>PL_CMD_SUB_MKT_ORDER</code>、<code>PL_CMD_SUB_MKT_TRADE</code>、<code>PL_CMD_SUB_REBUILD</code>、<code>PL_CMD_QUERY_SOURCE</code>、<code>PL_CMD_SET_LOG_STATE</code>、<code>PL_CMD_CONTROL_RSP</code> 标记。方向 0 无、1 买/多、2 卖/空。每条记录是引擎侧类型行的紧凑整数投影，完整盘口、委托、算法、资产与持仓字段留在 C++，线上记录固定 64 字节。</p>
+<p><code>ctypes</code> 可以直接映射这些结构体：</p>
+<pre><code class="language-python">
+import ctypes
+
+lib = ctypes.CDLL(&quot;build/libpitlane_c.so&quot;)
+lib.pl_version.restype = ctypes.c_char_p
+print(lib.pl_version().decode())
+
+class Tick(ctypes.Structure):
+    _fields_ = [(name, ctypes.c_int64) for name in
+                (&quot;exch_us&quot;, &quot;local_us&quot;, &quot;bid_px&quot;, &quot;ask_px&quot;,
+                 &quot;last_px&quot;, &quot;bid_qty&quot;, &quot;ask_qty&quot;, &quot;last_qty&quot;)]
+
+lib.pl_tape_open.argtypes = [ctypes.c_char_p]
+lib.pl_tape_open.restype = ctypes.c_void_p
+tape = lib.pl_tape_open(b&quot;run/tape.plt&quot;)
+</code></pre>
+<p><code>python/pitlane</code> 做的正是这件事，并额外提供 <code>version</code>、<code>Tick</code>、<code>Tape</code>、<code>write_tape</code> 和 <code>backtest</code>。它还以 <code>Bridge</code>、<code>Event</code>、<code>Cmd</code>、<code>Log</code>、<code>Context</code>、<code>Strategy</code>、<code>pump</code>、<code>run</code>、<code>now_us</code> 暴露策略桥：继承 <code>Strategy</code>，覆写 24 个回调中的任意一个（<code>on_quote</code> 到 <code>on_backtest_done</code>），并通过 <code>self.ctx.insert</code>、<code>cancel</code>、<code>pause</code>、<code>resume</code>、<code>subscribe</code>、<code>unsubscribe</code>、<code>query_asset</code>、<code>query_position</code>、<code>signal_sub</code>、<code>signal_unsub</code>、<code>insert_algo</code>、<code>cancel_algo</code>、<code>subscribe_mkt_order</code>、<code>subscribe_mkt_trade</code>、<code>subscribe_rebuild</code>、<code>query_source</code>、<code>set_log_state</code>、<code>control_rsp</code>、<code>log</code> 发指令；<code>self.info</code>、<code>warn</code>、<code>error</code>、<code>debug</code> 与 <code>bridge.log(level, text)</code> 一样写入桥日志环，引擎侧用 <code>bridge.take_log()</code> 取走。<code>pitlane.run(strategy, bridge)</code> 服务到 <code>stop()</code> 为止。核心仍是 header-only，引擎从不回调 Python。</p>
+  </main>
+</div>
+</body>
+</html>
